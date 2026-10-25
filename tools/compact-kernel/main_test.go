@@ -28,6 +28,19 @@ func TestCompactInstruction(t *testing.T) {
 		{"ldrb w10, [x11, #0x76a]", "{op: compactLoadBaseImm8, destination: 10, left: 11, immediate: 0x76a},", false},
 		{"ldr w10, [x10, w19, sxtw #2]", "{op: compactLoadSXTW32, destination: 10, left: 10, right: 19, shift: 2},", false},
 		{"strb wzr, [x16, #0x5af]", "{op: compactStoreBaseImm8, destination: 31, left: 16, immediate: 0x5af},", false},
+		{"add x8, x9, w10, sxtw #3", "{op: compactAddExt64, destination: 8, left: 9, right: 10, accumulator: 2, shift: 3},", false},
+		{"ccmp x9, x13, #4, ne", "{op: compactCCmpReg64, left: 9, right: 13, accumulator: 4, shift: uint8(compactConditionNE)},", false},
+		{"ubfiz w10, w8, #1, #5", "{op: compactUBFIZ32, destination: 10, left: 8, shift: 1, immediate: 0x5},", false},
+		{"orn x17, x17, x14, lsl #1", "{op: compactOrNotShift64, destination: 17, left: 17, right: 14, accumulator: 0, shift: 1},", false},
+		{"subs x10, x10, #1", "{op: compactSubsImm64, destination: 10, left: 10, immediate: 0x1},", false},
+		{"and x11, x11, #0xff00000000000000", "{op: compactAndImmShift64, destination: 11, left: 11, shift: 48, immediate: 0xff00},", false},
+		{"eor x16, x15, #0xffe0ffffffffffff", "{op: compactXorNotImm16Shift64, destination: 16, left: 15, shift: 40, immediate: 0x1f00},", false},
+		{"mov x10, #-0x4000400040005", "{op: compactMovNegRepeat16PlusOne, destination: 10, immediate: 0x4},", false},
+		{"ldr w17, [x23, x17, lsl #2]", "{op: compactLoadXIndexShift32, destination: 17, left: 23, right: 17, shift: 2},", false},
+		{"stur xzr, [x29, #-0x90]", "{op: compactStoreSignedOffset64, destination: 31, left: 29, immediate: 0xff70},", false},
+		{"and x9, x9, #0xf7ffffffffffffff", "{op: compactAndNotImm16Shift64, destination: 9, left: 9, shift: 48, immediate: 0x800},", false},
+		{"casal w11, w12, [x19]", "{op: compactCASAL32, left: 11, right: 12, accumulator: 19},", false},
+		{"str w3, [x4], #8", "{op: compactStorePostIndex32, destination: 3, left: 4, immediate: 0x8},", false},
 		{"braa x8, x17", "", true},
 	} {
 		got, stop, err := compactInstruction(test.input)
@@ -84,7 +97,7 @@ func rawSourceAccountEntryBlock2000(s *state, runtime *rawSourceRuntime) (next u
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, skipped, reasons, err := generateCompactCFGSource("testBlocks", blocks, 0)
+	source, skipped, reasons, err := generateCompactCFGSource("testBlocks", blocks, 0, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,5 +118,40 @@ func rawSourceAccountEntryBlock2000(s *state, runtime *rawSourceRuntime) (next u
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated CFG lacks %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestPruneCompleteCFGSource(t *testing.T) {
+	source, err := pruneCompleteCFGSource(`package recovery
+
+func run(s *state) error {
+	for blockCount := 0; blockCount < 1; blockCount++ {
+		switch pc {
+		case 0x1000:
+			{
+				return nil
+			}
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+func rawSourceAccountEntryBlock1000() {
+	if true {
+		return
+	}
+}
+`, "rawSourceAccountEntryBlock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(source)
+	if strings.Contains(text, "switch pc") || strings.Contains(text, "rawSourceAccountEntryBlock1000") {
+		t.Fatalf("pruned source retained generated CFG:\n%s", text)
+	}
+	if !strings.Contains(text, "bootstrap CFG reached unknown block") {
+		t.Fatalf("pruned source lacks fallback:\n%s", text)
 	}
 }

@@ -98,8 +98,8 @@ func TestCompactBlockControlFlowAndStop(t *testing.T) {
 }
 
 func TestCompactAccountEntryBlocks(t *testing.T) {
-	if got := len(compact26A428AccountEntryBlocks); got != 783 {
-		t.Fatalf("compact account-entry block count = %d, want 783", got)
+	if got := len(compact26A428AccountEntryBlocks); got != 1086 {
+		t.Fatalf("compact account-entry block count = %d, want 1086", got)
 	}
 	for address, block := range compact26A428AccountEntryBlocks {
 		if block.start != address {

@@ -1,6 +1,9 @@
 package recovery
 
-import "fmt"
+import (
+	"fmt"
+	"math/bits"
+)
 
 type compactOpcode uint8
 
@@ -148,6 +151,62 @@ const (
 	compactStoreXIndex64
 	compactLoadUXTW64
 	compactStoreBaseImm64
+	compactAddExt32
+	compactAddExt64
+	compactMovSP
+	compactSubSPFromX
+	compactOrImm32
+	compactOrLSL64
+	compactAndLSR32
+	compactCmpExtByte32
+	compactCmpLSR32
+	compactCCmpReg32
+	compactCCmpReg64
+	compactCCmpImm32
+	compactCCmpImm64
+	compactAdds32
+	compactSubs32
+	compactSubs64
+	compactSubsImm32
+	compactSubsImm64
+	compactSMull32
+	compactUBFIZ32
+	compactUBFIZ64
+	compactUBFX32
+	compactUBFX64
+	compactBFI32
+	compactBFXIL32
+	compactOrNotShift32
+	compactOrNotShift64
+	compactNot64
+	compactLSLReg64
+	compactLSRReg64
+	compactAndImm64
+	compactAndImmShift64
+	compactXorNotImm16Shift64
+	compactAddImmShift64
+	compactSubImmShift64
+	compactMovFromSP
+	compactAddLSR32
+	compactSubLSL64
+	compactSubExt32
+	compactLoadXIndexShift32
+	compactStoreXIndexShift32
+	compactLoadPreIndex32
+	compactStorePreIndex64
+	compactLoadSignedWord64
+	compactAnds32
+	compactBics32
+	compactCCmnImm32
+	compactCLZ32
+	compactCMNImm64
+	compactMovNegImm48
+	compactMovNegImm16Shift64
+	compactMovNegRepeat16PlusOne
+	compactAndNotImm16Shift64
+	compactCASAL32
+	compactStorePostIndex32
+	compactStorePreIndex32
 	compactOpcodeCount
 )
 
@@ -322,7 +381,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			}
 			s.x[d] = uint64(uint32(value))
 		case compactStoreSP64:
-			if err := s.storeValue(addOffset(s.sp, int64(instruction.immediate)), s.x[left], 8); err != nil {
+			value := uint64(0)
+			if instruction.left < 31 {
+				value = s.x[left]
+			}
+			if err := s.storeValue(addOffset(s.sp, int64(instruction.immediate)), value, 8); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactMovNegImm64:
@@ -370,11 +433,19 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			}
 			s.x[d] = value
 		case compactStoreSignedOffset32:
-			if err := s.storeValue(addOffset(s.x[left], int64(int16(instruction.immediate))), uint64(uint32(s.x[d])), 4); err != nil {
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = uint64(uint32(s.x[d]))
+			}
+			if err := s.storeValue(addOffset(s.x[left], int64(int16(instruction.immediate))), value, 4); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactStoreSignedOffset64:
-			if err := s.storeValue(addOffset(s.x[left], int64(int16(instruction.immediate))), s.x[d], 8); err != nil {
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = s.x[d]
+			}
+			if err := s.storeValue(addOffset(s.x[left], int64(int16(instruction.immediate))), value, 8); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactLoadSignedOffset8:
@@ -608,6 +679,213 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			if err := s.storeValue(addOffset(s.x[left], int64(instruction.immediate)), value, 8); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
+		case compactAddExt32, compactAddExt64:
+			extended := uint64(byte(s.x[right]))
+			if instruction.accumulator == 1 {
+				extended = uint64(uint32(s.x[right]))
+			} else if instruction.accumulator == 2 {
+				extended = uint64(int64(int32(s.x[right])))
+			}
+			value := s.x[left] + shiftLeft(extended, int(instruction.shift), 64)
+			if instruction.op == compactAddExt32 {
+				value = uint64(uint32(value))
+			}
+			s.x[d] = value
+		case compactMovSP:
+			s.sp = s.x[left]
+		case compactSubSPFromX:
+			s.sp = s.x[left] - shiftLeft(uint64(instruction.immediate), int(instruction.shift), 64)
+		case compactOrImm32:
+			immediate := uint32(instruction.immediate) | uint32(instruction.right)<<16 | uint32(instruction.accumulator)<<24
+			s.x[d] = uint64(uint32(s.x[left]) | immediate)
+		case compactOrLSL64:
+			s.x[d] = s.x[left] | shiftLeft(s.x[right], int(instruction.shift), 64)
+		case compactAndLSR32:
+			s.x[d] = uint64(uint32(s.x[left]) & uint32(shiftRight(s.x[right], int(instruction.shift), 32)))
+		case compactCmpExtByte32:
+			rightValue := uint32(byte(s.x[right]))
+			if instruction.shift != 0 {
+				rightValue = uint32(int32(int8(s.x[right])))
+			}
+			s.compare32(uint32(s.x[left]), rightValue)
+		case compactCmpLSR32:
+			s.compare32(uint32(s.x[left]), uint32(shiftRight(s.x[right], int(instruction.shift), 32)))
+		case compactCCmpReg32, compactCCmpReg64, compactCCmpImm32, compactCCmpImm64:
+			matches, err := compactConditionMatches(s, compactCondition(instruction.shift))
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if !matches {
+				s.setNZCV(int(instruction.accumulator))
+				break
+			}
+			rightValue := s.x[right]
+			if instruction.op == compactCCmpImm32 || instruction.op == compactCCmpImm64 {
+				rightValue = uint64(instruction.immediate)
+			}
+			if instruction.op == compactCCmpReg32 || instruction.op == compactCCmpImm32 {
+				s.compare32(uint32(s.x[left]), uint32(rightValue))
+			} else {
+				s.compare64(s.x[left], rightValue)
+			}
+		case compactAdds32:
+			s.x[d] = s.addWithCarry(uint64(uint32(s.x[left])), uint64(uint32(s.x[right])), false, 32)
+		case compactSubs32:
+			s.x[d] = s.subtractWithFlags(uint64(uint32(s.x[left])), uint64(uint32(s.x[right])), 32)
+		case compactSubs64:
+			s.x[d] = s.subtractWithFlags(s.x[left], s.x[right], 64)
+		case compactSubsImm32:
+			s.x[d] = s.subtractWithFlags(uint64(uint32(s.x[left])), uint64(instruction.immediate), 32)
+		case compactSubsImm64:
+			s.x[d] = s.subtractWithFlags(s.x[left], uint64(instruction.immediate), 64)
+		case compactSMull32:
+			s.x[d] = uint64(int64(int32(s.x[left])) * int64(int32(s.x[right])))
+		case compactUBFIZ32, compactUBFIZ64:
+			width := 64
+			if instruction.op == compactUBFIZ32 {
+				width = 32
+			}
+			s.x[d] = shiftLeft(s.x[left]&bitMask(int(instruction.immediate), width), int(instruction.shift), width)
+		case compactUBFX32, compactUBFX64:
+			width := 64
+			if instruction.op == compactUBFX32 {
+				width = 32
+			}
+			s.x[d] = shiftRight(s.x[left], int(instruction.shift), width) & bitMask(int(instruction.immediate), width)
+		case compactBFI32:
+			s.x[d] = insertBits(uint64(uint32(s.x[d])), uint64(uint32(s.x[left])), int(instruction.shift), int(instruction.immediate), 32)
+		case compactBFXIL32:
+			s.x[d] = insertBits(uint64(uint32(s.x[d])), shiftRight(s.x[left], int(instruction.shift), 32), 0, int(instruction.immediate), 32)
+		case compactOrNotShift32, compactOrNotShift64:
+			width := 64
+			if instruction.op == compactOrNotShift32 {
+				width = 32
+			}
+			shifted := shiftLeft(s.x[right], int(instruction.shift), width)
+			if instruction.accumulator == 1 {
+				shifted = shiftRight(s.x[right], int(instruction.shift), width)
+			}
+			value := s.x[left] | ^shifted
+			if width == 32 {
+				value = uint64(uint32(value))
+			}
+			s.x[d] = value
+		case compactNot64:
+			s.x[d] = ^s.x[left]
+		case compactLSLReg64:
+			s.x[d] = shiftLeft(s.x[left], int(s.x[right]), 64)
+		case compactLSRReg64:
+			s.x[d] = shiftRight(s.x[left], int(s.x[right]), 64)
+		case compactAndImm64:
+			s.x[d] = s.x[left] & uint64(instruction.immediate)
+		case compactAndImmShift64:
+			s.x[d] = s.x[left] & (uint64(instruction.immediate) << instruction.shift)
+		case compactXorNotImm16Shift64:
+			s.x[d] = s.x[left] ^ ^(uint64(instruction.immediate) << instruction.shift)
+		case compactAddImmShift64:
+			s.x[d] = s.x[left] + shiftLeft(uint64(instruction.immediate), int(instruction.shift), 64)
+		case compactSubImmShift64:
+			s.x[d] = s.x[left] - shiftLeft(uint64(instruction.immediate), int(instruction.shift), 64)
+		case compactMovFromSP:
+			s.x[d] = s.sp
+		case compactAddLSR32:
+			s.x[d] = uint64(uint32(s.x[left]) + uint32(shiftRight(s.x[right], int(instruction.shift), 32)))
+		case compactSubLSL64:
+			s.x[d] = s.x[left] - shiftLeft(s.x[right], int(instruction.shift), 64)
+		case compactSubExt32:
+			s.x[d] = uint64(uint32(s.x[left]) - uint32(byte(s.x[right])))
+		case compactLoadXIndexShift32:
+			value, err := s.load(s.x[left]+shiftLeft(s.x[right], int(instruction.shift), 64), 4)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint32(value))
+		case compactStoreXIndexShift32:
+			if err := s.storeValue(s.x[left]+shiftLeft(s.x[right], int(instruction.shift), 64), uint64(uint32(s.x[d])), 4); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactLoadPreIndex32:
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+			value, err := s.load(s.x[left], 4)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint32(value))
+		case compactStorePreIndex64:
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = s.x[d]
+			}
+			if err := s.storeValue(s.x[left], value, 8); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactLoadSignedWord64:
+			value, err := s.load(addOffset(s.x[left], int64(int16(instruction.immediate))), 4)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(int64(int32(value)))
+		case compactAnds32:
+			value := uint32(s.x[left]) & uint32(s.x[right])
+			s.x[d] = uint64(value)
+			s.test32(value)
+		case compactBics32:
+			value := uint32(s.x[left]) &^ uint32(s.x[right])
+			if instruction.destination < 31 {
+				s.x[d] = uint64(value)
+			}
+			s.test32(value)
+		case compactCCmnImm32:
+			matches, err := compactConditionMatches(s, compactCondition(instruction.shift))
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if matches {
+				_ = s.addWithCarry(uint64(uint32(s.x[left])), uint64(instruction.immediate), false, 32)
+			} else {
+				s.setNZCV(int(instruction.accumulator))
+			}
+		case compactCLZ32:
+			s.x[d] = uint64(uint32(bits.LeadingZeros32(uint32(s.x[left]))))
+		case compactCMNImm64:
+			_ = s.addWithCarry(s.x[left], uint64(instruction.immediate), false, 64)
+		case compactMovNegImm48:
+			magnitude := uint64(instruction.immediate) |
+				uint64(instruction.left)<<16 |
+				uint64(instruction.right)<<24 |
+				uint64(instruction.accumulator)<<32 |
+				uint64(instruction.shift)<<40
+			s.x[d] = uint64(0) - magnitude
+		case compactMovNegImm16Shift64:
+			s.x[d] = uint64(0) - (uint64(instruction.immediate) << instruction.shift)
+		case compactMovNegRepeat16PlusOne:
+			value := uint64(instruction.immediate)
+			magnitude := value | value<<16 | value<<32 | value<<48
+			s.x[d] = uint64(0) - (magnitude + 1)
+		case compactAndNotImm16Shift64:
+			s.x[d] = s.x[left] & ^(uint64(instruction.immediate) << instruction.shift)
+		case compactCASAL32:
+			value, err := s.load(s.x[instruction.accumulator], 4)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if uint32(value) == uint32(s.x[left]) {
+				if err := s.storeValue(s.x[instruction.accumulator], uint64(uint32(s.x[right])), 4); err != nil {
+					return fmt.Errorf("compact kernel %#x: %w", pc, err)
+				}
+			}
+			s.x[left] = uint64(uint32(value))
+		case compactStorePostIndex32:
+			if err := s.storeValue(s.x[left], uint64(uint32(s.x[d])), 4); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+		case compactStorePreIndex32:
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+			if err := s.storeValue(s.x[left], uint64(uint32(s.x[d])), 4); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
 		case compactSub64:
 			s.x[d] = s.x[left] - s.x[right]
 		case compactAdd64:
@@ -733,7 +1011,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			s.x[d] = uint64(uint32(shiftRight(uint64(uint32(s.x[left])), int(s.x[right]), 32)))
 		case compactStoreUXTW8:
 			address := s.x[left] + uint64(uint32(s.x[right]))
-			if err := s.storeValue(address, uint64(byte(s.x[d])), 1); err != nil {
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = uint64(byte(s.x[d]))
+			}
+			if err := s.storeValue(address, value, 1); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactUMulH64:
@@ -760,7 +1042,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 		case compactCSet32HI:
 			s.x[d] = uint64(uint32(boolValue(s.condition("hi"))))
 		case compactStoreBaseImm32:
-			if err := s.storeValue(addOffset(s.x[left], int64(instruction.immediate)), uint64(uint32(s.x[d])), 4); err != nil {
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = uint64(uint32(s.x[d]))
+			}
+			if err := s.storeValue(addOffset(s.x[left], int64(instruction.immediate)), value, 4); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactMul64:
