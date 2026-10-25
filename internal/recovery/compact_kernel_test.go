@@ -135,6 +135,28 @@ func TestCompactSelectionBlocks(t *testing.T) {
 	}
 }
 
+func TestCompactSINFEntryBlocks(t *testing.T) {
+	total := 0
+	for _, blocks := range []map[uint64]compactBlock{
+		compact26A428SINFEntryBlocks00,
+		compact26A428SINFEntryBlocks01,
+		compact26A428SINFEntryBlocks02,
+		compact26A428SINFEntryBlocks03,
+		compact26A428SINFEntryBlocks04,
+		compact26A428SINFEntryBlocks05,
+	} {
+		total += len(blocks)
+		for address, block := range blocks {
+			if block.start != address {
+				t.Fatalf("SINF-entry block %#x starts at %#x", address, block.start)
+			}
+		}
+	}
+	if total != 1890 {
+		t.Fatalf("compact SINF-entry block count = %d, want 1890", total)
+	}
+}
+
 func TestCompactPairAddressing(t *testing.T) {
 	value := &model{pages: make(map[uint64][]byte)}
 	s := newState(value)

@@ -268,6 +268,14 @@ const (
 	compactSBFX32
 	compactStoreSPHalf32
 	compactStorePostIndex64
+	compactMovMaxInt
+	compactLoadPreIndex64
+	compactXorSelectionMask64
+	compactSXT16To32
+	compactStoreHalfPostIndex32
+	compactSubUXTH32
+	compactUDiv64
+	compactLoadHalfXIndexShift32
 	compactOpcodeCount
 )
 
@@ -758,6 +766,8 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 				extended = uint64(uint32(s.x[right]))
 			} else if instruction.accumulator == 2 {
 				extended = uint64(int64(int32(s.x[right])))
+			} else if instruction.accumulator == 3 {
+				extended = uint64(uint16(s.x[right]))
 			}
 			value := s.x[left] + shiftLeft(extended, int(instruction.shift), 64)
 			if instruction.op == compactAddExt32 {
@@ -959,6 +969,34 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+		case compactMovMaxInt:
+			s.x[d] = uint64(0x7fffffffffffffff)
+		case compactLoadPreIndex64:
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+			value, err := s.load(s.x[left], 8)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = value
+		case compactXorSelectionMask64:
+			s.x[d] = s.x[left] ^ uint64(0x3ffffffffffffff0)
+		case compactSXT16To32:
+			s.x[d] = uint64(uint32(int32(int16(s.x[left]))))
+		case compactStoreHalfPostIndex32:
+			if err := s.storeValue(s.x[left], uint64(uint16(s.x[d])), 2); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+		case compactSubUXTH32:
+			s.x[d] = uint64(uint32(s.x[left]) - uint32(uint16(s.x[right])))
+		case compactUDiv64:
+			s.x[d] = unsignedDivide(s.x[left], s.x[right], 64)
+		case compactLoadHalfXIndexShift32:
+			value, err := s.load(s.x[left]+shiftLeft(s.x[right], int(instruction.shift), 64), 2)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint16(value))
 		case compactStorePreIndex32:
 			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
 			if err := s.storeValue(s.x[left], uint64(uint32(s.x[d])), 4); err != nil {

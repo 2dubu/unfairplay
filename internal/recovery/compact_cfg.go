@@ -13,6 +13,7 @@ const (
 	compactBlockReturn
 	compactBlockCompareZero
 	compactBlockTestBit
+	compactBlockStopDirect
 )
 
 type compactCondition uint8
@@ -113,7 +114,25 @@ func runCompactBlock(s *state, runtime *rawSourceRuntime, block compactBlock) (n
 			return block.target, false, nil
 		}
 		return block.alternate, false, nil
+	case compactBlockStopDirect:
+		return block.target, true, nil
 	default:
 		return 0, false, fmt.Errorf("unknown compact block terminator %d", block.terminator)
 	}
+}
+
+func compact26A428SINFEntryBlock(pc uint64) (compactBlock, bool) {
+	for _, blocks := range []map[uint64]compactBlock{
+		compact26A428SINFEntryBlocks00,
+		compact26A428SINFEntryBlocks01,
+		compact26A428SINFEntryBlocks02,
+		compact26A428SINFEntryBlocks03,
+		compact26A428SINFEntryBlocks04,
+		compact26A428SINFEntryBlocks05,
+	} {
+		if block, ok := blocks[pc]; ok {
+			return block, true
+		}
+	}
+	return compactBlock{}, false
 }
