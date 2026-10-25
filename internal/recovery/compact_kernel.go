@@ -5,7 +5,7 @@ import (
 	"math/bits"
 )
 
-type compactOpcode uint8
+type compactOpcode uint16
 
 const (
 	compactAnd32 compactOpcode = iota
@@ -248,6 +248,26 @@ const (
 	compactVectorUnsignedShift
 	compactVectorMove128
 	compactWToVectorLane
+	compactAndsImm32
+	compactASRReg32
+	compactASRImm64
+	compactBFI64
+	compactBicLSR32
+	compactCMNLSL64
+	compactCmpUXTH32
+	compactEon64
+	compactXorASR32
+	compactLoadPostIndex32
+	compactLoadPostIndex64
+	compactLoadHalfUXTW32
+	compactMovMaxIntMinusOne
+	compactOrLSR32
+	compactOrHigh32Imm64
+	compactRev32
+	compactSBFIZ32
+	compactSBFX32
+	compactStoreSPHalf32
+	compactStorePostIndex64
 	compactOpcodeCount
 )
 
@@ -934,6 +954,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+		case compactStorePostIndex64:
+			if err := s.storeValue(s.x[left], s.x[d], 8); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
 		case compactStorePreIndex32:
 			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
 			if err := s.storeValue(s.x[left], uint64(uint32(s.x[d])), 4); err != nil {
@@ -1107,6 +1132,63 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			s.vectors[d] = s.vectors[left]
 		case compactWToVectorLane:
 			s.setVectorLane(d, int(instruction.immediate), 32, uint64(uint32(s.x[left])))
+		case compactAndsImm32:
+			immediate := uint32(instruction.immediate) | uint32(instruction.right)<<16 | uint32(instruction.accumulator)<<24
+			value := uint32(s.x[left]) & immediate
+			s.x[d] = uint64(value)
+			s.test32(value)
+		case compactASRReg32:
+			s.x[d] = uint64(uint32(shiftRightArithmetic(s.x[left], int(s.x[right]), 32)))
+		case compactASRImm64:
+			s.x[d] = shiftRightArithmetic(s.x[left], int(instruction.shift), 64)
+		case compactBFI64:
+			s.x[d] = insertBits(s.x[d], s.x[left], int(instruction.shift), int(instruction.immediate), 64)
+		case compactBicLSR32:
+			s.x[d] = uint64(uint32(s.x[left]) &^ uint32(shiftRight(s.x[right], int(instruction.shift), 32)))
+		case compactCMNLSL64:
+			_ = s.addWithCarry(s.x[left], shiftLeft(s.x[right], int(instruction.shift), 64), false, 64)
+		case compactCmpUXTH32:
+			s.compare32(uint32(s.x[left]), uint32(uint16(s.x[right])))
+		case compactEon64:
+			s.x[d] = s.x[left] ^ ^s.x[right]
+		case compactXorASR32:
+			s.x[d] = uint64(uint32(s.x[left]) ^ uint32(shiftRightArithmetic(s.x[right], int(instruction.shift), 32)))
+		case compactLoadPostIndex32, compactLoadPostIndex64:
+			width := 8
+			if instruction.op == compactLoadPostIndex32 {
+				width = 4
+			}
+			value, err := s.load(s.x[left], width)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if width == 4 {
+				value = uint64(uint32(value))
+			}
+			s.x[d] = value
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+		case compactLoadHalfUXTW32:
+			value, err := s.load(s.x[left]+shiftLeft(uint64(uint32(s.x[right])), int(instruction.shift), 64), 2)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint16(value))
+		case compactMovMaxIntMinusOne:
+			s.x[d] = uint64(0x7ffffffffffffffe)
+		case compactOrLSR32:
+			s.x[d] = uint64(uint32(s.x[left]) | uint32(shiftRight(s.x[right], int(instruction.shift), 32)))
+		case compactOrHigh32Imm64:
+			s.x[d] = s.x[left] | uint64(0xffffffff00000000)
+		case compactRev32:
+			s.x[d] = uint64(bits.ReverseBytes32(uint32(s.x[left])))
+		case compactSBFIZ32:
+			s.x[d] = shiftLeft(signExtendBits(s.x[left], int(instruction.immediate), 32), int(instruction.shift), 32)
+		case compactSBFX32:
+			s.x[d] = signExtendBits(shiftRight(s.x[left], int(instruction.shift), 32), int(instruction.immediate), 32)
+		case compactStoreSPHalf32:
+			if err := s.storeValue(addOffset(s.sp, int64(instruction.immediate)), uint64(uint16(s.x[d])), 2); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
 		case compactSub64:
 			s.x[d] = s.x[left] - s.x[right]
 		case compactAdd64:

@@ -6,8 +6,8 @@ import (
 )
 
 func TestCompactKernelEncoding(t *testing.T) {
-	if size := unsafe.Sizeof(compactInstruction{}); size != 8 {
-		t.Fatalf("compact instruction size = %d, want 8", size)
+	if size := unsafe.Sizeof(compactInstruction{}); size != 10 {
+		t.Fatalf("compact instruction size = %d, want 10", size)
 	}
 	for name, kernel := range map[string]compactKernel{
 		"bootstrap":       compact26A428BootstrapKernel,
@@ -120,6 +120,17 @@ func TestCompactBootstrapBlocks(t *testing.T) {
 	for address, block := range compact26A428BootstrapBlocks {
 		if block.start != address {
 			t.Fatalf("bootstrap block %#x starts at %#x", address, block.start)
+		}
+	}
+}
+
+func TestCompactSelectionBlocks(t *testing.T) {
+	if got := len(compact26A428SelectionBlocks); got != 1656 {
+		t.Fatalf("compact selection block count = %d, want 1656", got)
+	}
+	for address, block := range compact26A428SelectionBlocks {
+		if block.start != address {
+			t.Fatalf("selection block %#x starts at %#x", address, block.start)
 		}
 	}
 }
