@@ -207,6 +207,20 @@ const (
 	compactCASAL32
 	compactStorePostIndex32
 	compactStorePreIndex32
+	compactAddASR32
+	compactAddUXTH64
+	compactXorLSR64
+	compactXorImm16Shift64
+	compactLoadSignedWordBase64
+	compactLoadHalfXIndex32
+	compactLoadSPHalf32
+	compactMNeg64
+	compactMSub64
+	compactSBFIZ64
+	compactStoreUXTW64
+	compactStorePostIndex8
+	compactVectorDup32
+	compactLoadVector
 	compactOpcodeCount
 )
 
@@ -354,7 +368,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 		case compactLSLReg32:
 			s.x[d] = uint64(uint32(shiftLeft(uint64(uint32(s.x[left])), int(s.x[right]), 32)))
 		case compactStoreBase64:
-			if err := s.storeValue(s.x[left], s.x[d], 8); err != nil {
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = s.x[d]
+			}
+			if err := s.storeValue(s.x[left], value, 8); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactCMNImm32:
@@ -395,7 +413,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 		case compactSubImm64:
 			s.x[d] = s.x[left] - uint64(instruction.immediate)
 		case compactStoreXIndex8:
-			if err := s.storeValue(s.x[left]+s.x[right], uint64(byte(s.x[d])), 1); err != nil {
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = uint64(byte(s.x[d]))
+			}
+			if err := s.storeValue(s.x[left]+s.x[right], value, 1); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactCmpImm64:
@@ -544,7 +566,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			if instruction.op == compactStoreSignedOffsetHalf32 {
 				offset = int64(int16(instruction.immediate))
 			}
-			if err := s.storeValue(addOffset(s.x[left], offset), uint64(uint16(s.x[d])), 2); err != nil {
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = uint64(uint16(s.x[d]))
+			}
+			if err := s.storeValue(addOffset(s.x[left], offset), value, 2); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactPairLoad32, compactPairLoad64, compactPairStore32, compactPairStore64:
@@ -884,6 +910,68 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 		case compactStorePreIndex32:
 			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
 			if err := s.storeValue(s.x[left], uint64(uint32(s.x[d])), 4); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactAddASR32:
+			s.x[d] = uint64(uint32(s.x[left]) + uint32(shiftRightArithmetic(s.x[right], int(instruction.shift), 32)))
+		case compactAddUXTH64:
+			s.x[d] = s.x[left] + uint64(uint16(s.x[right]))
+		case compactXorLSR64:
+			s.x[d] = s.x[left] ^ shiftRight(s.x[right], int(instruction.shift), 64)
+		case compactXorImm16Shift64:
+			s.x[d] = s.x[left] ^ uint64(instruction.immediate)<<instruction.shift
+		case compactLoadSignedWordBase64:
+			base := uint64(0)
+			if instruction.left == 31 {
+				base = s.sp
+			} else {
+				base = s.x[left]
+			}
+			value, err := s.load(addOffset(base, int64(int16(instruction.immediate))), 4)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(int64(int32(value)))
+		case compactLoadHalfXIndex32:
+			value, err := s.load(s.x[left]+s.x[right], 2)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint16(value))
+		case compactLoadSPHalf32:
+			value, err := s.load(addOffset(s.sp, int64(instruction.immediate)), 2)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint16(value))
+		case compactMNeg64:
+			s.x[d] = uint64(0) - s.x[left]*s.x[right]
+		case compactMSub64:
+			s.x[d] = s.x[instruction.accumulator] - s.x[left]*s.x[right]
+		case compactSBFIZ64:
+			s.x[d] = shiftLeft(signExtendBits(s.x[left], int(instruction.immediate), 64), int(instruction.shift), 64)
+		case compactStoreUXTW64:
+			address := s.x[left] + shiftLeft(uint64(uint32(s.x[right])), int(instruction.shift), 64)
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = s.x[d]
+			}
+			if err := s.storeValue(address, value, 8); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactStorePostIndex8:
+			value := uint64(0)
+			if instruction.destination < 31 {
+				value = uint64(byte(s.x[d]))
+			}
+			if err := s.storeValue(s.x[left], value, 1); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[left] = addOffset(s.x[left], int64(int16(instruction.immediate)))
+		case compactVectorDup32:
+			s.vectorDup(d, int(instruction.immediate), 32, uint64(uint32(s.x[left])))
+		case compactLoadVector:
+			if err := s.loadVector(d, addOffset(s.x[left], int64(instruction.immediate)), int(instruction.accumulator)); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactSub64:

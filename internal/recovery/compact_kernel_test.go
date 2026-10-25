@@ -113,6 +113,17 @@ func TestCompactAccountEntryBlocks(t *testing.T) {
 	}
 }
 
+func TestCompactBootstrapBlocks(t *testing.T) {
+	if got := len(compact26A428BootstrapBlocks); got != 923 {
+		t.Fatalf("compact bootstrap block count = %d, want 923", got)
+	}
+	for address, block := range compact26A428BootstrapBlocks {
+		if block.start != address {
+			t.Fatalf("bootstrap block %#x starts at %#x", address, block.start)
+		}
+	}
+}
+
 func TestCompactPairAddressing(t *testing.T) {
 	value := &model{pages: make(map[uint64][]byte)}
 	s := newState(value)

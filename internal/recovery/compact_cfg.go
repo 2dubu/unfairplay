@@ -9,7 +9,10 @@ const (
 	compactBlockConditional
 	compactBlockRegister
 	compactBlockCallRegister
+	compactBlockCallDirect
 	compactBlockReturn
+	compactBlockCompareZero
+	compactBlockTestBit
 )
 
 type compactCondition uint8
@@ -37,6 +40,8 @@ type compactBlock struct {
 	terminator   compactBlockTerminator
 	condition    compactCondition
 	register     uint8
+	width        uint8
+	bit          uint8
 	target       uint64
 	alternate    uint64
 }
@@ -81,8 +86,33 @@ func runCompactBlock(s *state, runtime *rawSourceRuntime, block compactBlock) (n
 	case compactBlockCallRegister:
 		s.x[30] = terminalPC + 4
 		return s.x[block.register], false, nil
+	case compactBlockCallDirect:
+		s.x[30] = terminalPC + 4
+		return block.target, false, nil
 	case compactBlockReturn:
 		return s.x[30], false, nil
+	case compactBlockCompareZero:
+		value := s.x[block.register]
+		if block.width == 32 {
+			value = uint64(uint32(value))
+		}
+		if block.condition != compactConditionEQ && block.condition != compactConditionNE {
+			return 0, false, fmt.Errorf("invalid compare-zero condition %d", block.condition)
+		}
+		zero := value == 0
+		if block.condition == compactConditionEQ && zero || block.condition == compactConditionNE && !zero {
+			return block.target, false, nil
+		}
+		return block.alternate, false, nil
+	case compactBlockTestBit:
+		if block.condition != compactConditionEQ && block.condition != compactConditionNE {
+			return 0, false, fmt.Errorf("invalid test-bit condition %d", block.condition)
+		}
+		set := s.x[block.register]&(uint64(1)<<block.bit) != 0
+		if block.condition == compactConditionNE && set || block.condition == compactConditionEQ && !set {
+			return block.target, false, nil
+		}
+		return block.alternate, false, nil
 	default:
 		return 0, false, fmt.Errorf("unknown compact block terminator %d", block.terminator)
 	}

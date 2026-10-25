@@ -23,6 +23,17 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if block, ok := compact26A428BootstrapBlocks[pc]; ok {
+			next, stopped, err := runCompactBlock(s, runtime, block)
+			if err != nil {
+				return pc, blockCount, fmt.Errorf("compact bootstrap CFG %#x: %w", pc, err)
+			}
+			if stopped {
+				return next, blockCount, nil
+			}
+			pc = next
+			continue
+		}
 		switch pc {
 		case 0x10057ae74:
 			{
