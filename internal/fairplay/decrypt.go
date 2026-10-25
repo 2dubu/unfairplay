@@ -1,0 +1,753 @@
+package fairplay
+
+import (
+	"archive/zip"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+
+	"golang.org/x/arch/arm64/arm64asm"
+)
+
+const (
+	pageBytes                           = 4096
+	minimumARM64InstructionValidPercent = 90
+)
+
+type encryptedImage struct {
+	member, supfMember string
+	sliceOffset        uint64
+	sliceSize          uint64
+	layout             machoLayout
+}
+
+type ipaInventory struct {
+	path        string
+	bytes       int64
+	sha256      string
+	sinfMembers []string
+	images      []encryptedImage
+	supfTables  map[string]supf
+	cachedFiles map[string][]byte
+}
+
+type DecryptOptions struct {
+	InputPath, OutputPath, ReportPath, ModelPath string
+	Force                                        bool
+}
+
+type DecryptResult struct {
+	OutputPath       string
+	OutputSHA256     string
+	ReportPath       string
+	EncryptedImages  int
+	DecryptedPages   int
+	LogicalKeySHA256 string
+}
+
+func fileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func zipBytes(file *zip.File) ([]byte, error) {
+	reader, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	return io.ReadAll(reader)
+}
+
+func supfName(names map[string]bool, member string) string {
+	directory := path.Dir(member)
+	base := path.Base(member)
+	for _, suffix := range []string{".v5.supf", ".supf"} {
+		candidate := directory + "/SC_Info/" + base + suffix
+		if names[candidate] {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func readMachOProbe(file *zip.File) ([]byte, error) {
+	reader, err := file.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	header, err := io.ReadAll(io.LimitReader(reader, 32))
+	if err != nil {
+		return nil, err
+	}
+	if len(header) < 4 {
+		return header, nil
+	}
+	magic := binary.LittleEndian.Uint32(header[:4])
+	if magic == mhMagic32 || magic == mhMagic64 {
+		headerBytes := 28
+		if magic == mhMagic64 {
+			headerBytes = 32
+		}
+		if len(header) < headerBytes {
+			return header, nil
+		}
+		commandsBytes := int(binary.LittleEndian.Uint32(header[20:24]))
+		required := headerBytes + commandsBytes
+		if required < headerBytes || required > 1024*1024 || uint64(required) > file.UncompressedSize64 {
+			return header, fmt.Errorf("Mach-O load-command extent is invalid")
+		}
+		probe := make([]byte, required)
+		copy(probe, header)
+		if required > len(header) {
+			if _, err := io.ReadFull(reader, probe[len(header):]); err != nil {
+				return probe, err
+			}
+		}
+		return probe, nil
+	}
+	if isFatMachO(header) {
+		remainder, err := io.ReadAll(reader)
+		if err != nil {
+			return nil, err
+		}
+		return append(header, remainder...), nil
+	}
+	return header, nil
+}
+
+func openIPAInventory(path string) (ipaInventory, *zip.ReadCloser, error) {
+	var result ipaInventory
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return result, nil, err
+	}
+	state, err := os.Stat(abs)
+	if err != nil {
+		return result, nil, err
+	}
+	result.path = abs
+	result.bytes = state.Size()
+	result.sha256, err = fileSHA256(abs)
+	if err != nil {
+		return result, nil, err
+	}
+	archive, err := zip.OpenReader(abs)
+	if err != nil {
+		return result, nil, err
+	}
+	result.supfTables = map[string]supf{}
+	result.cachedFiles = map[string][]byte{}
+	names := map[string]bool{}
+	files := map[string]*zip.File{}
+	for _, file := range archive.File {
+		if previous, exists := files[file.Name]; exists {
+			// Some App Store repacks repeat an empty directory marker. It has no
+			// payload to choose between; duplicate files remain ambiguous.
+			if strings.HasSuffix(file.Name, "/") && previous.FileInfo().IsDir() &&
+				file.FileInfo().IsDir() && previous.UncompressedSize64 == 0 && file.UncompressedSize64 == 0 {
+				continue
+			}
+			archive.Close()
+			return result, nil, fmt.Errorf("duplicate IPA member %q", file.Name)
+		}
+		names[file.Name] = true
+		files[file.Name] = file
+		if strings.HasSuffix(file.Name, ".sinf") {
+			result.sinfMembers = append(result.sinfMembers, file.Name)
+		}
+	}
+	for _, file := range archive.File {
+		if file.FileInfo().IsDir() {
+			continue
+		}
+		probe, err := readMachOProbe(file)
+		if err != nil {
+			archive.Close()
+			return result, nil, fmt.Errorf("%s: %w", file.Name, err)
+		}
+		if len(probe) < 4 {
+			continue
+		}
+		magic := binary.LittleEndian.Uint32(probe[:4])
+		if magic != mhMagic32 && magic != mhMagic64 && !isFatMachO(probe) {
+			if !isKnownUnsupportedMachO(probe) {
+				continue
+			}
+			archive.Close()
+			return result, nil, fmt.Errorf("%s: unsupported Mach-O format; cannot establish complete encryption inventory", file.Name)
+		}
+		slices, parseErr := parseMachOSlices(probe, file.UncompressedSize64)
+		if parseErr != nil {
+			archive.Close()
+			return result, nil, fmt.Errorf("%s: %w", file.Name, parseErr)
+		}
+		var encrypted []machoSlice
+		for _, slice := range slices {
+			if slice.layout.cryptID != 0 {
+				encrypted = append(encrypted, slice)
+			}
+		}
+		if len(encrypted) == 0 {
+			continue
+		}
+		if isFatMachO(probe) {
+			result.cachedFiles[file.Name] = probe
+		}
+		supfMember := supfName(names, file.Name)
+		if supfMember == "" {
+			archive.Close()
+			return result, nil, fmt.Errorf("encrypted Mach-O %q has no adjacent SUPF", file.Name)
+		}
+		table, cached := result.supfTables[supfMember]
+		if !cached {
+			supfBlob, err := zipBytes(files[supfMember])
+			if err != nil {
+				archive.Close()
+				return result, nil, err
+			}
+			table, err = parseSUPF(supfBlob)
+			if err != nil {
+				archive.Close()
+				return result, nil, err
+			}
+			result.supfTables[supfMember] = table
+		}
+		for _, slice := range encrypted {
+			records, err := table.recordsFor(slice.layout.cpuType, slice.layout.cpuSubtype)
+			if err != nil {
+				archive.Close()
+				return result, nil, fmt.Errorf("%s: %w", file.Name, err)
+			}
+			if len(records) != int(slice.layout.cryptSize)/pageBytes {
+				archive.Close()
+				return result, nil, fmt.Errorf("%s: SUPF page count mismatch for architecture %#x/%#x", file.Name, slice.layout.cpuType, slice.layout.cpuSubtype)
+			}
+			result.images = append(result.images, encryptedImage{
+				member: file.Name, supfMember: supfMember,
+				sliceOffset: slice.offset, sliceSize: slice.size, layout: slice.layout,
+			})
+		}
+	}
+	if len(result.images) == 0 {
+		archive.Close()
+		return result, nil, fmt.Errorf("IPA contains no supported encrypted Mach-O images")
+	}
+	return result, archive, nil
+}
+
+func auditARM64(page []byte) (int, map[string]int) {
+	counts := map[string]int{}
+	valid := 0
+	for offset := 0; offset+4 <= len(page); offset += 4 {
+		word := binary.LittleEndian.Uint32(page[offset : offset+4])
+		if word&0xffe0001f == 0 {
+			valid++
+			counts["UDF"]++
+			continue
+		}
+		instruction, err := arm64asm.Decode(page[offset : offset+4])
+		if err != nil {
+			// x/arch/arm64asm does not currently decode these ARMv8.2-A
+			// half-precision Advanced SIMD forms. Modern app binaries use them
+			// heavily enough that otherwise-valid code can fail the page audit.
+			if mnemonic, ok := supplementalARM64Mnemonic(word); ok {
+				valid++
+				counts[mnemonic]++
+			}
+			continue
+		}
+		valid++
+		counts[instruction.Op.String()]++
+	}
+	return valid, counts
+}
+
+func supplementalARM64Mnemonic(word uint32) (string, bool) {
+	switch {
+	case word&0xbf80f400 == 0x0f001000:
+		return "FMLA", true // FMLA <Vd>.<T>, <Vn>.<T>, <Vm>.H[index]
+	case word&0xbfe0fc00 == 0x0e403400:
+		return "FMAX", true // FMAX <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
+	case word&0xbfe0fc00 == 0x0ec03400:
+		return "FMIN", true // FMIN <Vd>.<T>, <Vn>.<T>, <Vm>.<T>
+	default:
+		return "", false
+	}
+}
+
+func decryptPagesInPlace(output []byte, image encryptedImage, records [][32]byte, deriver *pageKeyDeriver) ([][16]byte, error) {
+	start := int(image.layout.cryptOffset)
+	end := start + int(image.layout.cryptSize)
+	if start < 0 || end < start || end > len(output) || len(records)*pageBytes != int(image.layout.cryptSize) {
+		return nil, fmt.Errorf("%s: encrypted page geometry changed", image.member)
+	}
+	keys := make([][16]byte, len(records))
+	workers := min(runtime.GOMAXPROCS(0), len(records))
+	if workers < 1 {
+		workers = 1
+	}
+	var group sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		group.Add(1)
+		go func(first int) {
+			defer group.Done()
+			for index := first; index < len(records); index += workers {
+				record := records[index]
+				key := deriver.pageKey(
+					record[:16], image.sliceOffset+uint64(image.layout.cryptOffset)+uint64(index*pageBytes),
+				)
+				keys[index] = key
+				block, _ := aes.NewCipher(key[:])
+				clear(key[:])
+				pageStart := start + index*pageBytes
+				page := output[pageStart : pageStart+pageBytes]
+				cipher.NewCBCDecrypter(block, record[16:]).CryptBlocks(page, page)
+			}
+		}(worker)
+	}
+	group.Wait()
+	return keys, nil
+}
+
+func auditARM64FirstPage(page []byte, pageOffset uint64, ranges []machoFileRange) (int, int, map[string]int) {
+	if len(ranges) == 0 {
+		valid, mnemonics := auditARM64(page)
+		return valid, len(page) / 4, mnemonics
+	}
+	pageEnd := pageOffset + uint64(len(page))
+	valid, words := 0, 0
+	mnemonics := make(map[string]int)
+	for _, section := range ranges {
+		start := max(pageOffset, section.offset)
+		end := min(pageEnd, section.offset+section.size)
+		start = (start + 3) &^ 3
+		end &^= 3
+		if start >= end {
+			continue
+		}
+		observed, counts := auditARM64(page[start-pageOffset : end-pageOffset])
+		valid += observed
+		words += int((end - start) / 4)
+		for mnemonic, count := range counts {
+			mnemonics[mnemonic] += count
+		}
+	}
+	return valid, words, mnemonics
+}
+
+func firstARM64AuditPage(start, end int, ranges []machoFileRange) (int, bool) {
+	if len(ranges) == 0 {
+		return start, start >= 0 && start+pageBytes <= end
+	}
+	result := end
+	for _, section := range ranges {
+		intersection := max(uint64(start), section.offset)
+		intersectionEnd := min(uint64(end), section.offset+section.size)
+		if intersection >= intersectionEnd {
+			continue
+		}
+		page := int(intersection) &^ (pageBytes - 1)
+		if page < start {
+			page = start
+		}
+		if page+pageBytes <= end && page < result {
+			result = page
+		}
+	}
+	return result, result != end
+}
+
+func auditAdditionalARM64Pages(output []byte, start, count, auditedIndex int, ranges []machoFileRange) error {
+	var candidates []int
+	for index := 0; index < count; index++ {
+		if index == auditedIndex {
+			continue
+		}
+		pageStart := uint64(start + index*pageBytes)
+		for _, section := range ranges {
+			if pageStart >= section.offset && pageStart+pageBytes <= section.offset+section.size {
+				candidates = append(candidates, index)
+				break
+			}
+		}
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+	checked := map[int]bool{}
+	plausible := 0
+	for _, position := range []int{0, len(candidates) / 2, len(candidates) - 1} {
+		index := candidates[position]
+		if checked[index] {
+			continue
+		}
+		checked[index] = true
+		pageStart := start + index*pageBytes
+		valid, _ := auditARM64(output[pageStart : pageStart+pageBytes])
+		if valid*100 >= (pageBytes/4)*minimumARM64InstructionValidPercent {
+			plausible++
+		}
+	}
+	if plausible*2 < len(checked)+1 {
+		return fmt.Errorf("additional executable pages failed ARM64 structural audit (%d/%d sampled pages plausible)", plausible, len(checked))
+	}
+	return nil
+}
+
+func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask [16]byte, deriver *pageKeyDeriver) (*imageReport, error) {
+	if image.layout.cryptID != 1 {
+		return nil, fmt.Errorf("%s: expected cryptid 1", image.member)
+	}
+	start := int(image.layout.cryptOffset)
+	end := start + int(image.layout.cryptSize)
+	id := image.layout.cryptIDOffset
+	if id < 0 || id+4 > start || start < 0 || end < start || end > len(output) {
+		return nil, fmt.Errorf("%s: invalid FairPlay mutation ranges", image.member)
+	}
+	encryptedDigest := sha256.Sum256(output)
+	prefixDigest := sha256.Sum256(output[:id])
+	headerDigest := sha256.Sum256(output[id+4 : start])
+	suffixDigest := sha256.Sum256(output[end:])
+	audits, err := auditCodeDirectories(output, image.layout)
+	if err != nil {
+		return nil, err
+	}
+	for _, audit := range audits {
+		if audit.MatchedSlots != audit.SlotCount {
+			return nil, fmt.Errorf("%s: encrypted source fails CodeDirectory", image.member)
+		}
+	}
+	keys, err := decryptPagesInPlace(output, image, records, deriver)
+	if err != nil {
+		return nil, err
+	}
+	keysHash := sha256.New()
+	for _, key := range keys {
+		keysHash.Write(key[:])
+	}
+	clear(keys)
+	auditPageStart := start
+	valid, instructionWords, mnemonics := 0, 0, map[string]int(nil)
+	structurallyPlausible := false
+	if isARM64InstructionSet(image.layout.cpuType) {
+		bestValid, bestWords, bestStart := 0, 0, start
+		if len(image.layout.instructionRanges) == 0 {
+			valid, mnemonics = auditARM64(output[start : start+pageBytes])
+			instructionWords = pageBytes / 4
+			bestValid, bestWords = valid, instructionWords
+			structurallyPlausible = valid*100 >= instructionWords*minimumARM64InstructionValidPercent
+		} else {
+			firstCandidate, hasSections := firstARM64AuditPage(start, end, image.layout.instructionRanges)
+			if !hasSections {
+				return nil, fmt.Errorf("%s: encrypted region has no executable ARM64 instructions to audit", image.member)
+			}
+			for candidate := firstCandidate; !structurallyPlausible && candidate+pageBytes <= end; candidate += pageBytes {
+				observed, words, counts := auditARM64FirstPage(
+					output[candidate:candidate+pageBytes], uint64(candidate), image.layout.instructionRanges,
+				)
+				if words == 0 {
+					continue
+				}
+				if bestWords == 0 || observed*bestWords > bestValid*words {
+					bestValid, bestWords, bestStart = observed, words, candidate
+				}
+				if observed*100 >= words*minimumARM64InstructionValidPercent {
+					auditPageStart = candidate
+					valid, instructionWords, mnemonics = observed, words, counts
+					structurallyPlausible = true
+					break
+				}
+			}
+		}
+		if !structurallyPlausible {
+			best := output[bestStart : bestStart+pageBytes]
+			return nil, fmt.Errorf("%s: best executable page has only %d/%d valid ARM64 words (SHA-256 %s)", image.member, bestValid, bestWords, digest(best))
+		}
+		auditedPageIndex := (auditPageStart - start) / pageBytes
+		if err := auditAdditionalARM64Pages(output, start, len(records), auditedPageIndex, image.layout.instructionRanges); err != nil {
+			return nil, fmt.Errorf("%s: %w", image.member, err)
+		}
+	}
+	auditedPageIndex := (auditPageStart - start) / pageBytes
+	first := output[auditPageStart : auditPageStart+pageBytes]
+	binary.LittleEndian.PutUint32(output[id:id+4], 0)
+	if sha256.Sum256(output[:id]) != prefixDigest ||
+		sha256.Sum256(output[id+4:start]) != headerDigest ||
+		sha256.Sum256(output[end:]) != suffixDigest {
+		return nil, fmt.Errorf("%s: mutation escaped FairPlay range", image.member)
+	}
+	decryptedDigest := sha256.Sum256(output)
+	report := &imageReport{
+		Member: image.member, SUPFMember: image.supfMember,
+		Architecture: machoArchitecture(image.layout.cpuType, image.layout.cpuSubtype), CPUType: image.layout.cpuType, CPUSubtype: image.layout.cpuSubtype,
+		SliceOffset: image.sliceOffset, SliceSize: image.sliceSize,
+		EncryptedSHA256: hex.EncodeToString(encryptedDigest[:]), DecryptedSHA256: hex.EncodeToString(decryptedDigest[:]),
+		CryptOffset: image.layout.cryptOffset, CryptSize: image.layout.cryptSize, Pages: len(records),
+		FirstPlaintextPageSHA256: digest(first), AuditedPageIndex: auditedPageIndex, FirstPageValidARM64Words: valid,
+		FirstPageStructurallyPlausible: structurallyPlausible, FirstPageMnemonics: mnemonics,
+		OrderedPageKeysSHA256: hex.EncodeToString(keysHash.Sum(nil)), AppMaskSHA256: digest(mask[:]),
+		CodeDirectories: audits, CryptIDBefore: 1, CryptIDAfter: 0, ExactMutationScope: true,
+	}
+	if isARM64InstructionSet(image.layout.cpuType) {
+		report.FirstPageAudit = "arm64-instruction-decode"
+		if auditedPageIndex != 0 {
+			report.FirstPageAudit = "arm64-first-executable-page-instruction-decode"
+		}
+		report.FirstPageInstructionWords = instructionWords
+	} else {
+		report.FirstPageAudit = "not-performed"
+	}
+	return report, nil
+}
+
+func validateInventoriedImages(blob []byte, images []encryptedImage) error {
+	if len(images) == 0 {
+		return fmt.Errorf("encrypted image inventory is empty")
+	}
+	slices, err := parseMachOSlices(blob, uint64(len(blob)))
+	if err != nil {
+		return err
+	}
+	encrypted := make([]machoSlice, 0, len(slices))
+	for _, slice := range slices {
+		if slice.layout.cryptID != 0 {
+			encrypted = append(encrypted, slice)
+		}
+	}
+	if len(encrypted) != len(images) {
+		return fmt.Errorf("encrypted slice inventory changed")
+	}
+	for index, slice := range encrypted {
+		image := images[index]
+		if slice.offset != image.sliceOffset || slice.size != image.sliceSize || !sameMachoLayout(slice.layout, image.layout) {
+			return fmt.Errorf("encrypted slice %d changed after inventory", index)
+		}
+	}
+	return nil
+}
+
+func stagePrivateJSON(path string, value any) (string, error) {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".fairplay-*.json")
+	if err != nil {
+		return "", err
+	}
+	name := temporary.Name()
+	complete := false
+	defer func() {
+		temporary.Close()
+		if !complete {
+			os.Remove(name)
+		}
+	}()
+	encoder := json.NewEncoder(temporary)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		return "", err
+	}
+	if err := temporary.Sync(); err != nil {
+		return "", err
+	}
+	if err := temporary.Close(); err != nil {
+		return "", err
+	}
+	complete = true
+	return name, nil
+}
+
+func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
+	var result DecryptResult
+	if err := checkPlatform(); err != nil {
+		return result, err
+	}
+	options, err := validatePaths(options)
+	if err != nil {
+		return result, err
+	}
+	for _, path := range []string{options.OutputPath, options.ReportPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			return result, err
+		}
+	}
+	inventory, source, err := openIPAInventory(options.InputPath)
+	if err != nil {
+		return result, err
+	}
+	defer source.Close()
+	if len(inventory.sinfMembers) != 1 {
+		return result, fmt.Errorf("FairPlay decryption requires exactly one SINF")
+	}
+	files := map[string]*zip.File{}
+	for _, file := range source.File {
+		files[file.Name] = file
+	}
+	sinf, err := zipBytes(files[inventory.sinfMembers[0]])
+	if err != nil {
+		return result, err
+	}
+	var material KeyMaterial
+	if options.ModelPath == "" {
+		material, err = ResolveLogicalKey(sinf)
+	} else {
+		modelInfo, statErr := os.Stat(options.ModelPath)
+		if statErr != nil {
+			return result, fmt.Errorf("inspect FairPlay enrollment model: %w", statErr)
+		}
+		if modelInfo.IsDir() {
+			modelPacks, readErr := readEnrollmentModelRegistry(options.ModelPath)
+			if readErr != nil {
+				return result, readErr
+			}
+			defer clearModelPacks(modelPacks)
+			material, err = ResolveLogicalKeyWithModels(sinf, modelPacks)
+		} else {
+			modelPack, readErr := readEnrollmentModel(options.ModelPath)
+			if readErr != nil {
+				return result, readErr
+			}
+			defer clear(modelPack)
+			material, err = ResolveLogicalKeyWithModel(sinf, modelPack)
+		}
+	}
+	if err != nil {
+		return result, err
+	}
+	mask := appMaskFromLogicalKey(material.LogicalKey)
+	deriver := newPageKeyDeriver(mask)
+	material.Evidence["request_ipa_sha256"] = inventory.sha256
+	material.Evidence["request_sinf_sha256"] = digest(sinf)
+	imageMap := map[string][]encryptedImage{}
+	for _, image := range inventory.images {
+		imageMap[image.member] = append(imageMap[image.member], image)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(options.OutputPath), ".fairplay-*.ipa")
+	if err != nil {
+		return result, err
+	}
+	tempName := temporary.Name()
+	defer os.Remove(tempName)
+	defer temporary.Close()
+	outputHasher := sha256.New()
+	writer := zip.NewWriter(io.MultiWriter(temporary, outputHasher))
+	var imageReports []*imageReport
+	pages := 0
+	seenDirectories := map[string]bool{}
+	for _, file := range source.File {
+		if file.FileInfo().IsDir() {
+			if seenDirectories[file.Name] {
+				continue // Duplicate empty directory markers were checked during inventory.
+			}
+			seenDirectories[file.Name] = true
+		}
+		images, encrypted := imageMap[file.Name]
+		if !encrypted {
+			if err := writer.Copy(file); err != nil {
+				return result, err
+			}
+			continue
+		}
+		blob, cached := inventory.cachedFiles[file.Name]
+		if !cached {
+			blob, err = zipBytes(file)
+			if err != nil {
+				return result, err
+			}
+		}
+		if err := validateInventoriedImages(blob, images); err != nil {
+			return result, fmt.Errorf("%s: %w", file.Name, err)
+		}
+		table, ok := inventory.supfTables[images[0].supfMember]
+		if !ok {
+			return result, fmt.Errorf("%s: inventoried SUPF is unavailable", file.Name)
+		}
+		header := file.FileHeader
+		target, err := writer.CreateHeader(&header)
+		if err != nil {
+			return result, err
+		}
+		for _, image := range images {
+			end := image.sliceOffset + image.sliceSize
+			if end < image.sliceOffset || end > uint64(len(blob)) {
+				return result, fmt.Errorf("%s slice changed after inventory", image.member)
+			}
+			records, err := table.recordsFor(image.layout.cpuType, image.layout.cpuSubtype)
+			if err != nil {
+				return result, err
+			}
+			report, err := decryptImage(blob[image.sliceOffset:end], image, records, mask, deriver)
+			if err != nil {
+				return result, err
+			}
+			imageReports = append(imageReports, report)
+			pages += len(records)
+		}
+		if _, err := target.Write(blob); err != nil {
+			return result, err
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return result, err
+	}
+	if err := temporary.Sync(); err != nil {
+		return result, err
+	}
+	if err := temporary.Close(); err != nil {
+		return result, err
+	}
+	outputHash := hex.EncodeToString(outputHasher.Sum(nil))
+	providerName, _ := material.Evidence["provider_kind"].(string)
+	if providerName == "" {
+		providerName = "unknown"
+	}
+	modelName, _ := material.Evidence["model_name"].(string)
+	if modelName == "" {
+		modelName = "unknown"
+	}
+	report := decryptionReport{
+		Schema: "unfairplay-decryption-v1", ModelBuild: modelName,
+		Input:    reportFile{Path: inventory.path, Bytes: inventory.bytes, SHA256: inventory.sha256},
+		Output:   reportFile{Path: options.OutputPath, SHA256: outputHash, Mode: "0600"},
+		Provider: providerName, Oracle: material.Evidence,
+		EncryptedImages: len(imageReports), DecryptedPages: pages, Images: imageReports,
+		Complete: len(imageReports) == len(inventory.images),
+		Warnings: []string{
+			"Complete means every inventoried encrypted image was processed; plaintext correctness is not authenticated.",
+			"Only ARM64 first pages are checked for instruction plausibility; ARMv7 plaintext, SUPF records, and subsequent plaintext are not authenticated.",
+			"CodeDirectory checks compare encrypted bytes with embedded hashes, not an authenticated Apple signature; those hashes are stale after decryption.",
+			"Analysis IPA requires recursive re-signing before installation.",
+		},
+	}
+	reportTemp, err := stagePrivateJSON(options.ReportPath, report)
+	if err != nil {
+		return result, err
+	}
+	defer os.Remove(reportTemp)
+	if _, err := validatePaths(options); err != nil {
+		return result, err
+	}
+	if err := publishFiles([]stagedFile{{tempName, options.OutputPath}, {reportTemp, options.ReportPath}}, options.Force); err != nil {
+		return result, err
+	}
+	result = DecryptResult{options.OutputPath, outputHash, options.ReportPath, len(imageReports), pages, digest(material.LogicalKey[:])}
+	return result, nil
+}
