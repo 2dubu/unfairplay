@@ -221,6 +221,33 @@ const (
 	compactStorePostIndex8
 	compactVectorDup32
 	compactLoadVector
+	compactASRImm32
+	compactAndsLSR32
+	compactBicsLSR32
+	compactCCmnImm64
+	compactCSInc32
+	compactTstImm64
+	compactEon32
+	compactVectorImmediate
+	compactVectorBinary
+	compactVectorMAC
+	compactVectorUnsignedShiftLong
+	compactVectorMove64
+	compactStoreVector
+	compactVectorUnsignedMultiplyLong
+	compactVectorEor3
+	compactPairStoreVector
+	compactVectorTable1
+	compactVectorTable4
+	compactVectorExtractNarrow
+	compactVectorShiftRightNarrow
+	compactVectorUnzipEven
+	compactVectorNegateFloat64
+	compactVectorUnsignedShiftRight
+	compactVectorToW
+	compactVectorUnsignedShift
+	compactVectorMove128
+	compactWToVectorLane
 	compactOpcodeCount
 )
 
@@ -974,6 +1001,112 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			if err := s.loadVector(d, addOffset(s.x[left], int64(instruction.immediate)), int(instruction.accumulator)); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
+		case compactASRImm32:
+			s.x[d] = uint64(uint32(shiftRightArithmetic(s.x[left], int(instruction.shift), 32)))
+		case compactAndsLSR32:
+			value := uint32(s.x[left]) & uint32(shiftRight(s.x[right], int(instruction.shift), 32))
+			s.x[d] = uint64(value)
+			s.test32(value)
+		case compactBicsLSR32:
+			value := uint32(s.x[left]) &^ uint32(shiftRight(s.x[right], int(instruction.shift), 32))
+			if instruction.destination < 31 {
+				s.x[d] = uint64(value)
+			}
+			s.test32(value)
+		case compactCCmnImm64:
+			matches, err := compactConditionMatches(s, compactCondition(instruction.shift))
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if matches {
+				_ = s.addWithCarry(s.x[left], uint64(instruction.immediate), false, 64)
+			} else {
+				s.setNZCV(int(instruction.accumulator))
+			}
+		case compactCSInc32:
+			matches, err := compactConditionMatches(s, compactCondition(instruction.shift))
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if matches {
+				s.x[d] = uint64(uint32(s.x[left]))
+			} else {
+				value := uint32(0)
+				if instruction.right < 31 {
+					value = uint32(s.x[right])
+				}
+				s.x[d] = uint64(value + 1)
+			}
+		case compactTstImm64:
+			s.test64(s.x[left] & uint64(instruction.immediate))
+		case compactEon32:
+			s.x[d] = uint64(uint32(s.x[left]) ^ ^uint32(s.x[right]))
+		case compactVectorImmediate:
+			s.clearVector(d)
+			value := uint64(instruction.immediate) << instruction.shift
+			for lane := 0; lane < int(instruction.right); lane++ {
+				s.setVectorLane(d, lane, int(instruction.left), value)
+			}
+		case compactVectorBinary:
+			operation := [...]string{"add", "sub", "mul", "eor"}[instruction.accumulator]
+			s.vectorBinary(operation, d, left, right, int(instruction.immediate), int(instruction.shift))
+		case compactVectorMAC:
+			s.vectorMultiplyAccumulate(d, left, right, int(instruction.immediate), int(instruction.shift), instruction.accumulator != 0)
+		case compactVectorUnsignedShiftLong:
+			lanes := int(byte(instruction.immediate))
+			inputBits := int(byte(instruction.immediate >> 8))
+			s.vectorUnsignedShiftLong(d, left, lanes, inputBits, int(instruction.shift), instruction.accumulator != 0)
+		case compactVectorMove64:
+			value := s.vectorLane(left, 0, 64)
+			s.clearVector(d)
+			s.setVectorLane(d, 0, 64, value)
+		case compactStoreVector:
+			base := uint64(0)
+			if instruction.left == 31 {
+				base = s.sp
+			} else {
+				base = s.x[left]
+			}
+			if err := s.storeVector(d, addOffset(base, int64(int16(instruction.immediate))), int(instruction.accumulator)); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactVectorUnsignedMultiplyLong:
+			s.vectorUnsignedMultiplyLong(d, left, right, int(instruction.immediate), int(instruction.shift), instruction.accumulator != 0)
+		case compactVectorEor3:
+			s.vectorEor3(d, left, right, int(instruction.accumulator))
+		case compactPairStoreVector:
+			base := s.x[left]
+			address := addOffset(base, int64(int16(instruction.immediate)))
+			if err := s.storeVector(d, address, 16); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if err := s.storeVector(int(instruction.right), address+16, 16); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactVectorTable1:
+			s.vectorTable(d, []int{left}, right)
+		case compactVectorTable4:
+			s.vectorTable(d, []int{left, left + 1, left + 2, left + 3}, right)
+		case compactVectorExtractNarrow:
+			s.vectorExtractNarrow(d, left, int(instruction.immediate), int(instruction.shift))
+		case compactVectorShiftRightNarrow:
+			s.vectorShiftRightNarrow(d, left, int(instruction.immediate), int(instruction.accumulator), int(instruction.shift))
+		case compactVectorUnzipEven:
+			s.vectorUnzipEven(d, left, right, int(instruction.immediate), int(instruction.shift))
+		case compactVectorNegateFloat64:
+			value := s.vectorLane(left, 0, 64) ^ (uint64(1) << 63)
+			s.clearVector(d)
+			s.setVectorLane(d, 0, 64, value)
+		case compactVectorUnsignedShiftRight:
+			s.vectorUnsignedShiftRight(d, left, int(instruction.immediate), int(instruction.accumulator), int(instruction.shift))
+		case compactVectorToW:
+			s.x[d] = uint64(uint32(s.vectorLane(left, int(instruction.immediate), 32)))
+		case compactVectorUnsignedShift:
+			s.vectorUnsignedShift(d, left, right, int(instruction.immediate), int(instruction.shift))
+		case compactVectorMove128:
+			s.vectors[d] = s.vectors[left]
+		case compactWToVectorLane:
+			s.setVectorLane(d, int(instruction.immediate), 32, uint64(uint32(s.x[left])))
 		case compactSub64:
 			s.x[d] = s.x[left] - s.x[right]
 		case compactAdd64:
@@ -1014,7 +1147,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 		case compactMovImm64:
 			s.x[d] = uint64(instruction.immediate)
 		case compactStoreSP32:
-			if err := s.storeValue(addOffset(s.sp, int64(instruction.immediate)), uint64(uint32(s.x[left])), 4); err != nil {
+			value := uint64(0)
+			if instruction.left < 31 {
+				value = uint64(uint32(s.x[left]))
+			}
+			if err := s.storeValue(addOffset(s.sp, int64(instruction.immediate)), value, 4); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactMovImm32:

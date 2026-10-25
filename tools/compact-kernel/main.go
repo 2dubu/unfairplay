@@ -13,177 +13,208 @@ import (
 )
 
 var (
-	commentPattern             = regexp.MustCompile(`^\s*// (0x[0-9a-f]+):\s+(.+)$`)
-	movImmediate               = regexp.MustCompile(`^mov ([wx])(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	movNegOne32                = regexp.MustCompile(`^mov w(\d+), #-1$`)
-	movNegative32              = regexp.MustCompile(`^mov w(\d+), #-(0x[0-9a-f]+|[0-9]+)$`)
-	movNegative64              = regexp.MustCompile(`^mov x(\d+), #-(0x[0-9a-f]+|[0-9]+)$`)
-	movRegister                = regexp.MustCompile(`^mov ([wx])(\d+), [wx](\d+)$`)
-	movKeep                    = regexp.MustCompile(`^movk ([wx])(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
-	binary32                   = regexp.MustCompile(`^(eor|and|add|sub|orr|mul) w(\d+), w(\d+), w(\d+)(?:, (lsl|lsr|ror) #(\d+))?$`)
-	binary64                   = regexp.MustCompile(`^(eor|add|sub|mul|and|orr) x(\d+), x(\d+), x(\d+)$`)
-	binaryShift64              = regexp.MustCompile(`^(and|eor|add) x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
-	addExtended                = regexp.MustCompile(`^add ([xw])(\d+), [xw](\d+), w(\d+), (uxtb|uxtw|sxtw)(?: #(\d+))?$`)
-	addASR32                   = regexp.MustCompile(`^add w(\d+), w(\d+), w(\d+), asr #(\d+)$`)
-	addUXTH64                  = regexp.MustCompile(`^add x(\d+), x(\d+), w(\d+), uxth$`)
-	addLSR64                   = regexp.MustCompile(`^add x(\d+), x(\d+), x(\d+), lsr #(\d+)$`)
-	addImmediate32             = regexp.MustCompile(`^add w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
-	addImmediate64             = regexp.MustCompile(`^add x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	addImmediateShift64        = regexp.MustCompile(`^add x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+), lsl #(\d+)$`)
-	subImmediate32             = regexp.MustCompile(`^sub w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
-	subImmediate64             = regexp.MustCompile(`^sub x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	subImmediateShift64        = regexp.MustCompile(`^sub x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+), lsl #(\d+)$`)
-	addShiftRight32            = regexp.MustCompile(`^add w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
-	subShift64                 = regexp.MustCompile(`^sub x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
-	subExtended32              = regexp.MustCompile(`^sub w(\d+), w(\d+), w(\d+), uxtb$`)
-	xorImmediate32             = regexp.MustCompile(`^eor w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	andImmediate32             = regexp.MustCompile(`^and w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	andImmediate64             = regexp.MustCompile(`^and x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	xorNotImmediate64          = regexp.MustCompile(`^eor x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	xorLSR64                   = regexp.MustCompile(`^eor x(\d+), x(\d+), x(\d+), lsr #(\d+)$`)
-	logicalImmediate64         = regexp.MustCompile(`^(orr|eor) x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	orImmediate32              = regexp.MustCompile(`^orr w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	orShift64                  = regexp.MustCompile(`^orr x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
-	andShiftRight32            = regexp.MustCompile(`^and w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
-	shiftLeft32                = regexp.MustCompile(`^lsl w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	shiftLeft64                = regexp.MustCompile(`^lsl x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	shiftLeftReg32             = regexp.MustCompile(`^lsl w(\d+), w(\d+), w(\d+)$`)
-	shiftLeftReg64             = regexp.MustCompile(`^lsl x(\d+), x(\d+), x(\d+)$`)
-	addSP                      = regexp.MustCompile(`^add x(\d+), sp, #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
-	loadSP                     = regexp.MustCompile(`^ldr ([wx])(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
-	loadSPBare                 = regexp.MustCompile(`^ldr ([wx])(\d+), \[sp\]$`)
-	loadBase                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
-	loadBase32                 = regexp.MustCompile(`^ldr w(\d+), \[x(\d+)\]$`)
-	loadBaseImm64              = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
-	loadBase64                 = regexp.MustCompile(`^ldr x(\d+), \[x(\d+)\]$`)
-	loadSXTW64                 = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
-	loadUXTW32                 = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
-	loadUXTW8                  = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), w(\d+), uxtw\]$`)
-	loadBaseImm8               = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	loadSPImm8                 = regexp.MustCompile(`^ldrb w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
-	loadXIndex8                = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), x(\d+)\]$`)
-	loadPostIndex8             = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)\], #(0x[0-9a-f]+|[0-9]+)$`)
-	loadXIndex                 = regexp.MustCompile(`^ldr ([wx])(\d+), \[x(\d+), x(\d+)\]$`)
-	loadSXTW32                 = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
-	loadUXTW64                 = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
-	storeSP                    = regexp.MustCompile(`^str w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
-	storeSP64                  = regexp.MustCompile(`^str x(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
-	storeSP64Zero              = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[sp(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	storeSPBare                = regexp.MustCompile(`^str ([wx])(\d+), \[sp\]$`)
-	storeBaseZero32            = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	storeBase                  = regexp.MustCompile(`^str w(\d+), \[x(\d+)\]$`)
-	storeBase64                = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+)\]$`)
-	storeBaseImm               = regexp.MustCompile(`^str w(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
-	storeBaseImm64             = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
-	storeUXTW8                 = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+), w(\d+), uxtw\]$`)
-	storeBaseImm8              = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	storeSPImm8                = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
-	storeUXTW32                = regexp.MustCompile(`^str w(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
-	storeSXTW32                = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
-	storeXIndex                = regexp.MustCompile(`^str ([wx])((?:\d+)|zr), \[x(\d+), x(\d+)\]$`)
-	loadXIndexShift32          = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), x(\d+), lsl #(\d+)\]$`)
-	storeXIndexShift32         = regexp.MustCompile(`^str w(\d+), \[x(\d+), x(\d+), lsl #(\d+)\]$`)
-	loadPreIndex32             = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]!$`)
-	storePreIndex64            = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]!$`)
-	storePreIndex32            = regexp.MustCompile(`^str w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]!$`)
-	storePostIndex32           = regexp.MustCompile(`^str w(\d+), \[x(\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
-	loadSignedWord             = regexp.MustCompile(`^ldursw x(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
-	loadSignedWordGeneral      = regexp.MustCompile(`^ldrsw x(\d+), \[(sp|x\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	loadHalfXIndex             = regexp.MustCompile(`^ldrh w(\d+), \[x(\d+), x(\d+)\]$`)
-	loadSPHalf                 = regexp.MustCompile(`^ldrh w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
-	storeXIndex8               = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+), x(\d+)\]$`)
-	extract32                  = regexp.MustCompile(`^extr w(\d+), w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	not32                      = regexp.MustCompile(`^mvn w(\d+), w(\d+)$`)
-	orNotLSL32                 = regexp.MustCompile(`^orn w(\d+), w(\d+), w(\d+)(?:, lsl #(\d+))?$`)
-	rotateRight32              = regexp.MustCompile(`^ror w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	shiftRight32               = regexp.MustCompile(`^lsr w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	shiftRight64               = regexp.MustCompile(`^lsr x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	shiftRightReg32            = regexp.MustCompile(`^lsr w(\d+), w(\d+), w(\d+)$`)
-	shiftRightReg64            = regexp.MustCompile(`^lsr x(\d+), x(\d+), x(\d+)$`)
-	unsignedLong32             = regexp.MustCompile(`^umull x(\d+), w(\d+), w(\d+)$`)
-	unsignedHigh64             = regexp.MustCompile(`^umulh x(\d+), x(\d+), x(\d+)$`)
-	multiplyAdd32              = regexp.MustCompile(`^madd w(\d+), w(\d+), w(\d+), w(\d+)$`)
-	multiplyAdd64              = regexp.MustCompile(`^madd x(\d+), x(\d+), x(\d+), x(\d+)$`)
-	multiplySub32              = regexp.MustCompile(`^msub w(\d+), w(\d+), w(\d+), w(\d+)$`)
-	unsignedDivide32           = regexp.MustCompile(`^udiv w(\d+), w(\d+), w(\d+)$`)
-	adds64                     = regexp.MustCompile(`^adds x(\d+), x(\d+), x(\d+)$`)
-	adds32                     = regexp.MustCompile(`^adds w(\d+), w(\d+), w(\d+)$`)
-	subsRegister               = regexp.MustCompile(`^subs ([xw])(\d+), [xw](\d+), [xw](\d+)$`)
-	subsImmediate              = regexp.MustCompile(`^subs ([xw])(\d+), [xw](\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	signedLong32               = regexp.MustCompile(`^smull x(\d+), w(\d+), w(\d+)$`)
-	adc32                      = regexp.MustCompile(`^adc w(\d+), (w\d+|wzr), (w\d+|wzr)$`)
-	compareNegative64          = regexp.MustCompile(`^cmn x(\d+), x(\d+)$`)
-	compareNegativeImm32       = regexp.MustCompile(`^cmn w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	compareNegativeImm64       = regexp.MustCompile(`^cmn x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	compareImmediate32         = regexp.MustCompile(`^cmp w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	compareImmediate64         = regexp.MustCompile(`^cmp x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	conditionSetHI             = regexp.MustCompile(`^cset w(\d+), hi$`)
-	conditionSetLO             = regexp.MustCompile(`^cset w(\d+), lo$`)
-	conditionSetEQ             = regexp.MustCompile(`^cset w(\d+), eq$`)
-	compareRegister32          = regexp.MustCompile(`^cmp w(\d+), w(\d+)$`)
-	compareRegister64          = regexp.MustCompile(`^cmp x(\d+), x(\d+)$`)
-	compareExtByte32           = regexp.MustCompile(`^cmp w(\d+), w(\d+), (uxtb|sxtb)$`)
-	compareLSR32               = regexp.MustCompile(`^cmp w(\d+), w(\d+), lsr #(\d+)$`)
-	conditionalCompare         = regexp.MustCompile(`^ccmp ([xw])(\d+), ([xw](?:\d+)|#(?:0x[0-9a-f]+|[0-9]+)), #(\d+), ([a-z]+)$`)
-	selectZeroEq32             = regexp.MustCompile(`^csel w(\d+), wzr, w(\d+), eq$`)
-	branchAuth                 = regexp.MustCompile(`^braa x\d+, x\d+$`)
-	addressPage                = regexp.MustCompile(`^adrp x(\d+), #(0x[0-9a-f]+)$`)
-	stackAdjust                = regexp.MustCompile(`^(add|sub) sp, sp, #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
-	unscaledLoad               = regexp.MustCompile(`^ldur ([wx])(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
-	unscaledStore              = regexp.MustCompile(`^stur ([wx])((?:\d+)|zr), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
-	unscaledByteLoad           = regexp.MustCompile(`^ldurb w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
-	signedByteLoad             = regexp.MustCompile(`^ldrsb w(\d+), \[x(\d+)(?:, #(-?(?:0x[0-9a-f]+|[0-9]+)))?\]$`)
-	unscaledByteStore          = regexp.MustCompile(`^sturb w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
-	halfLoad                   = regexp.MustCompile(`^ldrh w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	unscaledHalfLoad           = regexp.MustCompile(`^ldurh w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
-	halfStore                  = regexp.MustCompile(`^strh (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	pairOffset                 = regexp.MustCompile(`^(ldp|stp) ([xw](?:\d+)|[xw]zr), ([xw](?:\d+)|[xw]zr), \[(sp|x\d+)(?:, #(-?(?:0x[0-9a-f]+|[0-9]+)))?\](!)?$`)
-	pairPostIndex              = regexp.MustCompile(`^(ldp|stp) ([xw](?:\d+)|[xw]zr), ([xw](?:\d+)|[xw]zr), \[(sp|x\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
-	bitClear                   = regexp.MustCompile(`^bic ([wx])(\d+), [wx](\d+), [wx](\d+)(?:, lsl #(\d+))?$`)
-	signExtendByte             = regexp.MustCompile(`^sxtb w(\d+), w(\d+)$`)
-	signExtendWord             = regexp.MustCompile(`^sxtw x(\d+), w(\d+)$`)
-	negate                     = regexp.MustCompile(`^neg ([wx])(\d+), [wx](\d+)$`)
-	testRegister               = regexp.MustCompile(`^tst w(\d+), w(\d+)$`)
-	testImmediate              = regexp.MustCompile(`^tst w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
-	conditionSet               = regexp.MustCompile(`^cset w(\d+), ([a-z]+)$`)
-	conditionSelect            = regexp.MustCompile(`^csel ([wx])(\d+), ([wx](?:\d+)|[wx]zr), ([wx](?:\d+)|[wx]zr), ([a-z]+)$`)
-	conditionIncrement         = regexp.MustCompile(`^cinc ([wx])(\d+), [wx](\d+), ([a-z]+)$`)
-	conditionNegate            = regexp.MustCompile(`^cneg w(\d+), w(\d+), ([a-z]+)$`)
-	conditionalCompareNegative = regexp.MustCompile(`^ccmn w(\d+), #(0x[0-9a-f]+|[0-9]+), #(\d+), ([a-z]+)$`)
-	andSetFlags                = regexp.MustCompile(`^ands w(\d+), w(\d+), w(\d+)$`)
-	bitClearSetFlags           = regexp.MustCompile(`^bics (w(?:\d+)|wzr), w(\d+), w(\d+)$`)
-	countLeadingZeroes         = regexp.MustCompile(`^clz w(\d+), w(\d+)$`)
-	compareAndSwap             = regexp.MustCompile(`^casal w(\d+), w(\d+), \[x(\d+)\]$`)
-	moveFromStackPointer       = regexp.MustCompile(`^mov x(\d+), sp$`)
-	storeSignedHalf            = regexp.MustCompile(`^sturh w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
-	unsignedMultiplyAddLong    = regexp.MustCompile(`^umaddl x(\d+), w(\d+), w(\d+), x(\d+)$`)
-	multiplyNegate64           = regexp.MustCompile(`^mneg x(\d+), x(\d+), x(\d+)$`)
-	multiplySub64              = regexp.MustCompile(`^msub x(\d+), x(\d+), x(\d+), x(\d+)$`)
-	signedBitfieldInsert64     = regexp.MustCompile(`^sbfiz x(\d+), x(\d+), #(\d+|0x[0-9a-f]+), #(\d+|0x[0-9a-f]+)$`)
-	storeUXTW64                = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
-	storePostIndex8            = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
-	vectorDup32                = regexp.MustCompile(`^dup v(\d+)\.(\d+)s, w(\d+)$`)
-	loadVector                 = regexp.MustCompile(`^ldr ([qds])(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
-	pointerAuthZero            = regexp.MustCompile(`^paciza x\d+$`)
-	moveStackPointer           = regexp.MustCompile(`^mov sp, x(\d+)$`)
-	subStackFromX              = regexp.MustCompile(`^sub sp, x(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
-	unsignedBitfield           = regexp.MustCompile(`^(ubfiz|ubfx) ([xw])(\d+), [xw](\d+), #(\d+|0x[0-9a-f]+), #(\d+|0x[0-9a-f]+)$`)
-	bitfieldInsert             = regexp.MustCompile(`^(bfi|bfxil) w(\d+), w(\d+), #(\d+|0x[0-9a-f]+), #(\d+|0x[0-9a-f]+)$`)
-	orNotShift                 = regexp.MustCompile(`^orn ([xw])(\d+), [xw](\d+), [xw](\d+)(?:, (lsl|lsr) #(\d+))?$`)
-	not64                      = regexp.MustCompile(`^mvn x(\d+), x(\d+)$`)
-	noopInstruction            = regexp.MustCompile(`^pacibsp$`)
-	blockFunction              = regexp.MustCompile(`^func ([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))`)
-	branchDirect               = regexp.MustCompile(`^b #(0x[0-9a-f]+)$`)
-	branchConditional          = regexp.MustCompile(`^b\.([a-z]+) #(0x[0-9a-f]+)$`)
-	branchLink                 = regexp.MustCompile(`^bl #(0x[0-9a-f]+)$`)
-	branchCompareZero          = regexp.MustCompile(`^(cbz|cbnz) ([xw])(\d+), #(0x[0-9a-f]+)$`)
-	branchTestBit              = regexp.MustCompile(`^(tbz|tbnz) [xw](\d+), #(\d+), #(0x[0-9a-f]+)$`)
-	branchRegister             = regexp.MustCompile(`^braa x(\d+), x\d+$`)
-	callRegister               = regexp.MustCompile(`^blraa x(\d+), x\d+$`)
-	callRegisterZero           = regexp.MustCompile(`^blraaz x(\d+)$`)
-	returnRegister             = regexp.MustCompile(`^ret(?:ab)?$`)
-	literalReturn              = regexp.MustCompile(`^\s*return (0x[0-9a-f]+), false, nil$`)
-	identifier                 = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+	commentPattern               = regexp.MustCompile(`^\s*// (0x[0-9a-f]+):\s+(.+)$`)
+	movImmediate                 = regexp.MustCompile(`^mov ([wx])(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	movNegOne32                  = regexp.MustCompile(`^mov w(\d+), #-1$`)
+	movNegative32                = regexp.MustCompile(`^mov w(\d+), #-(0x[0-9a-f]+|[0-9]+)$`)
+	movNegative64                = regexp.MustCompile(`^mov x(\d+), #-(0x[0-9a-f]+|[0-9]+)$`)
+	movRegister                  = regexp.MustCompile(`^mov ([wx])(\d+), [wx](\d+)$`)
+	movKeep                      = regexp.MustCompile(`^movk ([wx])(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
+	binary32                     = regexp.MustCompile(`^(eor|and|add|sub|orr|mul) w(\d+), w(\d+), w(\d+)(?:, (lsl|lsr|ror) #(\d+))?$`)
+	binary64                     = regexp.MustCompile(`^(eor|add|sub|mul|and|orr) x(\d+), x(\d+), x(\d+)$`)
+	binaryShift64                = regexp.MustCompile(`^(and|eor|add) x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
+	addExtended                  = regexp.MustCompile(`^add ([xw])(\d+), [xw](\d+), w(\d+), (uxtb|uxtw|sxtw)(?: #(\d+))?$`)
+	addASR32                     = regexp.MustCompile(`^add w(\d+), w(\d+), w(\d+), asr #(\d+)$`)
+	addUXTH64                    = regexp.MustCompile(`^add x(\d+), x(\d+), w(\d+), uxth$`)
+	addLSR64                     = regexp.MustCompile(`^add x(\d+), x(\d+), x(\d+), lsr #(\d+)$`)
+	addImmediate32               = regexp.MustCompile(`^add w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
+	addImmediate64               = regexp.MustCompile(`^add x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	addImmediateShift64          = regexp.MustCompile(`^add x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+), lsl #(\d+)$`)
+	subImmediate32               = regexp.MustCompile(`^sub w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
+	subImmediate64               = regexp.MustCompile(`^sub x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	subImmediateShift64          = regexp.MustCompile(`^sub x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+), lsl #(\d+)$`)
+	addShiftRight32              = regexp.MustCompile(`^add w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
+	subShift64                   = regexp.MustCompile(`^sub x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
+	subExtended32                = regexp.MustCompile(`^sub w(\d+), w(\d+), w(\d+), uxtb$`)
+	xorImmediate32               = regexp.MustCompile(`^eor w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	andImmediate32               = regexp.MustCompile(`^and w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	andImmediate64               = regexp.MustCompile(`^and x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	xorNotImmediate64            = regexp.MustCompile(`^eor x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	xorLSR64                     = regexp.MustCompile(`^eor x(\d+), x(\d+), x(\d+), lsr #(\d+)$`)
+	logicalImmediate64           = regexp.MustCompile(`^(orr|eor) x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	orImmediate32                = regexp.MustCompile(`^orr w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	orShift64                    = regexp.MustCompile(`^orr x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
+	andShiftRight32              = regexp.MustCompile(`^and w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
+	shiftLeft32                  = regexp.MustCompile(`^lsl w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	shiftLeft64                  = regexp.MustCompile(`^lsl x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	shiftLeftReg32               = regexp.MustCompile(`^lsl w(\d+), w(\d+), w(\d+)$`)
+	shiftLeftReg64               = regexp.MustCompile(`^lsl x(\d+), x(\d+), x(\d+)$`)
+	addSP                        = regexp.MustCompile(`^add x(\d+), sp, #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
+	loadSP                       = regexp.MustCompile(`^ldr ([wx])(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	loadSPBare                   = regexp.MustCompile(`^ldr ([wx])(\d+), \[sp\]$`)
+	loadBase                     = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
+	loadBase32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+)\]$`)
+	loadBaseImm64                = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
+	loadBase64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+)\]$`)
+	loadSXTW64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	loadUXTW32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), uxtw(?: #(\d+))?\]$`)
+	loadUXTW8                    = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), w(\d+), uxtw\]$`)
+	loadBaseImm8                 = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	loadSPImm8                   = regexp.MustCompile(`^ldrb w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	loadXIndex8                  = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), x(\d+)\]$`)
+	loadPostIndex8               = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)\], #(0x[0-9a-f]+|[0-9]+)$`)
+	loadXIndex                   = regexp.MustCompile(`^ldr ([wx])(\d+), \[x(\d+), x(\d+)\]$`)
+	loadSXTW32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	loadUXTW64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
+	storeSP                      = regexp.MustCompile(`^str w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeSPZero32                = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeSP64                    = regexp.MustCompile(`^str x(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeSP64Zero                = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[sp(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	storeSPBare                  = regexp.MustCompile(`^str ([wx])(\d+), \[sp\]$`)
+	storeBaseZero32              = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	storeBase                    = regexp.MustCompile(`^str w(\d+), \[x(\d+)\]$`)
+	storeBase64                  = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+)\]$`)
+	storeBaseImm                 = regexp.MustCompile(`^str w(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeBaseImm64               = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeUXTW8                   = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+), w(\d+), uxtw\]$`)
+	storeBaseImm8                = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	storeSPImm8                  = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeUXTW32                  = regexp.MustCompile(`^str w(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
+	storeSXTW32                  = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	storeXIndex                  = regexp.MustCompile(`^str ([wx])((?:\d+)|zr), \[x(\d+), x(\d+)\]$`)
+	loadXIndexShift32            = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), x(\d+), lsl #(\d+)\]$`)
+	storeXIndexShift32           = regexp.MustCompile(`^str w(\d+), \[x(\d+), x(\d+), lsl #(\d+)\]$`)
+	loadPreIndex32               = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]!$`)
+	storePreIndex64              = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]!$`)
+	storePreIndex32              = regexp.MustCompile(`^str w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]!$`)
+	storePostIndex32             = regexp.MustCompile(`^str w(\d+), \[x(\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
+	loadSignedWord               = regexp.MustCompile(`^ldursw x(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	loadSignedWordGeneral        = regexp.MustCompile(`^ldrsw x(\d+), \[(sp|x\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	loadHalfXIndex               = regexp.MustCompile(`^ldrh w(\d+), \[x(\d+), x(\d+)\]$`)
+	loadSPHalf                   = regexp.MustCompile(`^ldrh w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeXIndex8                 = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+), x(\d+)\]$`)
+	extract32                    = regexp.MustCompile(`^extr w(\d+), w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	not32                        = regexp.MustCompile(`^mvn w(\d+), w(\d+)$`)
+	orNotLSL32                   = regexp.MustCompile(`^orn w(\d+), w(\d+), w(\d+)(?:, lsl #(\d+))?$`)
+	rotateRight32                = regexp.MustCompile(`^ror w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	shiftRight32                 = regexp.MustCompile(`^lsr w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	shiftRight64                 = regexp.MustCompile(`^lsr x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	shiftRightZero64             = regexp.MustCompile(`^lsr x(\d+), xzr, #(0x[0-9a-f]+|[0-9]+)$`)
+	shiftRightArithmetic32       = regexp.MustCompile(`^asr w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	shiftRightReg32              = regexp.MustCompile(`^lsr w(\d+), w(\d+), w(\d+)$`)
+	shiftRightReg64              = regexp.MustCompile(`^lsr x(\d+), x(\d+), x(\d+)$`)
+	unsignedLong32               = regexp.MustCompile(`^umull x(\d+), w(\d+), w(\d+)$`)
+	unsignedHigh64               = regexp.MustCompile(`^umulh x(\d+), x(\d+), x(\d+)$`)
+	multiplyAdd32                = regexp.MustCompile(`^madd w(\d+), w(\d+), w(\d+), w(\d+)$`)
+	multiplyAdd64                = regexp.MustCompile(`^madd x(\d+), x(\d+), x(\d+), x(\d+)$`)
+	multiplySub32                = regexp.MustCompile(`^msub w(\d+), w(\d+), w(\d+), w(\d+)$`)
+	unsignedDivide32             = regexp.MustCompile(`^udiv w(\d+), w(\d+), w(\d+)$`)
+	adds64                       = regexp.MustCompile(`^adds x(\d+), x(\d+), x(\d+)$`)
+	adds32                       = regexp.MustCompile(`^adds w(\d+), w(\d+), w(\d+)$`)
+	subsRegister                 = regexp.MustCompile(`^subs ([xw])(\d+), [xw](\d+), [xw](\d+)$`)
+	subsImmediate                = regexp.MustCompile(`^subs ([xw])(\d+), [xw](\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	signedLong32                 = regexp.MustCompile(`^smull x(\d+), w(\d+), w(\d+)$`)
+	adc32                        = regexp.MustCompile(`^adc w(\d+), (w\d+|wzr), (w\d+|wzr)$`)
+	compareNegative64            = regexp.MustCompile(`^cmn x(\d+), x(\d+)$`)
+	compareNegativeImm32         = regexp.MustCompile(`^cmn w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	compareNegativeImm64         = regexp.MustCompile(`^cmn x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	compareImmediate32           = regexp.MustCompile(`^cmp w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	compareImmediate64           = regexp.MustCompile(`^cmp x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	conditionSetHI               = regexp.MustCompile(`^cset w(\d+), hi$`)
+	conditionSetLO               = regexp.MustCompile(`^cset w(\d+), lo$`)
+	conditionSetEQ               = regexp.MustCompile(`^cset w(\d+), eq$`)
+	compareRegister32            = regexp.MustCompile(`^cmp w(\d+), w(\d+)$`)
+	compareRegister64            = regexp.MustCompile(`^cmp x(\d+), x(\d+)$`)
+	compareExtByte32             = regexp.MustCompile(`^cmp w(\d+), w(\d+), (uxtb|sxtb)$`)
+	compareLSR32                 = regexp.MustCompile(`^cmp w(\d+), w(\d+), lsr #(\d+)$`)
+	conditionalCompare           = regexp.MustCompile(`^ccmp ([xw])(\d+), ([xw](?:\d+)|#(?:0x[0-9a-f]+|[0-9]+)), #(\d+), ([a-z]+)$`)
+	selectZeroEq32               = regexp.MustCompile(`^csel w(\d+), wzr, w(\d+), eq$`)
+	branchAuth                   = regexp.MustCompile(`^braa x\d+, x\d+$`)
+	addressPage                  = regexp.MustCompile(`^adrp x(\d+), #(0x[0-9a-f]+)$`)
+	stackAdjust                  = regexp.MustCompile(`^(add|sub) sp, sp, #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
+	unscaledLoad                 = regexp.MustCompile(`^ldur ([wx])(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	unscaledStore                = regexp.MustCompile(`^stur ([wx])((?:\d+)|zr), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	unscaledByteLoad             = regexp.MustCompile(`^ldurb w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	signedByteLoad               = regexp.MustCompile(`^ldrsb w(\d+), \[x(\d+)(?:, #(-?(?:0x[0-9a-f]+|[0-9]+)))?\]$`)
+	unscaledByteStore            = regexp.MustCompile(`^sturb w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	halfLoad                     = regexp.MustCompile(`^ldrh w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	unscaledHalfLoad             = regexp.MustCompile(`^ldurh w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	halfStore                    = regexp.MustCompile(`^strh (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	pairOffset                   = regexp.MustCompile(`^(ldp|stp) ([xw](?:\d+)|[xw]zr), ([xw](?:\d+)|[xw]zr), \[(sp|x\d+)(?:, #(-?(?:0x[0-9a-f]+|[0-9]+)))?\](!)?$`)
+	pairPostIndex                = regexp.MustCompile(`^(ldp|stp) ([xw](?:\d+)|[xw]zr), ([xw](?:\d+)|[xw]zr), \[(sp|x\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
+	bitClear                     = regexp.MustCompile(`^bic ([wx])(\d+), [wx](\d+), [wx](\d+)(?:, lsl #(\d+))?$`)
+	signExtendByte               = regexp.MustCompile(`^sxtb w(\d+), w(\d+)$`)
+	signExtendWord               = regexp.MustCompile(`^sxtw x(\d+), w(\d+)$`)
+	negate                       = regexp.MustCompile(`^neg ([wx])(\d+), [wx](\d+)$`)
+	testRegister                 = regexp.MustCompile(`^tst w(\d+), w(\d+)$`)
+	testImmediate                = regexp.MustCompile(`^tst w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	conditionSet                 = regexp.MustCompile(`^cset w(\d+), ([a-z]+)$`)
+	conditionSelect              = regexp.MustCompile(`^csel ([wx])(\d+), ([wx](?:\d+)|[wx]zr), ([wx](?:\d+)|[wx]zr), ([a-z]+)$`)
+	conditionIncrement           = regexp.MustCompile(`^cinc ([wx])(\d+), [wx](\d+), ([a-z]+)$`)
+	conditionNegate              = regexp.MustCompile(`^cneg w(\d+), w(\d+), ([a-z]+)$`)
+	conditionalCompareNegative   = regexp.MustCompile(`^ccmn w(\d+), #(0x[0-9a-f]+|[0-9]+), #(\d+), ([a-z]+)$`)
+	andSetFlags                  = regexp.MustCompile(`^ands w(\d+), w(\d+), w(\d+)$`)
+	bitClearSetFlags             = regexp.MustCompile(`^bics (w(?:\d+)|wzr), w(\d+), w(\d+)$`)
+	andSetFlagsLSR               = regexp.MustCompile(`^ands w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
+	bitClearSetFlagsLSR          = regexp.MustCompile(`^bics (w(?:\d+)|wzr), w(\d+), w(\d+), lsr #(\d+)$`)
+	conditionalCompareNegative64 = regexp.MustCompile(`^ccmn x(\d+), #(0x[0-9a-f]+|[0-9]+), #(\d+), ([a-z]+)$`)
+	conditionSelectIncrement32   = regexp.MustCompile(`^csinc w(\d+), (w(?:\d+)|wzr), (w(?:\d+)|wzr), ([a-z]+)$`)
+	testImmediate64              = regexp.MustCompile(`^tst x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	exclusiveOrNot32             = regexp.MustCompile(`^eon w(\d+), w(\d+), w(\d+)$`)
+	countLeadingZeroes           = regexp.MustCompile(`^clz w(\d+), w(\d+)$`)
+	compareAndSwap               = regexp.MustCompile(`^casal w(\d+), w(\d+), \[x(\d+)\]$`)
+	moveFromStackPointer         = regexp.MustCompile(`^mov x(\d+), sp$`)
+	storeSignedHalf              = regexp.MustCompile(`^sturh w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	unsignedMultiplyAddLong      = regexp.MustCompile(`^umaddl x(\d+), w(\d+), w(\d+), x(\d+)$`)
+	multiplyNegate64             = regexp.MustCompile(`^mneg x(\d+), x(\d+), x(\d+)$`)
+	multiplySub64                = regexp.MustCompile(`^msub x(\d+), x(\d+), x(\d+), x(\d+)$`)
+	signedBitfieldInsert64       = regexp.MustCompile(`^sbfiz x(\d+), x(\d+), #(\d+|0x[0-9a-f]+), #(\d+|0x[0-9a-f]+)$`)
+	storeUXTW64                  = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
+	storePostIndex8              = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
+	vectorDup32                  = regexp.MustCompile(`^dup v(\d+)\.(\d+)s, w(\d+)$`)
+	loadVector                   = regexp.MustCompile(`^ldr ([qds])(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	storeVector                  = regexp.MustCompile(`^stur ([qds])(\d+), \[(sp|x\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	vectorImmediate              = regexp.MustCompile(`^movi v(\d+)\.(\d+)([bhsd]), #([0-9a-fx]+)(?:, lsl #(\d+))?$`)
+	vectorBinary                 = regexp.MustCompile(`^(add|sub|mul|eor) v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], v(\d+)\.\d+[bhsd]$`)
+	vectorMAC                    = regexp.MustCompile(`^(mla|mls) v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], v(\d+)\.\d+[bhsd]$`)
+	vectorUnsignedShiftLong      = regexp.MustCompile(`^(ushll|ushll2) v(\d+)\.(\d+)([hsd]), v(\d+)\.\d+([bhs]), #(\d+|0x[0-9a-f]+)$`)
+	vectorMove64                 = regexp.MustCompile(`^fmov d(\d+), d(\d+)$`)
+	vectorUnsignedMultiplyLong   = regexp.MustCompile(`^(umull|umull2) v(\d+)\.(\d+)([sd]), v(\d+)\.\d+([hs]), v(\d+)\.\d+[hs]$`)
+	vectorEor3                   = regexp.MustCompile(`^eor3 v(\d+)\.16b, v(\d+)\.16b, v(\d+)\.16b, v(\d+)\.16b$`)
+	pairStoreVector              = regexp.MustCompile(`^stp q(\d+), q(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeVectorRegular           = regexp.MustCompile(`^str ([qds])(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	vectorTable1                 = regexp.MustCompile(`^tbl v(\d+)\.16b, \{v(\d+)\.16b\}, v(\d+)\.16b$`)
+	vectorTable4                 = regexp.MustCompile(`^tbl v(\d+)\.16b, \{v(\d+)\.16b, v(\d+)\.16b, v(\d+)\.16b, v(\d+)\.16b\}, v(\d+)\.16b$`)
+	vectorExtractNarrow          = regexp.MustCompile(`^xtn v(\d+)\.(\d+)([bhs]), v(\d+)\.\d+[hsd]$`)
+	vectorShiftRightNarrow       = regexp.MustCompile(`^shrn v(\d+)\.(\d+)([bhs]), v(\d+)\.\d+[hsd], #(\d+|0x[0-9a-f]+)$`)
+	vectorUnzipEven              = regexp.MustCompile(`^uzp1 v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], v(\d+)\.\d+[bhsd]$`)
+	vectorNegateFloat64          = regexp.MustCompile(`^fneg d(\d+), d(\d+)$`)
+	vectorUnsignedShiftRight     = regexp.MustCompile(`^ushr v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], #(\d+|0x[0-9a-f]+)$`)
+	vectorToW                    = regexp.MustCompile(`^mov w(\d+), v(\d+)\.s\[(\d+)\]$`)
+	vectorToWZero                = regexp.MustCompile(`^fmov w(\d+), s(\d+)$`)
+	vectorUnsignedShift          = regexp.MustCompile(`^ushl v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], v(\d+)\.\d+[bhsd]$`)
+	vectorMove128                = regexp.MustCompile(`^mov v(\d+)\.16b, v(\d+)\.16b$`)
+	wToVectorLane                = regexp.MustCompile(`^mov v(\d+)\.s\[(\d+)\], w(\d+)$`)
+	pointerAuthZero              = regexp.MustCompile(`^paciza x\d+$`)
+	moveStackPointer             = regexp.MustCompile(`^mov sp, x(\d+)$`)
+	subStackFromX                = regexp.MustCompile(`^sub sp, x(\d+), #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
+	unsignedBitfield             = regexp.MustCompile(`^(ubfiz|ubfx) ([xw])(\d+), [xw](\d+), #(\d+|0x[0-9a-f]+), #(\d+|0x[0-9a-f]+)$`)
+	bitfieldInsert               = regexp.MustCompile(`^(bfi|bfxil) w(\d+), w(\d+), #(\d+|0x[0-9a-f]+), #(\d+|0x[0-9a-f]+)$`)
+	orNotShift                   = regexp.MustCompile(`^orn ([xw])(\d+), [xw](\d+), [xw](\d+)(?:, (lsl|lsr) #(\d+))?$`)
+	not64                        = regexp.MustCompile(`^mvn x(\d+), x(\d+)$`)
+	noopInstruction              = regexp.MustCompile(`^pacibsp$`)
+	blockFunction                = regexp.MustCompile(`^func ([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))`)
+	branchDirect                 = regexp.MustCompile(`^b #(0x[0-9a-f]+)$`)
+	branchConditional            = regexp.MustCompile(`^b\.([a-z]+) #(0x[0-9a-f]+)$`)
+	branchLink                   = regexp.MustCompile(`^bl #(0x[0-9a-f]+)$`)
+	branchCompareZero            = regexp.MustCompile(`^(cbz|cbnz) ([xw])(\d+), #(0x[0-9a-f]+)$`)
+	branchTestBit                = regexp.MustCompile(`^(tbz|tbnz) [xw](\d+), #(\d+), #(0x[0-9a-f]+)$`)
+	branchRegister               = regexp.MustCompile(`^braa x(\d+), x\d+$`)
+	callRegister                 = regexp.MustCompile(`^blraa x(\d+), x\d+$`)
+	callRegisterZero             = regexp.MustCompile(`^blraaz x(\d+)$`)
+	returnRegister               = regexp.MustCompile(`^ret(?:ab)?$`)
+	literalReturn                = regexp.MustCompile(`^\s*return (0x[0-9a-f]+), false, nil$`)
+	identifier                   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
 func number(value string) (uint64, error) {
@@ -924,7 +955,11 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		return fields("compactLoadSXTW64", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
 	if match := loadUXTW32.FindStringSubmatch(disassembly); match != nil {
-		return fields("compactLoadUXTW32", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
+		shift := "0"
+		if match[4] != "" {
+			shift = match[4]
+		}
+		return fields("compactLoadUXTW32", "destination", match[1], "left", match[2], "right", match[3], "shift", shift), false, nil
 	}
 	if match := loadUXTW8.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactLoadUXTW8", "destination", match[1], "left", match[2], "right", match[3]), false, nil
@@ -1015,6 +1050,14 @@ func compactInstruction(disassembly string) (string, bool, error) {
 			return "", false, fmt.Errorf("invalid SP store %q", disassembly)
 		}
 		return fields("compactStoreSP32", "left", match[1], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := storeSPZero32.FindStringSubmatch(disassembly); match != nil {
+		source, ok := registerNumber(match[1])
+		immediate, err := number(match[2])
+		if !ok || err != nil || immediate > 0xffff {
+			return "", false, fmt.Errorf("invalid zero-capable SP store %q", disassembly)
+		}
+		return fields("compactStoreSP32", "left", source, "immediate", fmt.Sprintf("%#x", immediate)), false, nil
 	}
 	if match := storeSP64.FindStringSubmatch(disassembly); match != nil {
 		immediate, err := number(match[2])
@@ -1198,6 +1241,200 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		}
 		return fields("compactLoadVector", "destination", match[2], "left", match[3], "accumulator", fmt.Sprint(bytes), "immediate", fmt.Sprintf("%#x", immediate)), false, nil
 	}
+	if match := storeVector.FindStringSubmatch(disassembly); match != nil {
+		bytes := 16
+		if match[1] == "d" {
+			bytes = 8
+		} else if match[1] == "s" {
+			bytes = 4
+		}
+		base, ok := baseRegisterNumber(match[3])
+		offset, err := signedNumber(match[4])
+		if !ok || err != nil {
+			return "", false, fmt.Errorf("invalid vector store %q", disassembly)
+		}
+		return fields("compactStoreVector", "destination", match[2], "left", base, "accumulator", fmt.Sprint(bytes), "immediate", fmt.Sprintf("%#x", uint16(int16(offset)))), false, nil
+	}
+	if match := vectorImmediate.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[2])
+		value, valueErr := number(match[4])
+		shift := uint64(0)
+		var shiftErr error
+		if match[5] != "" {
+			shift, shiftErr = number(match[5])
+		}
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32, "d": 64}
+		bits, ok := bitsBySuffix[match[3]]
+		if lanesErr != nil || valueErr != nil || shiftErr != nil || !ok || lanes == 0 || lanes*bits > 128 || value > 0xffff || shift >= bits {
+			return "", false, fmt.Errorf("invalid vector immediate %q", disassembly)
+		}
+		return fields("compactVectorImmediate", "destination", match[1], "left", fmt.Sprint(bits), "right", fmt.Sprint(lanes), "shift", fmt.Sprint(shift), "immediate", fmt.Sprintf("%#x", value)), false, nil
+	}
+	if match := vectorBinary.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[3])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32, "d": 64}
+		bits, ok := bitsBySuffix[match[4]]
+		opByName := map[string]uint8{"add": 0, "sub": 1, "mul": 2, "eor": 3}
+		op, opOK := opByName[match[1]]
+		if lanesErr != nil || !ok || !opOK || lanes == 0 || lanes*bits > 128 {
+			return "", false, fmt.Errorf("invalid vector binary operation %q", disassembly)
+		}
+		return fields("compactVectorBinary", "destination", match[2], "left", match[5], "right", match[6], "accumulator", fmt.Sprint(op), "shift", fmt.Sprint(bits), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorMAC.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[3])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32, "d": 64}
+		bits, ok := bitsBySuffix[match[4]]
+		subtract := uint8(0)
+		if match[1] == "mls" {
+			subtract = 1
+		}
+		if lanesErr != nil || !ok || lanes == 0 || lanes*bits > 128 {
+			return "", false, fmt.Errorf("invalid vector multiply-accumulate %q", disassembly)
+		}
+		return fields("compactVectorMAC", "destination", match[2], "left", match[5], "right", match[6], "accumulator", fmt.Sprint(subtract), "shift", fmt.Sprint(bits), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorUnsignedShiftLong.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[3])
+		amount, amountErr := number(match[7])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32}
+		inputBits, ok := bitsBySuffix[match[6]]
+		high := uint8(0)
+		if match[1] == "ushll2" {
+			high = 1
+		}
+		if lanesErr != nil || amountErr != nil || !ok || lanes == 0 || lanes*inputBits*2 > 128 || amount >= inputBits {
+			return "", false, fmt.Errorf("invalid vector unsigned shift-long %q", disassembly)
+		}
+		packed := uint16(lanes) | uint16(inputBits)<<8
+		return fields("compactVectorUnsignedShiftLong", "destination", match[2], "left", match[5], "accumulator", fmt.Sprint(high), "shift", fmt.Sprint(amount), "immediate", fmt.Sprintf("%#x", packed)), false, nil
+	}
+	if match := vectorMove64.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactVectorMove64", "destination", match[1], "left", match[2]), false, nil
+	}
+	if match := vectorUnsignedMultiplyLong.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[3])
+		bitsBySuffix := map[string]uint64{"h": 16, "s": 32}
+		inputBits, ok := bitsBySuffix[match[6]]
+		high := uint8(0)
+		if match[1] == "umull2" {
+			high = 1
+		}
+		if lanesErr != nil || !ok || lanes == 0 || lanes*inputBits*2 > 128 {
+			return "", false, fmt.Errorf("invalid vector unsigned multiply-long %q", disassembly)
+		}
+		return fields("compactVectorUnsignedMultiplyLong", "destination", match[2], "left", match[5], "right", match[7], "accumulator", fmt.Sprint(high), "shift", fmt.Sprint(inputBits), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorEor3.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactVectorEor3", "destination", match[1], "left", match[2], "right", match[3], "accumulator", match[4]), false, nil
+	}
+	if match := pairStoreVector.FindStringSubmatch(disassembly); match != nil {
+		immediate, err := number(match[4])
+		if err != nil || immediate > 0x7fff {
+			return "", false, fmt.Errorf("invalid vector pair store %q", disassembly)
+		}
+		return fields("compactPairStoreVector", "destination", match[1], "left", match[3], "right", match[2], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := storeVectorRegular.FindStringSubmatch(disassembly); match != nil {
+		bytes := 16
+		if match[1] == "d" {
+			bytes = 8
+		} else if match[1] == "s" {
+			bytes = 4
+		}
+		immediate := uint64(0)
+		var err error
+		if match[4] != "" {
+			immediate, err = number(match[4])
+		}
+		if err != nil || immediate > 0x7fff {
+			return "", false, fmt.Errorf("invalid vector store %q", disassembly)
+		}
+		return fields("compactStoreVector", "destination", match[2], "left", match[3], "accumulator", fmt.Sprint(bytes), "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := vectorTable1.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactVectorTable1", "destination", match[1], "left", match[2], "right", match[3]), false, nil
+	}
+	if match := vectorTable4.FindStringSubmatch(disassembly); match != nil {
+		first, firstErr := number(match[2])
+		second, secondErr := number(match[3])
+		third, thirdErr := number(match[4])
+		fourth, fourthErr := number(match[5])
+		if firstErr != nil || secondErr != nil || thirdErr != nil || fourthErr != nil || second != first+1 || third != first+2 || fourth != first+3 {
+			return "", false, fmt.Errorf("non-contiguous vector table %q", disassembly)
+		}
+		return fields("compactVectorTable4", "destination", match[1], "left", match[2], "right", match[6]), false, nil
+	}
+	if match := vectorExtractNarrow.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[2])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32}
+		outputBits, ok := bitsBySuffix[match[3]]
+		if lanesErr != nil || !ok || lanes == 0 || lanes*outputBits > 64 {
+			return "", false, fmt.Errorf("invalid vector narrow %q", disassembly)
+		}
+		return fields("compactVectorExtractNarrow", "destination", match[1], "left", match[4], "shift", fmt.Sprint(outputBits), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorShiftRightNarrow.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[2])
+		amount, amountErr := number(match[5])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32}
+		outputBits, ok := bitsBySuffix[match[3]]
+		if lanesErr != nil || amountErr != nil || !ok || lanes == 0 || lanes*outputBits > 64 || amount >= outputBits*2 {
+			return "", false, fmt.Errorf("invalid vector shift-right narrow %q", disassembly)
+		}
+		return fields("compactVectorShiftRightNarrow", "destination", match[1], "left", match[4], "accumulator", fmt.Sprint(outputBits), "shift", fmt.Sprint(amount), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorUnzipEven.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[2])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32, "d": 64}
+		bits, ok := bitsBySuffix[match[3]]
+		if lanesErr != nil || !ok || lanes == 0 || lanes*bits > 128 {
+			return "", false, fmt.Errorf("invalid vector unzip %q", disassembly)
+		}
+		return fields("compactVectorUnzipEven", "destination", match[1], "left", match[4], "right", match[5], "shift", fmt.Sprint(bits), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorNegateFloat64.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactVectorNegateFloat64", "destination", match[1], "left", match[2]), false, nil
+	}
+	if match := vectorUnsignedShiftRight.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[2])
+		amount, amountErr := number(match[5])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32, "d": 64}
+		bits, ok := bitsBySuffix[match[3]]
+		if lanesErr != nil || amountErr != nil || !ok || lanes == 0 || lanes*bits > 128 || amount >= bits {
+			return "", false, fmt.Errorf("invalid vector unsigned shift-right %q", disassembly)
+		}
+		return fields("compactVectorUnsignedShiftRight", "destination", match[1], "left", match[4], "accumulator", fmt.Sprint(bits), "shift", fmt.Sprint(amount), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorToW.FindStringSubmatch(disassembly); match != nil {
+		lane, err := number(match[3])
+		if err != nil || lane > 3 {
+			return "", false, fmt.Errorf("invalid vector lane extract %q", disassembly)
+		}
+		return fields("compactVectorToW", "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", lane)), false, nil
+	}
+	if match := vectorToWZero.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactVectorToW", "destination", match[1], "left", match[2]), false, nil
+	}
+	if match := vectorUnsignedShift.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[2])
+		bitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32, "d": 64}
+		bits, ok := bitsBySuffix[match[3]]
+		if lanesErr != nil || !ok || lanes == 0 || lanes*bits > 128 {
+			return "", false, fmt.Errorf("invalid vector unsigned shift %q", disassembly)
+		}
+		return fields("compactVectorUnsignedShift", "destination", match[1], "left", match[4], "right", match[5], "shift", fmt.Sprint(bits), "immediate", fmt.Sprintf("%#x", lanes)), false, nil
+	}
+	if match := vectorMove128.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactVectorMove128", "destination", match[1], "left", match[2]), false, nil
+	}
+	if match := wToVectorLane.FindStringSubmatch(disassembly); match != nil {
+		lane, err := number(match[2])
+		if err != nil || lane > 3 {
+			return "", false, fmt.Errorf("invalid vector lane insert %q", disassembly)
+		}
+		return fields("compactWToVectorLane", "destination", match[1], "left", match[3], "immediate", fmt.Sprintf("%#x", lane)), false, nil
+	}
 	if match := storeXIndex8.FindStringSubmatch(disassembly); match != nil {
 		source, ok := registerNumber(match[1])
 		if !ok {
@@ -1259,6 +1496,16 @@ func compactInstruction(disassembly string) (string, bool, error) {
 			return "", false, fmt.Errorf("invalid 64-bit LSR %q", disassembly)
 		}
 		return fields("compactLSRImm64", "destination", match[1], "left", match[2], "shift", fmt.Sprint(shift)), false, nil
+	}
+	if match := shiftRightZero64.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactMovImm64", "destination", match[1]), false, nil
+	}
+	if match := shiftRightArithmetic32.FindStringSubmatch(disassembly); match != nil {
+		shift, err := number(match[3])
+		if err != nil || shift > 31 {
+			return "", false, fmt.Errorf("invalid ASR %q", disassembly)
+		}
+		return fields("compactASRImm32", "destination", match[1], "left", match[2], "shift", fmt.Sprint(shift)), false, nil
 	}
 	if match := shiftRightReg32.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactLSRReg32", "destination", match[1], "left", match[2], "right", match[3]), false, nil
@@ -1442,6 +1689,44 @@ func compactInstruction(disassembly string) (string, bool, error) {
 	}
 	if match := countLeadingZeroes.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactCLZ32", "destination", match[1], "left", match[2]), false, nil
+	}
+	if match := andSetFlagsLSR.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactAndsLSR32", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
+	}
+	if match := bitClearSetFlagsLSR.FindStringSubmatch(disassembly); match != nil {
+		destination, ok := registerNumber(match[1])
+		if !ok {
+			return "", false, fmt.Errorf("invalid shifted BICS %q", disassembly)
+		}
+		return fields("compactBicsLSR32", "destination", destination, "left", match[2], "right", match[3], "shift", match[4]), false, nil
+	}
+	if match := conditionalCompareNegative64.FindStringSubmatch(disassembly); match != nil {
+		immediate, immediateErr := number(match[2])
+		nzcv, nzcvErr := number(match[3])
+		condition, ok := conditionConstant(match[4])
+		if immediateErr != nil || nzcvErr != nil || immediate > 0xffff || nzcv > 15 || !ok {
+			return "", false, fmt.Errorf("invalid 64-bit CCMN %q", disassembly)
+		}
+		return fields("compactCCmnImm64", "left", match[1], "accumulator", fmt.Sprint(nzcv), "shift", condition, "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := conditionSelectIncrement32.FindStringSubmatch(disassembly); match != nil {
+		left, leftOK := registerNumber(match[2])
+		right, rightOK := registerNumber(match[3])
+		condition, conditionOK := conditionConstant(match[4])
+		if !leftOK || !rightOK || !conditionOK {
+			return "", false, fmt.Errorf("invalid CSINC %q", disassembly)
+		}
+		return fields("compactCSInc32", "destination", match[1], "left", left, "right", right, "shift", condition), false, nil
+	}
+	if match := testImmediate64.FindStringSubmatch(disassembly); match != nil {
+		immediate, err := number(match[2])
+		if err != nil || immediate > 0xffff {
+			return "", false, fmt.Errorf("invalid 64-bit TST %q", disassembly)
+		}
+		return fields("compactTstImm64", "left", match[1], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := exclusiveOrNot32.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactEon32", "destination", match[1], "left", match[2], "right", match[3]), false, nil
 	}
 	if match := compareAndSwap.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactCASAL32", "left", match[1], "right", match[2], "accumulator", match[3]), false, nil

@@ -114,8 +114,8 @@ func TestCompactAccountEntryBlocks(t *testing.T) {
 }
 
 func TestCompactBootstrapBlocks(t *testing.T) {
-	if got := len(compact26A428BootstrapBlocks); got != 923 {
-		t.Fatalf("compact bootstrap block count = %d, want 923", got)
+	if got := len(compact26A428BootstrapBlocks); got != 953 {
+		t.Fatalf("compact bootstrap block count = %d, want 953", got)
 	}
 	for address, block := range compact26A428BootstrapBlocks {
 		if block.start != address {
