@@ -20,6 +20,7 @@ func TestCompactKernelEncoding(t *testing.T) {
 		"writer":          compact26A428Writer,
 		"digest":          compact26A428Digest,
 		"cycle":           compact26A428Cycle,
+		"outer":           compact26A428Outer,
 	} {
 		if kernel.start == 0 || len(kernel.instructions) == 0 {
 			t.Fatalf("%s kernel is empty", name)
@@ -59,5 +60,14 @@ func TestCompactKernelEncoding(t *testing.T) {
 	}
 	if got := len(compact26A428Cycle.instructions); got != 1716 {
 		t.Fatalf("cycle instruction count = %d, want 1716", got)
+	}
+	if got := len(compact26A428Outer.instructions); got != 35206 {
+		t.Fatalf("outer instruction count = %d, want 35206", got)
+	}
+	if got := len(compact26A428Outer.segments); got != 36 {
+		t.Fatalf("outer segment count = %d, want 36", got)
+	}
+	if got := len(compact26A428OuterHooks); got != 6 {
+		t.Fatalf("outer hook count = %d, want 6", got)
 	}
 }

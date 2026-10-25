@@ -89,6 +89,21 @@ const (
 	compactLSLReg32
 	compactStoreBase64
 	compactCMNImm32
+	compactOr64
+	compactMovImm64Repeat16
+	compactAddLSL64
+	compactLoadBaseImm64
+	compactAddImm64
+	compactLoadBase32
+	compactStoreSP64
+	compactMovNegImm64
+	compactCmp64
+	compactSubImm64
+	compactStoreXIndex8
+	compactCmpImm64
+	compactOrImm64
+	compactXorImm64
+	compactStoreUXTW32
 	compactOpcodeCount
 )
 
@@ -107,6 +122,7 @@ type compactKernel struct {
 	start        uint64
 	instructions []compactInstruction
 	segments     []compactSegment
+	hooks        []compactHook
 }
 
 type compactSegment struct {
@@ -114,9 +130,53 @@ type compactSegment struct {
 	address uint64
 }
 
+type compactHookAction uint8
+
+const (
+	compactHookDigest compactHookAction = iota
+	compactHookOptional
+	compactHookEven
+	compactHookOdd
+	compactHookTail
+	compactHookWriter
+)
+
+type compactHook struct {
+	after  uint64
+	action compactHookAction
+}
+
+func runCompactHook(s *state, action compactHookAction) error {
+	switch action {
+	case compactHookDigest:
+		_, err := runRawSourceKernelLoop(s, "digest-natural")
+		return err
+	case compactHookOptional:
+		if s.x[9] == 0x1005BA520 {
+			return runRawSourceOptionalKernel(s, fault{})
+		}
+		return nil
+	case compactHookEven:
+		_, err := runRawSourceKernelLoop(s, "even")
+		return err
+	case compactHookOdd:
+		_, err := runRawSourceKernelLoop(s, "odd")
+		return err
+	case compactHookTail:
+		_, err := runRawSourceKernelLoop(s, "tail")
+		return err
+	case compactHookWriter:
+		_, err := runRawSourceKernelLoop(s, "writer")
+		return err
+	default:
+		return fmt.Errorf("unknown compact kernel hook %d", action)
+	}
+}
+
 func runCompactKernel(s *state, kernel compactKernel) error {
 	pc := kernel.start
 	segment := 0
+	hook := 0
 	for index, instruction := range kernel.instructions {
 		if segment < len(kernel.segments) && kernel.segments[segment].index == uint32(index) {
 			pc = kernel.segments[segment].address
@@ -196,6 +256,52 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			}
 		case compactCMNImm32:
 			_ = s.addWithCarry(uint64(uint32(s.x[left])), uint64(uint32(instruction.immediate)), false, 32)
+		case compactOr64:
+			s.x[d] = s.x[left] | s.x[right]
+		case compactMovImm64Repeat16:
+			value := uint64(instruction.immediate)
+			s.x[d] = value | value<<16 | value<<32 | value<<48
+		case compactAddLSL64:
+			s.x[d] = s.x[left] + shiftLeft(s.x[right], int(instruction.shift), 64)
+		case compactLoadBaseImm64:
+			value, err := s.load(addOffset(s.x[left], int64(instruction.immediate)), 8)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = value
+		case compactAddImm64:
+			s.x[d] = s.x[left] + uint64(instruction.immediate)
+		case compactLoadBase32:
+			value, err := s.load(s.x[left], 4)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint32(value))
+		case compactStoreSP64:
+			if err := s.storeValue(addOffset(s.sp, int64(instruction.immediate)), s.x[left], 8); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactMovNegImm64:
+			s.x[d] = uint64(0) - uint64(instruction.immediate)
+		case compactCmp64:
+			s.compare64(s.x[left], s.x[right])
+		case compactSubImm64:
+			s.x[d] = s.x[left] - uint64(instruction.immediate)
+		case compactStoreXIndex8:
+			if err := s.storeValue(s.x[left]+s.x[right], uint64(byte(s.x[d])), 1); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+		case compactCmpImm64:
+			s.compare64(s.x[left], uint64(instruction.immediate))
+		case compactOrImm64:
+			s.x[d] = s.x[left] | uint64(instruction.immediate)
+		case compactXorImm64:
+			s.x[d] = s.x[left] ^ uint64(instruction.immediate)
+		case compactStoreUXTW32:
+			address := s.x[left] + shiftLeft(uint64(uint32(s.x[right])), int(instruction.shift), 64)
+			if err := s.storeValue(address, uint64(uint32(s.x[d])), 4); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
 		case compactSub64:
 			s.x[d] = s.x[left] - s.x[right]
 		case compactAdd64:
@@ -362,6 +468,12 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			s.x[d] = s.x[left] & s.x[right]
 		default:
 			return fmt.Errorf("compact kernel %#x has unknown opcode %d", pc, instruction.op)
+		}
+		if hook < len(kernel.hooks) && kernel.hooks[hook].after == pc {
+			if err := runCompactHook(s, kernel.hooks[hook].action); err != nil {
+				return fmt.Errorf("compact kernel hook after %#x: %w", pc, err)
+			}
+			hook++
 		}
 		pc += 4
 	}
