@@ -1,22 +1,10 @@
 # UnfairPlay
 
-UnfairPlay is a standalone, offline Go tool for recovering a native Mac
-FairPlay enrollment model and decrypting personalized iOS IPAs for analysis.
-It does not log in to Apple, purchase apps, or download IPAs.
+UnfairPlay recovers a FairPlay model from an enrolled Mac and uses it to
+decrypt personalized iOS IPAs. It is a standalone Go program.
 
-The recovery and decryption path does not depend on ipatool, Python, Unicorn,
-IDA, a jailbroken iPhone, or an iOS 16 device secret. ipatool is only one
-optional way to obtain a personalized encrypted IPA.
-
-## Commands
-
-```text
-unfairplay collect   Collect private Mac enrollment state and a matching IPA
-unfairplay recover   Recover a model and validate it by decrypting that IPA
-unfairplay decrypt   Decrypt another IPA using the recovered model
-unfairplay doctor    Diagnose capture/model/IPA compatibility
-unfairplay profile   Inspect an arm64e fairplayd without executing it
-```
+It does not log in to Apple, buy apps, or download IPAs. You can use ipatool or
+another downloader for that part.
 
 ## Build
 
@@ -24,93 +12,69 @@ unfairplay profile   Inspect an arm64e fairplayd without executing it
 go build -o unfairplay ./cmd/unfairplay
 ```
 
-The resulting executable is self-contained. The pure-Go enrollment evaluator
-and its sanitized, account-independent model are embedded in the binary.
+## Usage
+
+First, sign in to the native Mac App Store. Install an iPhone or iPad app and
+open it once. Download an encrypted IPA with the same Apple Account.
+
+Collect the Mac state and matching IPA:
+
+```sh
+sudo ./unfairplay collect \
+  --app /Applications/App.app \
+  --ipa App.ipa \
+  --output App.capture
+```
+
+Recover the model and validate it:
+
+```sh
+./unfairplay recover \
+  --capture App.capture \
+  --output App.recovery
+```
+
+Decrypt another IPA from the same enrollment:
+
+```sh
+./unfairplay decrypt \
+  --input AnotherApp.ipa \
+  --model App.recovery/fairplay-enrollment.bin
+```
+
+Test a model without keeping the decrypted IPA:
+
+```sh
+./unfairplay verify \
+  --input AnotherApp.ipa \
+  --model App.recovery/fairplay-enrollment.bin
+```
+
+Use `unfairplay doctor` to check a capture, IPA, or model. Use
+`unfairplay profile` to inspect a fairplayd binary.
+
+## Support
+
+Verified profiles: `25G83`, `26A428`/`26A434`, and `26B118` compatibility
+mode. Unknown arm64e builds are accepted only if model recovery and full IPA
+validation succeed.
+
+macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
+cannot yet enforce the required private-file permissions.
+
+The IPA, installed app, Mac state, hardware identity, and model must belong to
+the same enrollment. Account or selector mismatches are rejected.
+
+Keep capture and model files private. Do not share SIDB, SINF, hardware data,
+recovery models, or decrypted apps. Decrypted IPAs are analysis files and need
+signing before installation.
 
 ## Releases
 
-Pushing a tag matching `v*` runs the full test suite and publishes a GitHub
-Release containing versioned binaries for macOS arm64 and Linux amd64/arm64.
-Each archive includes the README and license notices. The release also contains
-`SHA256SUMS` covering every archive. Windows remains a compile-only CI target
-because private-file permission validation is not implemented there.
+Tags matching `v*` publish binaries and `SHA256SUMS` through GitHub Actions.
+Tags such as `v0.2.0-rc.1` create prereleases.
 
-```sh
-git tag -a v0.1.0 -m "UnfairPlay v0.1.0"
-git push origin v0.1.0
-```
+## License
 
-Tags containing a suffix, such as `v0.2.0-rc.1`, are published as prereleases.
-
-## End-to-end workflow
-
-1. Sign in to the native Mac App Store. A fresh Apple Account is the most
-   predictable setup, although one preserved older selector-5 enrollment is
-   also proven.
-2. Install a free iPhone/iPad app through the native Mac App Store and open it
-   once. This establishes the Mac enrollment and installed SINF/SUPF files.
-3. Obtain a personalized encrypted IPA for the same Apple Account. You may use
-   ipatool or another compatible downloader. Purchasing and downloading only
-   through ipatool does not replace the native Mac enrollment step.
-4. Collect the matching state on the enrolled Mac:
-
-   ```sh
-   sudo ./unfairplay collect \
-     --app /Applications/App.app \
-     --ipa /private/path/App.ipa \
-     --output /private/path/App.capture
-   ```
-
-5. Recover and validate the enrollment model:
-
-   ```sh
-   ./unfairplay recover \
-     --capture /private/path/App.capture \
-     --output /private/path/App.recovery
-   ```
-
-   Recovery publishes `fairplay-enrollment.bin` only after the matching IPA
-   passes complete decryption validation. A rejected candidate is not promoted.
-
-6. Reuse that model for another personalized IPA with the same enrollment and
-   selector:
-
-   ```sh
-   ./unfairplay decrypt \
-     --input AnotherApp.ipa \
-     --model /private/path/App.recovery/fairplay-enrollment.bin
-   ```
-
-## Supported evidence
-
-| Captured FairPlay profile | Status |
-| --- | --- |
-| `25G83` (`93b8db9c…3da4c5`) | Portable canonical contract verified with an older selector-5 enrollment |
-| `26A428` / macOS `26A434` (`1e58d37e…e4ea1784`) | Fully verified pure-Go recovery and IPA decryption |
-| `26B118` (`f68e4407…4964439d`) | Verified through the portable 26A428 compatibility evaluator |
-| Other arm64e builds using the current SINF/state contract | Attempted, but accepted only after full SINF and matching-IPA validation |
-
-The fairplayd image records provenance and helps classify the capture. Recovery
-does not execute that daemon. A nearby build number alone does not prove
-compatibility.
-
-## Privacy and limitations
-
-- Capture and recovery directories contain private account-derived state. Keep
-  them mode `0700`; model and report files are written mode `0600`.
-- Do not share SIDB, hardware identity, SINF, recovery models, or decrypted
-  applications.
-- The IPA must be personalized for the same Apple Account as the native Mac
-  enrollment. Cross-account and cross-machine mixing fails closed.
-- Enrollment resets or selector changes require a new capture and model.
-- Output IPAs are analysis artifacts. They require appropriate signing before
-  installation.
-- UnfairPlay does not bypass Apple Account authentication or download access.
-  Users remain responsible for lawful use of applications they are authorized
-  to access.
-
-## Licensing
-
-The project is MIT licensed; see `LICENSE`. The Go differential-fault recovery
-code derived from DarkPhoenix retains its Apache-2.0 notice in
+MIT. The DarkPhoenix-derived Go code keeps its Apache-2.0 notice in
 `LICENSE-DARKPHOENIX.txt`.

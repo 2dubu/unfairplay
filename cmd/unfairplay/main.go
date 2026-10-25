@@ -32,7 +32,7 @@ func newRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version,
 	}
-	root.AddCommand(newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newDoctorCommand(), newProfileCommand())
+	root.AddCommand(newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newVerifyCommand(), newDoctorCommand(), newProfileCommand())
 	return root
 }
 
@@ -274,6 +274,55 @@ func newDecryptCommand() *cobra.Command {
 	flags.StringVar(&options.Report, "report", "", "Private decryption report path")
 	flags.StringVar(&options.Model, "model", "", "Private enrollment model file or directory")
 	flags.BoolVar(&options.Force, "force", false, "Replace existing output and report")
+	_ = command.MarkFlagRequired("input")
+	_ = command.MarkFlagRequired("model")
+	return command
+}
+
+func newVerifyCommand() *cobra.Command {
+	var inputPath, modelPath string
+	command := &cobra.Command{
+		Use:   "verify",
+		Short: "Validate an enrollment model against an IPA without retaining plaintext",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if !strings.EqualFold(filepath.Ext(inputPath), ".ipa") {
+				return errors.New("input must be an IPA")
+			}
+			temporary, err := os.MkdirTemp("", "unfairplay-verify-*")
+			if err != nil {
+				return err
+			}
+			cleaned := false
+			defer func() {
+				if !cleaned {
+					_ = os.RemoveAll(temporary)
+				}
+			}()
+			if err := os.Chmod(temporary, 0o700); err != nil {
+				return err
+			}
+			result, err := fairplay.DecryptIPA(fairplay.DecryptOptions{
+				InputPath: inputPath, ModelPath: modelPath,
+				OutputPath: filepath.Join(temporary, "App.decrypted.ipa"),
+				ReportPath: filepath.Join(temporary, "App.decrypted.json"),
+			})
+			if err != nil {
+				return err
+			}
+			if err := os.RemoveAll(temporary); err != nil {
+				return fmt.Errorf("remove temporary plaintext: %w", err)
+			}
+			cleaned = true
+			return printJSON(map[string]any{
+				"schema": "unfairplay-model-verification-v1", "success": true,
+				"decrypted_ipa_sha256": result.OutputSHA256,
+				"encrypted_images":     result.EncryptedImages, "decrypted_pages": result.DecryptedPages,
+				"logical_key_sha256": result.LogicalKeySHA256, "plaintext_retained": false,
+			})
+		},
+	}
+	command.Flags().StringVar(&inputPath, "input", "", "Personalized encrypted IPA")
+	command.Flags().StringVar(&modelPath, "model", "", "Private enrollment model file or directory")
 	_ = command.MarkFlagRequired("input")
 	_ = command.MarkFlagRequired("model")
 	return command
