@@ -14,6 +14,12 @@ func TestCompactKernelEncoding(t *testing.T) {
 		"digest-prologue": compact26A428DigestPrologue,
 		"cycle-final":     compact26A428CycleFinal,
 		"optional":        compact26A428Optional,
+		"even":            compact26A428Even,
+		"odd":             compact26A428Odd,
+		"tail":            compact26A428Tail,
+		"writer":          compact26A428Writer,
+		"digest":          compact26A428Digest,
+		"cycle":           compact26A428Cycle,
 	} {
 		if kernel.start == 0 || len(kernel.instructions) == 0 {
 			t.Fatalf("%s kernel is empty", name)
@@ -35,5 +41,23 @@ func TestCompactKernelEncoding(t *testing.T) {
 	}
 	if got := len(compact26A428Optional.instructions); got != 117 {
 		t.Fatalf("optional instruction count = %d, want 117", got)
+	}
+	if got := len(compact26A428Even.instructions); got != 220 {
+		t.Fatalf("even instruction count = %d, want 220", got)
+	}
+	if got := len(compact26A428Odd.instructions); got != 311 {
+		t.Fatalf("odd instruction count = %d, want 311", got)
+	}
+	if got := len(compact26A428Tail.instructions); got != 452 {
+		t.Fatalf("tail instruction count = %d, want 452", got)
+	}
+	if got := len(compact26A428Writer.instructions); got != 651 {
+		t.Fatalf("writer instruction count = %d, want 651", got)
+	}
+	if got := len(compact26A428Digest.instructions); got != 1718 {
+		t.Fatalf("digest instruction count = %d, want 1718", got)
+	}
+	if got := len(compact26A428Cycle.instructions); got != 1716 {
+		t.Fatalf("cycle instruction count = %d, want 1716", got)
 	}
 }
