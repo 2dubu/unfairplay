@@ -12,6 +12,8 @@ func TestCompactKernelEncoding(t *testing.T) {
 	for name, kernel := range map[string]compactKernel{
 		"bootstrap":       compact26A428BootstrapKernel,
 		"digest-prologue": compact26A428DigestPrologue,
+		"cycle-final":     compact26A428CycleFinal,
+		"optional":        compact26A428Optional,
 	} {
 		if kernel.start == 0 || len(kernel.instructions) == 0 {
 			t.Fatalf("%s kernel is empty", name)
@@ -27,5 +29,11 @@ func TestCompactKernelEncoding(t *testing.T) {
 	}
 	if got := len(compact26A428DigestPrologue.instructions); got != 13 {
 		t.Fatalf("digest prologue instruction count = %d, want 13", got)
+	}
+	if got := len(compact26A428CycleFinal.instructions); got != 69 {
+		t.Fatalf("cycle final instruction count = %d, want 69", got)
+	}
+	if got := len(compact26A428Optional.instructions); got != 117 {
+		t.Fatalf("optional instruction count = %d, want 117", got)
 	}
 }

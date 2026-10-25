@@ -35,6 +35,21 @@ const (
 	compactUMull32
 	compactLoadUXTW8
 	compactLSRImm64
+	compactMov32
+	compactOr32
+	compactSub32
+	compactAndLSL32
+	compactAddSPShiftImm64
+	compactLoadBaseImm32
+	compactExtract32
+	compactNot32
+	compactLSRImm32
+	compactLoadSP64
+	compactMovImm32High
+	compactAddImmShift32
+	compactLSLImm32
+	compactXorLSL32
+	compactStoreBase32
 	compactOpcodeCount
 )
 
@@ -144,6 +159,46 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			s.x[d] = uint64(uint32(value))
 		case compactLSRImm64:
 			s.x[d] = shiftRight(s.x[left], int(instruction.shift), 64)
+		case compactMov32:
+			s.x[d] = uint64(uint32(s.x[left]))
+		case compactOr32:
+			s.x[d] = uint64(uint32(s.x[left]) | uint32(s.x[right]))
+		case compactSub32:
+			s.x[d] = uint64(uint32(s.x[left]) - uint32(s.x[right]))
+		case compactAndLSL32:
+			s.x[d] = uint64(uint32(s.x[left]) & uint32(shiftLeft(uint64(uint32(s.x[right])), int(instruction.shift), 32)))
+		case compactAddSPShiftImm64:
+			s.x[d] = s.sp + shiftLeft(uint64(instruction.immediate), int(instruction.shift), 64)
+		case compactLoadBaseImm32:
+			value, err := s.load(addOffset(s.x[left], int64(instruction.immediate)), 4)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(uint32(value))
+		case compactExtract32:
+			s.x[d] = uint64(uint32(extractPair(uint64(uint32(s.x[left])), uint64(uint32(s.x[right])), int(instruction.shift), 32)))
+		case compactNot32:
+			s.x[d] = uint64(^uint32(s.x[left]))
+		case compactLSRImm32:
+			s.x[d] = uint64(uint32(shiftRight(uint64(uint32(s.x[left])), int(instruction.shift), 32)))
+		case compactLoadSP64:
+			value, err := s.load(addOffset(s.sp, int64(instruction.immediate)), 8)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = value
+		case compactMovImm32High:
+			s.x[d] = uint64(uint32(instruction.immediate) << 16)
+		case compactAddImmShift32:
+			s.x[d] = uint64(uint32(s.x[left]) + uint32(instruction.immediate)<<instruction.shift)
+		case compactLSLImm32:
+			s.x[d] = uint64(uint32(shiftLeft(uint64(uint32(s.x[left])), int(instruction.shift), 32)))
+		case compactXorLSL32:
+			s.x[d] = uint64(uint32(s.x[left]) ^ uint32(shiftLeft(uint64(uint32(s.x[right])), int(instruction.shift), 32)))
+		case compactStoreBase32:
+			if err := s.storeValue(s.x[left], uint64(uint32(s.x[d])), 4); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
 		default:
 			return fmt.Errorf("compact kernel %#x has unknown opcode %d", pc, instruction.op)
 		}
