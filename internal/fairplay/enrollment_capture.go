@@ -133,17 +133,18 @@ type EnrollmentCaptureManifest struct {
 }
 
 type EnrollmentCollectOptions struct {
-	AppPath           string
-	IPAPath           string
-	OutputPath        string
-	FairPlaydPath     string
-	SystemStatePath   string
-	SharedStatePath   string
-	ADIPath           string
-	MACAddressPath    string
-	HardwareInterface string
-	ProductVersion    string
-	BuildVersion      string
+	AppPath                 string
+	InstalledExecutablePath string
+	IPAPath                 string
+	OutputPath              string
+	FairPlaydPath           string
+	SystemStatePath         string
+	SharedStatePath         string
+	ADIPath                 string
+	MACAddressPath          string
+	HardwareInterface       string
+	ProductVersion          string
+	BuildVersion            string
 }
 
 type appInfo struct {
@@ -708,13 +709,19 @@ func CollectEnrollment(options EnrollmentCollectOptions) (EnrollmentCaptureManif
 		targetSINFPath = targetFile.Path
 	}
 
+	installedExecutablePath := options.InstalledExecutablePath
+	if installedExecutablePath == "" {
+		installedExecutablePath = filepath.Join(app, metadata.Executable)
+	} else if !filepath.IsAbs(installedExecutablePath) || filepath.Base(installedExecutablePath) != metadata.Executable {
+		return EnrollmentCaptureManifest{}, fmt.Errorf("installed executable path must be absolute and end in %s", metadata.Executable)
+	}
 	manifest = EnrollmentCaptureManifest{
 		Schema: EnrollmentCaptureSchema, CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		ProductVersion: options.ProductVersion, BuildVersion: options.BuildVersion,
 		FairPlayd: fairplayd, FairPlay: support, BinaryProfile: binaryProfile, HardwareMAC: hardware,
 		App: EnrollmentCaptureApp{
 			BundleIdentifier: metadata.BundleIdentifier, Executable: metadata.Executable,
-			ExecutablePath: filepath.Join(app, metadata.Executable),
+			ExecutablePath: installedExecutablePath,
 			Selector:       selector, SelectorID: selector.Identifier(),
 			SINFPath:       filepath.ToSlash(filepath.Join("app", "SC_Info", filepath.Base(sinfPath))),
 			TargetSINFPath: targetSINFPath,

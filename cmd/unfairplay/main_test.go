@@ -16,6 +16,17 @@ func TestCommandsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestCollectExposesArchivedExecutablePath(t *testing.T) {
+	root := newRootCommand()
+	command, _, err := root.Find([]string{"collect"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.Flags().Lookup("installed-executable-path") == nil {
+		t.Fatal("collect has no archived executable path override")
+	}
+}
+
 func TestWritePrivateFileFailsIfDestinationExists(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secret.bin")
 	if err := writePrivateFile(path, []byte("first")); err != nil {

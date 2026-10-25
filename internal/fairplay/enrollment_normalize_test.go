@@ -2,6 +2,7 @@ package fairplay
 
 import (
 	"encoding/binary"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,20 +10,26 @@ import (
 )
 
 func TestCanonicalSIDBClassifiesKnownGeometry(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "SC Info.sidb")
-	data := make([]byte, 630)
-	binary.BigEndian.PutUint32(data[:4], 0x0007000b)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	sidb, err := canonicalSIDB(CanonicalEnrollmentFile{
-		CapturePath: "state/fpsd-sc-info/SC Info.sidb", Bytes: int64(len(data)), localPath: path,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sidb.Version != 0x0007000b || sidb.Format != "macos-sidb-v7000b" || sidb.ExpectedSourceBytes != 192 {
-		t.Fatalf("unexpected SIDB classification: %#v", sidb)
+	for _, test := range []struct {
+		bytes, source int
+	}{{630, 192}, {642, 192}, {993, 224}, {1003, 224}} {
+		t.Run(fmt.Sprintf("%d", test.bytes), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "SC Info.sidb")
+			data := make([]byte, test.bytes)
+			binary.BigEndian.PutUint32(data[:4], 0x0007000b)
+			if err := os.WriteFile(path, data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			sidb, err := canonicalSIDB(CanonicalEnrollmentFile{
+				CapturePath: "state/fpsd-sc-info/SC Info.sidb", Bytes: int64(len(data)), localPath: path,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if sidb.Version != 0x0007000b || sidb.Format != "macos-sidb-v7000b" || sidb.ExpectedSourceBytes != test.source {
+				t.Fatalf("unexpected SIDB classification: %#v", sidb)
+			}
+		})
 	}
 }
 

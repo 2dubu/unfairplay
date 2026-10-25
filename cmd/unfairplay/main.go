@@ -102,6 +102,7 @@ func newCollectCommand() *cobra.Command {
 	}
 	flags := command.Flags()
 	flags.StringVar(&options.AppPath, "app", "", "Native App Store-installed .app path")
+	flags.StringVar(&options.InstalledExecutablePath, "installed-executable-path", "", "Original absolute executable path for an archived app")
 	flags.StringVar(&options.IPAPath, "ipa", "", "Matching personalized encrypted IPA")
 	flags.StringVar(&options.OutputPath, "output", "", "New private capture directory")
 	flags.StringVar(&options.FairPlaydPath, "fairplayd", "", "fairplayd Mach-O (defaults to the system CoreFP framework)")

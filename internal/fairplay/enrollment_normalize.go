@@ -86,9 +86,9 @@ func canonicalSIDB(file CanonicalEnrollmentFile) (CanonicalSIDB, error) {
 	if version == 0x0007000b {
 		result.Format = "macos-sidb-v7000b"
 		switch len(data) {
-		case 630:
+		case 630, 642:
 			result.ExpectedSourceBytes = 192
-		case 1003:
+		case 993, 1003:
 			result.ExpectedSourceBytes = 224
 		}
 	} else {
