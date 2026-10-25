@@ -71,3 +71,83 @@ func TestCompactKernelEncoding(t *testing.T) {
 		t.Fatalf("outer hook count = %d, want 6", got)
 	}
 }
+
+func TestCompactBlockControlFlowAndStop(t *testing.T) {
+	s := newState(&model{pages: make(map[uint64][]byte)})
+	block := compactBlock{
+		start: 0x1000,
+		instructions: []compactInstruction{
+			{op: compactMovImm32, destination: 1, immediate: 7},
+			{op: compactCmpImm32, left: 1, immediate: 8},
+		},
+		terminator: compactBlockConditional,
+		condition:  compactConditionNE,
+		target:     0x2000,
+		alternate:  0x100c,
+	}
+	next, stopped, err := runCompactBlock(s, nil, block)
+	if err != nil || stopped || next != 0x2000 {
+		t.Fatalf("conditional block = next %#x, stopped %t, err %v", next, stopped, err)
+	}
+
+	s = newState(&model{pages: make(map[uint64][]byte)})
+	next, stopped, err = runCompactBlock(s, &rawSourceRuntime{stopPC: 0x1004}, block)
+	if err != nil || !stopped || next != 0x1004 || s.x[1] != 7 {
+		t.Fatalf("stopped block = next %#x, stopped %t, x1 %#x, err %v", next, stopped, s.x[1], err)
+	}
+}
+
+func TestCompactAccountEntryBlocks(t *testing.T) {
+	if got := len(compact26A428AccountEntryBlocks); got != 783 {
+		t.Fatalf("compact account-entry block count = %d, want 783", got)
+	}
+	for address, block := range compact26A428AccountEntryBlocks {
+		if block.start != address {
+			t.Fatalf("account-entry block %#x starts at %#x", address, block.start)
+		}
+		for index, instruction := range block.instructions {
+			if instruction.op >= compactOpcodeCount {
+				t.Fatalf("account-entry block %#x instruction %d has opcode %d", address, index, instruction.op)
+			}
+		}
+	}
+}
+
+func TestCompactPairAddressing(t *testing.T) {
+	value := &model{pages: make(map[uint64][]byte)}
+	s := newState(value)
+	s.sp = 0x1000
+	if err := s.mapZero(0x1000, pageSize); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.storeValue(0x1050, 0x1122334455667788, 8); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.storeValue(0x1058, 0x99aabbccddeeff00, 8); err != nil {
+		t.Fatal(err)
+	}
+	kernel := compactKernel{start: 0x2000, instructions: []compactInstruction{{
+		op: compactPairLoad64, destination: 29, left: 31, right: 30, immediate: 0x50,
+	}}}
+	if err := runCompactKernel(s, kernel); err != nil {
+		t.Fatal(err)
+	}
+	if s.x[29] != 0x1122334455667788 || s.x[30] != 0x99aabbccddeeff00 || s.sp != 0x1000 {
+		t.Fatalf("pair load = x29 %#x, x30 %#x, sp %#x", s.x[29], s.x[30], s.sp)
+	}
+}
+
+func TestCompactSelectZeroRegister(t *testing.T) {
+	s := newState(&model{pages: make(map[uint64][]byte)})
+	s.x[12] = 0x100000000
+	s.c = true
+	kernel := compactKernel{start: 0x3000, instructions: []compactInstruction{{
+		op: compactCSEL64, destination: 12, left: 12, right: 31, shift: uint8(compactConditionLO),
+	}}}
+	if err := runCompactKernel(s, kernel); err != nil {
+		t.Fatal(err)
+	}
+	if s.x[12] != 0 {
+		t.Fatalf("CSEL zero register result = %#x", s.x[12])
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"go/format"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -41,14 +42,25 @@ var (
 	loadSXTW64           = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
 	loadUXTW32           = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
 	loadUXTW8            = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), w(\d+), uxtw\]$`)
+	loadBaseImm8         = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	loadSPImm8           = regexp.MustCompile(`^ldrb w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
+	loadXIndex8          = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), x(\d+)\]$`)
 	loadPostIndex8       = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)\], #(0x[0-9a-f]+|[0-9]+)$`)
+	loadXIndex           = regexp.MustCompile(`^ldr ([wx])(\d+), \[x(\d+), x(\d+)\]$`)
+	loadSXTW32           = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	loadUXTW64           = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
 	storeSP              = regexp.MustCompile(`^str w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
 	storeSP64            = regexp.MustCompile(`^str x(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
 	storeBase            = regexp.MustCompile(`^str w(\d+), \[x(\d+)\]$`)
 	storeBase64          = regexp.MustCompile(`^str x(\d+), \[x(\d+)\]$`)
 	storeBaseImm         = regexp.MustCompile(`^str w(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
+	storeBaseImm64       = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
 	storeUXTW8           = regexp.MustCompile(`^strb w(\d+), \[x(\d+), w(\d+), uxtw\]$`)
+	storeBaseImm8        = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	storeSPImm8          = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
 	storeUXTW32          = regexp.MustCompile(`^str w(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
+	storeSXTW32          = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	storeXIndex          = regexp.MustCompile(`^str ([wx])(\d+), \[x(\d+), x(\d+)\]$`)
 	storeXIndex8         = regexp.MustCompile(`^strb w(\d+), \[x(\d+), x(\d+)\]$`)
 	extract32            = regexp.MustCompile(`^extr w(\d+), w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	not32                = regexp.MustCompile(`^mvn w(\d+), w(\d+)$`)
@@ -76,6 +88,35 @@ var (
 	compareRegister64    = regexp.MustCompile(`^cmp x(\d+), x(\d+)$`)
 	selectZeroEq32       = regexp.MustCompile(`^csel w(\d+), wzr, w(\d+), eq$`)
 	branchAuth           = regexp.MustCompile(`^braa x\d+, x\d+$`)
+	addressPage          = regexp.MustCompile(`^adrp x(\d+), #(0x[0-9a-f]+)$`)
+	stackAdjust          = regexp.MustCompile(`^(add|sub) sp, sp, #(0x[0-9a-f]+|[0-9]+)(?:, lsl #(\d+))?$`)
+	unscaledLoad         = regexp.MustCompile(`^ldur ([wx])(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	unscaledStore        = regexp.MustCompile(`^stur ([wx])(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	unscaledByteLoad     = regexp.MustCompile(`^ldurb w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	signedByteLoad       = regexp.MustCompile(`^ldrsb w(\d+), \[x(\d+)(?:, #(-?(?:0x[0-9a-f]+|[0-9]+)))?\]$`)
+	unscaledByteStore    = regexp.MustCompile(`^sturb w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
+	halfLoad             = regexp.MustCompile(`^ldrh w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	halfStore            = regexp.MustCompile(`^strh w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	pairOffset           = regexp.MustCompile(`^(ldp|stp) ([xw](?:\d+)|[xw]zr), ([xw](?:\d+)|[xw]zr), \[(sp|x\d+)(?:, #(-?(?:0x[0-9a-f]+|[0-9]+)))?\](!)?$`)
+	pairPostIndex        = regexp.MustCompile(`^(ldp|stp) ([xw](?:\d+)|[xw]zr), ([xw](?:\d+)|[xw]zr), \[(sp|x\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
+	bitClear             = regexp.MustCompile(`^bic ([wx])(\d+), [wx](\d+), [wx](\d+)(?:, lsl #(\d+))?$`)
+	signExtendByte       = regexp.MustCompile(`^sxtb w(\d+), w(\d+)$`)
+	signExtendWord       = regexp.MustCompile(`^sxtw x(\d+), w(\d+)$`)
+	negate               = regexp.MustCompile(`^neg ([wx])(\d+), [wx](\d+)$`)
+	testRegister         = regexp.MustCompile(`^tst w(\d+), w(\d+)$`)
+	testImmediate        = regexp.MustCompile(`^tst w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	conditionSet         = regexp.MustCompile(`^cset w(\d+), ([a-z]+)$`)
+	conditionSelect      = regexp.MustCompile(`^csel ([wx])(\d+), ([wx](?:\d+)|[wx]zr), ([wx](?:\d+)|[wx]zr), ([a-z]+)$`)
+	conditionIncrement   = regexp.MustCompile(`^cinc ([wx])(\d+), [wx](\d+), ([a-z]+)$`)
+	conditionNegate      = regexp.MustCompile(`^cneg w(\d+), w(\d+), ([a-z]+)$`)
+	noopInstruction      = regexp.MustCompile(`^pacibsp$`)
+	blockFunction        = regexp.MustCompile(`^func ([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))`)
+	branchDirect         = regexp.MustCompile(`^b #(0x[0-9a-f]+)$`)
+	branchConditional    = regexp.MustCompile(`^b\.([a-z]+) #(0x[0-9a-f]+)$`)
+	branchRegister       = regexp.MustCompile(`^braa x(\d+), x\d+$`)
+	callRegister         = regexp.MustCompile(`^blraa x(\d+), x\d+$`)
+	returnRegister       = regexp.MustCompile(`^ret(?:ab)?$`)
+	literalReturn        = regexp.MustCompile(`^\s*return (0x[0-9a-f]+), false, nil$`)
 	identifier           = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 )
 
@@ -85,6 +126,93 @@ func number(value string) (uint64, error) {
 		base, value = 16, strings.TrimPrefix(value, "0x")
 	}
 	return strconv.ParseUint(value, base, 64)
+}
+
+func signedNumber(value string) (int64, error) {
+	negative := strings.HasPrefix(value, "-")
+	if negative {
+		value = strings.TrimPrefix(value, "-")
+	}
+	result, err := number(value)
+	if err != nil || result > 0x7fff+uint64(boolInt(negative)) {
+		return 0, fmt.Errorf("signed immediate %q is outside int16", value)
+	}
+	if negative {
+		return -int64(result), nil
+	}
+	return int64(result), nil
+}
+
+func boolInt(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func conditionConstant(name string) (string, bool) {
+	constants := map[string]string{
+		"eq": "uint8(compactConditionEQ)", "ne": "uint8(compactConditionNE)",
+		"hs": "uint8(compactConditionHS)", "lo": "uint8(compactConditionLO)",
+		"mi": "uint8(compactConditionMI)", "pl": "uint8(compactConditionPL)",
+		"vs": "uint8(compactConditionVS)", "vc": "uint8(compactConditionVC)",
+		"hi": "uint8(compactConditionHI)", "ls": "uint8(compactConditionLS)",
+		"ge": "uint8(compactConditionGE)", "lt": "uint8(compactConditionLT)",
+		"gt": "uint8(compactConditionGT)", "le": "uint8(compactConditionLE)",
+	}
+	value, ok := constants[name]
+	return value, ok
+}
+
+func registerNumber(value string) (string, bool) {
+	if value == "wzr" || value == "xzr" {
+		return "31", true
+	}
+	if len(value) < 2 || value[0] != 'w' && value[0] != 'x' {
+		return "", false
+	}
+	if _, err := strconv.ParseUint(value[1:], 10, 8); err != nil {
+		return "", false
+	}
+	return value[1:], true
+}
+
+func baseRegisterNumber(value string) (string, bool) {
+	if value == "sp" {
+		return "31", true
+	}
+	if !strings.HasPrefix(value, "x") {
+		return "", false
+	}
+	return registerNumber(value)
+}
+
+func compactPairInstruction(match []string, mode uint8) (string, bool, error) {
+	first, firstOK := registerNumber(match[2])
+	second, secondOK := registerNumber(match[3])
+	base, baseOK := baseRegisterNumber(match[4])
+	if !firstOK || !secondOK || !baseOK || match[2][0] != match[3][0] {
+		return "", false, fmt.Errorf("invalid register in pair operation")
+	}
+	offset := int64(0)
+	var err error
+	if match[5] != "" {
+		offset, err = signedNumber(match[5])
+	}
+	if err != nil {
+		return "", false, err
+	}
+	op := "compactPairLoad32"
+	if match[1] == "stp" {
+		op = "compactPairStore32"
+	}
+	if match[2][0] == 'x' {
+		op = "compactPairLoad64"
+		if match[1] == "stp" {
+			op = "compactPairStore64"
+		}
+	}
+	return fields(op, "destination", first, "left", base, "right", second, "accumulator", fmt.Sprint(mode), "immediate", fmt.Sprintf("%#x", uint16(int16(offset)))), false, nil
 }
 
 func fields(operation string, values ...string) string {
@@ -103,7 +231,182 @@ func immediate32Fields(value uint64) []string {
 	}
 }
 
+func immediate48Fields(value uint64) []string {
+	return []string{
+		"left", fmt.Sprintf("%#x", byte(value>>16)),
+		"right", fmt.Sprintf("%#x", byte(value>>24)),
+		"accumulator", fmt.Sprintf("%#x", byte(value>>32)),
+		"shift", fmt.Sprintf("%#x", byte(value>>40)),
+		"immediate", fmt.Sprintf("%#x", uint16(value)),
+	}
+}
+
 func compactInstruction(disassembly string) (string, bool, error) {
+	if noopInstruction.MatchString(disassembly) {
+		return fields("compactNoop"), false, nil
+	}
+	if match := addressPage.FindStringSubmatch(disassembly); match != nil {
+		value, err := number(match[2])
+		if err != nil || value >= 1<<48 {
+			return "", false, fmt.Errorf("invalid ADRP address %q", match[2])
+		}
+		return fields("compactMovImm48", append([]string{"destination", match[1]}, immediate48Fields(value)...)...), false, nil
+	}
+	if match := stackAdjust.FindStringSubmatch(disassembly); match != nil {
+		immediate, immediateErr := number(match[2])
+		shift := uint64(0)
+		var shiftErr error
+		if match[3] != "" {
+			shift, shiftErr = number(match[3])
+		}
+		if immediateErr != nil || shiftErr != nil || immediate > 0xffff || shift > 63 {
+			return "", false, fmt.Errorf("invalid stack adjustment %q", disassembly)
+		}
+		op := "compactAddSPImm"
+		if match[1] == "sub" {
+			op = "compactSubSPImm"
+		}
+		return fields(op, "shift", fmt.Sprint(shift), "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := unscaledLoad.FindStringSubmatch(disassembly); match != nil {
+		offset, err := signedNumber(match[4])
+		if err != nil {
+			return "", false, err
+		}
+		op := "compactLoadSignedOffset32"
+		if match[1] == "x" {
+			op = "compactLoadSignedOffset64"
+		}
+		return fields(op, "destination", match[2], "left", match[3], "immediate", fmt.Sprintf("%#x", uint16(int16(offset)))), false, nil
+	}
+	if match := unscaledStore.FindStringSubmatch(disassembly); match != nil {
+		offset, err := signedNumber(match[4])
+		if err != nil {
+			return "", false, err
+		}
+		op := "compactStoreSignedOffset32"
+		if match[1] == "x" {
+			op = "compactStoreSignedOffset64"
+		}
+		return fields(op, "destination", match[2], "left", match[3], "immediate", fmt.Sprintf("%#x", uint16(int16(offset)))), false, nil
+	}
+	if match := unscaledByteLoad.FindStringSubmatch(disassembly); match != nil {
+		offset, err := signedNumber(match[3])
+		if err != nil {
+			return "", false, err
+		}
+		return fields("compactLoadSignedOffset8", "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", uint16(int16(offset)))), false, nil
+	}
+	if match := signedByteLoad.FindStringSubmatch(disassembly); match != nil {
+		offset := int64(0)
+		var err error
+		if match[3] != "" {
+			offset, err = signedNumber(match[3])
+		}
+		if err != nil {
+			return "", false, err
+		}
+		return fields("compactLoadSignedByte32", "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", uint16(int16(offset)))), false, nil
+	}
+	if match := unscaledByteStore.FindStringSubmatch(disassembly); match != nil {
+		offset, err := signedNumber(match[3])
+		if err != nil {
+			return "", false, err
+		}
+		return fields("compactStoreSignedOffset8", "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", uint16(int16(offset)))), false, nil
+	}
+	if match := pairOffset.FindStringSubmatch(disassembly); match != nil {
+		mode := uint8(0)
+		if match[6] == "!" {
+			mode = 1
+		}
+		return compactPairInstruction(match, mode)
+	}
+	if match := pairPostIndex.FindStringSubmatch(disassembly); match != nil {
+		return compactPairInstruction(match, 2)
+	}
+	if match := halfLoad.FindStringSubmatch(disassembly); match != nil {
+		offset := uint64(0)
+		var err error
+		if match[3] != "" {
+			offset, err = number(match[3])
+		}
+		if err != nil || offset > 0xffff {
+			return "", false, fmt.Errorf("invalid halfword load %q", disassembly)
+		}
+		op := "compactLoadHalf32"
+		if offset != 0 {
+			op = "compactLoadSignedOffsetHalf32"
+		}
+		return fields(op, "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", offset)), false, nil
+	}
+	if match := halfStore.FindStringSubmatch(disassembly); match != nil {
+		offset := uint64(0)
+		var err error
+		if match[3] != "" {
+			offset, err = number(match[3])
+		}
+		if err != nil || offset > 0xffff {
+			return "", false, fmt.Errorf("invalid halfword store %q", disassembly)
+		}
+		op := "compactStoreHalf32"
+		if offset != 0 {
+			op = "compactStoreSignedOffsetHalf32"
+		}
+		return fields(op, "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", offset)), false, nil
+	}
+	if match := bitClear.FindStringSubmatch(disassembly); match != nil {
+		op := "compactBic32"
+		if match[1] == "x" {
+			op = "compactBic64"
+		}
+		shift := "0"
+		if match[5] != "" {
+			shift = match[5]
+		}
+		return fields(op, "destination", match[2], "left", match[3], "right", match[4], "shift", shift), false, nil
+	}
+	if match := signExtendByte.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactSXT8To32", "destination", match[1], "left", match[2]), false, nil
+	}
+	if match := signExtendWord.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactSXT32To64", "destination", match[1], "left", match[2]), false, nil
+	}
+	if match := negate.FindStringSubmatch(disassembly); match != nil {
+		op := "compactNeg32"
+		if match[1] == "x" {
+			op = "compactNeg64"
+		}
+		return fields(op, "destination", match[2], "left", match[3]), false, nil
+	}
+	if match := testRegister.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactTst32", "left", match[1], "right", match[2]), false, nil
+	}
+	if match := testImmediate.FindStringSubmatch(disassembly); match != nil {
+		immediate, err := number(match[2])
+		if err != nil || immediate > 0xffffffff {
+			return "", false, fmt.Errorf("invalid TST immediate %q", match[2])
+		}
+		return fields("compactTstImm32", append([]string{"left", match[1]}, immediate32Fields(immediate)...)...), false, nil
+	}
+	if match := conditionIncrement.FindStringSubmatch(disassembly); match != nil {
+		condition, ok := conditionConstant(match[4])
+		if !ok {
+			return "", false, fmt.Errorf("unsupported CINC condition %q", match[4])
+		}
+		op := "compactCInc32"
+		if match[1] == "x" {
+			op = "compactCInc64"
+		}
+		return fields(op, "destination", match[2], "left", match[3], "shift", condition), false, nil
+	}
+	if match := conditionNegate.FindStringSubmatch(disassembly); match != nil {
+		condition, ok := conditionConstant(match[3])
+		if !ok {
+			return "", false, fmt.Errorf("unsupported CNEG condition %q", match[3])
+		}
+		return fields("compactCNeg32", "destination", match[1], "left", match[2], "shift", condition), false, nil
+	}
 	if match := movNegOne32.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactMovNegOne32", "destination", match[1]), false, nil
 	}
@@ -357,12 +660,46 @@ func compactInstruction(disassembly string) (string, bool, error) {
 	if match := loadUXTW8.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactLoadUXTW8", "destination", match[1], "left", match[2], "right", match[3]), false, nil
 	}
+	if match := loadBaseImm8.FindStringSubmatch(disassembly); match != nil {
+		immediate := uint64(0)
+		var err error
+		if match[3] != "" {
+			immediate, err = number(match[3])
+		}
+		if err != nil || immediate > 0xffff {
+			return "", false, fmt.Errorf("invalid byte load %q", disassembly)
+		}
+		return fields("compactLoadBaseImm8", "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := loadSPImm8.FindStringSubmatch(disassembly); match != nil {
+		immediate, err := number(match[2])
+		if err != nil || immediate > 0xffff {
+			return "", false, fmt.Errorf("invalid SP byte load %q", disassembly)
+		}
+		return fields("compactLoadSPImm8", "destination", match[1], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := loadXIndex8.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactLoadXIndex8", "destination", match[1], "left", match[2], "right", match[3]), false, nil
+	}
 	if match := loadPostIndex8.FindStringSubmatch(disassembly); match != nil {
 		immediate, err := number(match[3])
 		if err != nil || immediate > 0xffff {
 			return "", false, fmt.Errorf("invalid post-index load %q", disassembly)
 		}
 		return fields("compactLoadPostIndex8", "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := loadXIndex.FindStringSubmatch(disassembly); match != nil {
+		op := "compactLoadXIndex32"
+		if match[1] == "x" {
+			op = "compactLoadXIndex64"
+		}
+		return fields(op, "destination", match[2], "left", match[3], "right", match[4]), false, nil
+	}
+	if match := loadSXTW32.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactLoadSXTW32", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
+	}
+	if match := loadUXTW64.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactLoadUXTW64", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
 	if match := storeSP.FindStringSubmatch(disassembly); match != nil {
 		immediate, err := number(match[2])
@@ -391,11 +728,53 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		}
 		return fields("compactStoreBaseImm32", "destination", match[1], "left", match[2], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
 	}
+	if match := storeBaseImm64.FindStringSubmatch(disassembly); match != nil {
+		source, ok := registerNumber(match[1])
+		immediate, err := number(match[3])
+		if !ok || err != nil || immediate > 0xffff {
+			return "", false, fmt.Errorf("invalid 64-bit base store %q", disassembly)
+		}
+		return fields("compactStoreBaseImm64", "destination", source, "left", match[2], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
 	if match := storeUXTW8.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactStoreUXTW8", "destination", match[1], "left", match[2], "right", match[3]), false, nil
 	}
 	if match := storeUXTW32.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactStoreUXTW32", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
+	}
+	if match := storeSXTW32.FindStringSubmatch(disassembly); match != nil {
+		source, ok := registerNumber(match[1])
+		if !ok {
+			return "", false, fmt.Errorf("invalid signed-index store %q", disassembly)
+		}
+		return fields("compactStoreSXTW32", "destination", source, "left", match[2], "right", match[3], "shift", match[4]), false, nil
+	}
+	if match := storeBaseImm8.FindStringSubmatch(disassembly); match != nil {
+		source, ok := registerNumber(match[1])
+		immediate := uint64(0)
+		var err error
+		if match[3] != "" {
+			immediate, err = number(match[3])
+		}
+		if !ok || err != nil || immediate > 0xffff {
+			return "", false, fmt.Errorf("invalid byte store %q", disassembly)
+		}
+		return fields("compactStoreBaseImm8", "destination", source, "left", match[2], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := storeSPImm8.FindStringSubmatch(disassembly); match != nil {
+		source, ok := registerNumber(match[1])
+		immediate, err := number(match[2])
+		if !ok || err != nil || immediate > 0xffff {
+			return "", false, fmt.Errorf("invalid SP byte store %q", disassembly)
+		}
+		return fields("compactStoreSPImm8", "destination", source, "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := storeXIndex.FindStringSubmatch(disassembly); match != nil {
+		op := "compactStoreXIndex32"
+		if match[1] == "x" {
+			op = "compactStoreXIndex64"
+		}
+		return fields(op, "destination", match[2], "left", match[3], "right", match[4]), false, nil
 	}
 	if match := storeXIndex8.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactStoreXIndex8", "destination", match[1], "left", match[2], "right", match[3]), false, nil
@@ -513,6 +892,26 @@ func compactInstruction(disassembly string) (string, bool, error) {
 	if match := selectZeroEq32.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactCSELZeroEq32", "destination", match[1], "right", match[2]), false, nil
 	}
+	if match := conditionSet.FindStringSubmatch(disassembly); match != nil {
+		condition, ok := conditionConstant(match[2])
+		if !ok {
+			return "", false, fmt.Errorf("unsupported CSET condition %q", match[2])
+		}
+		return fields("compactCSet32", "destination", match[1], "shift", condition), false, nil
+	}
+	if match := conditionSelect.FindStringSubmatch(disassembly); match != nil {
+		left, leftOK := registerNumber(match[3])
+		right, rightOK := registerNumber(match[4])
+		condition, conditionOK := conditionConstant(match[5])
+		if !leftOK || !rightOK || !conditionOK || match[1] != string(match[3][0]) || match[1] != string(match[4][0]) {
+			return "", false, fmt.Errorf("invalid CSEL %q", disassembly)
+		}
+		op := "compactCSEL32"
+		if match[1] == "x" {
+			op = "compactCSEL64"
+		}
+		return fields(op, "destination", match[2], "left", left, "right", right, "shift", condition), false, nil
+	}
 	if branchAuth.MatchString(disassembly) {
 		return "", true, nil
 	}
@@ -522,6 +921,157 @@ func compactInstruction(disassembly string) (string, bool, error) {
 type annotatedInstruction struct {
 	pc          uint64
 	disassembly string
+}
+
+type annotatedBlock struct {
+	name         string
+	start        uint64
+	instructions []annotatedInstruction
+	returnTarget uint64
+}
+
+func parseAnnotatedBlocks(source, prefix string) ([]annotatedBlock, error) {
+	var blocks []annotatedBlock
+	var current *annotatedBlock
+	depth := 0
+	scanner := bufio.NewScanner(strings.NewReader(source))
+	for scanner.Scan() {
+		line := scanner.Text()
+		if current == nil {
+			match := blockFunction.FindStringSubmatch(line)
+			if match == nil || !strings.HasPrefix(match[1], prefix) {
+				continue
+			}
+			current = &annotatedBlock{name: match[1]}
+			depth = strings.Count(line, "{") - strings.Count(line, "}")
+			continue
+		}
+		if match := commentPattern.FindStringSubmatch(line); match != nil {
+			pc, err := strconv.ParseUint(strings.TrimPrefix(match[1], "0x"), 16, 64)
+			if err != nil {
+				return nil, err
+			}
+			if len(current.instructions) == 0 {
+				current.start = pc
+			}
+			current.instructions = append(current.instructions, annotatedInstruction{pc: pc, disassembly: match[2]})
+		}
+		if match := literalReturn.FindStringSubmatch(line); match != nil {
+			target, err := number(match[1])
+			if err != nil {
+				return nil, err
+			}
+			current.returnTarget = target
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+		if depth == 0 {
+			if len(current.instructions) != 0 {
+				blocks = append(blocks, *current)
+			}
+			current = nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+	if current != nil {
+		return nil, fmt.Errorf("unterminated generated block %s", current.name)
+	}
+	if len(blocks) == 0 {
+		return nil, fmt.Errorf("input contains no functions with prefix %q", prefix)
+	}
+	return blocks, nil
+}
+
+func compactTerminator(instruction annotatedInstruction) (string, error) {
+	if match := branchDirect.FindStringSubmatch(instruction.disassembly); match != nil {
+		return "terminator: compactBlockDirect, target: " + match[1], nil
+	}
+	if match := branchConditional.FindStringSubmatch(instruction.disassembly); match != nil {
+		if match[1] != "ne" {
+			return "", fmt.Errorf("unsupported branch condition %q", match[1])
+		}
+		target, err := number(match[2])
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("terminator: compactBlockConditional, condition: compactConditionNE, target: %#x, alternate: %#x", target, instruction.pc+4), nil
+	}
+	if match := branchRegister.FindStringSubmatch(instruction.disassembly); match != nil {
+		return "terminator: compactBlockRegister, register: " + match[1], nil
+	}
+	if match := callRegister.FindStringSubmatch(instruction.disassembly); match != nil {
+		return "terminator: compactBlockCallRegister, register: " + match[1], nil
+	}
+	if returnRegister.MatchString(instruction.disassembly) {
+		return "terminator: compactBlockReturn", nil
+	}
+	return "", fmt.Errorf("unsupported block terminator %q", instruction.disassembly)
+}
+
+func generateCompactCFGSource(name string, blocks []annotatedBlock, limit int) ([]byte, int, map[string]int, error) {
+	var literals []string
+	skipped := 0
+	reasons := make(map[string]int)
+	for _, block := range blocks {
+		if limit > 0 && len(literals) >= limit {
+			break
+		}
+		if len(block.instructions) == 0 {
+			skipped++
+			reasons["empty block"]++
+			continue
+		}
+		terminal := block.instructions[len(block.instructions)-1]
+		body := block.instructions[:len(block.instructions)-1]
+		terminator, err := compactTerminator(terminal)
+		if err != nil && block.returnTarget != 0 {
+			terminator = fmt.Sprintf("terminator: compactBlockDirect, target: %#x", block.returnTarget)
+			body = block.instructions
+			err = nil
+		}
+		if err != nil {
+			skipped++
+			reasons["terminator "+strings.Fields(terminal.disassembly)[0]]++
+			continue
+		}
+		expected := block.start
+		var instructions []string
+		compatible := true
+		for _, entry := range body {
+			if entry.pc != expected {
+				compatible = false
+				reasons["disjoint instruction addresses"]++
+				break
+			}
+			literal, stop, err := compactInstruction(entry.disassembly)
+			if err != nil || stop {
+				compatible = false
+				reasons["instruction "+strings.Fields(entry.disassembly)[0]]++
+				break
+			}
+			instructions = append(instructions, literal)
+			expected += 4
+		}
+		terminalPC := terminal.pc
+		if len(body) == len(block.instructions) {
+			terminalPC += 4
+		}
+		if !compatible || terminalPC != expected {
+			skipped++
+			if compatible {
+				reasons["disjoint terminator address"]++
+			}
+			continue
+		}
+		literals = append(literals, fmt.Sprintf("%#x: {start: %#x, instructions: []compactInstruction{\n\t\t%s\n\t}, %s},", block.start, block.start, strings.Join(instructions, "\n\t\t"), terminator))
+	}
+	if len(literals) == 0 {
+		return nil, skipped, reasons, fmt.Errorf("no generated blocks use the compact instruction set")
+	}
+	source := fmt.Sprintf("// Code generated by tools/compact-kernel; DO NOT EDIT.\npackage recovery\n\nvar %s = map[uint64]compactBlock{\n\t%s\n}\n", name, strings.Join(literals, "\n\t"))
+	formatted, err := format.Source([]byte(source))
+	return formatted, skipped, reasons, err
 }
 
 func generateCompactSource(name string, annotated []annotatedInstruction) ([]byte, error) {
@@ -558,39 +1108,69 @@ func main() {
 	inputPath := flag.String("input", "", "generated Go kernel source")
 	outputPath := flag.String("output", "", "generated compact profile Go file")
 	name := flag.String("name", "", "Go variable name for the compact kernel")
+	cfgPrefix := flag.String("cfg-prefix", "", "generated block function prefix (enables CFG mode)")
+	limit := flag.Int("limit", 0, "maximum compatible CFG blocks to emit (zero means all)")
 	flag.Parse()
 	if *inputPath == "" || *outputPath == "" || !identifier.MatchString(*name) {
 		fmt.Fprintln(os.Stderr, "--input, --output, and a valid --name are required")
 		os.Exit(2)
 	}
-	input, err := os.Open(*inputPath)
+	inputBytes, err := os.ReadFile(*inputPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	defer input.Close()
-	var annotated []annotatedInstruction
-	scanner := bufio.NewScanner(input)
-	for scanner.Scan() {
-		match := commentPattern.FindStringSubmatch(scanner.Text())
-		if match == nil {
-			continue
+	var formatted []byte
+	if *cfgPrefix != "" {
+		var blocks []annotatedBlock
+		blocks, err = parseAnnotatedBlocks(string(inputBytes), *cfgPrefix)
+		if err == nil {
+			var skipped int
+			var reasons map[string]int
+			formatted, skipped, reasons, err = generateCompactCFGSource(*name, blocks, *limit)
+			if err == nil {
+				fmt.Fprintf(os.Stderr, "generated %d compact blocks; skipped %d unsupported blocks\n", strings.Count(string(formatted), "start:"), skipped)
+				type reasonCount struct {
+					reason string
+					count  int
+				}
+				ordered := make([]reasonCount, 0, len(reasons))
+				for reason, count := range reasons {
+					ordered = append(ordered, reasonCount{reason: reason, count: count})
+				}
+				sort.Slice(ordered, func(i, j int) bool {
+					if ordered[i].count != ordered[j].count {
+						return ordered[i].count > ordered[j].count
+					}
+					return ordered[i].reason < ordered[j].reason
+				})
+				for _, item := range ordered {
+					fmt.Fprintf(os.Stderr, "%4d %s\n", item.count, item.reason)
+				}
+			}
 		}
-		pc, parseErr := strconv.ParseUint(strings.TrimPrefix(match[1], "0x"), 16, 64)
-		if parseErr != nil {
-			err = parseErr
-			break
+	} else {
+		var annotated []annotatedInstruction
+		scanner := bufio.NewScanner(strings.NewReader(string(inputBytes)))
+		for scanner.Scan() {
+			match := commentPattern.FindStringSubmatch(scanner.Text())
+			if match == nil {
+				continue
+			}
+			pc, parseErr := strconv.ParseUint(strings.TrimPrefix(match[1], "0x"), 16, 64)
+			if parseErr != nil {
+				err = parseErr
+				break
+			}
+			annotated = append(annotated, annotatedInstruction{pc: pc, disassembly: match[2]})
 		}
-		annotated = append(annotated, annotatedInstruction{pc: pc, disassembly: match[2]})
+		if err == nil {
+			err = scanner.Err()
+		}
+		if err == nil {
+			formatted, err = generateCompactSource(*name, annotated)
+		}
 	}
-	if err == nil {
-		err = scanner.Err()
-	}
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	formatted, err := generateCompactSource(*name, annotated)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)

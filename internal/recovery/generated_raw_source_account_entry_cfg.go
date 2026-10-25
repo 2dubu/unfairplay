@@ -27,6 +27,17 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 			pc = next
 			continue
 		}
+		if block, ok := compact26A428AccountEntryBlocks[pc]; ok {
+			next, stopped, err := runCompactBlock(s, runtime, block)
+			if err != nil {
+				return pc, blockCount, fmt.Errorf("compact account-entry CFG %#x: %w", pc, err)
+			}
+			if stopped {
+				return next, blockCount, nil
+			}
+			pc = next
+			continue
+		}
 		switch pc {
 		case 0x100cd1c18:
 			{

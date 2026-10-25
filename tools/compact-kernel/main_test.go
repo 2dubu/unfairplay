@@ -19,6 +19,15 @@ func TestCompactInstruction(t *testing.T) {
 		{"eor w16, w16, #0xffffff87", "{op: compactXorImm32, destination: 16, left: 16, right: 0xff, accumulator: 0xff, immediate: 0xff87},", false},
 		{"mov w19, #-0x1080001", "{op: compactMovImm32Wide, destination: 19, right: 0xf7, accumulator: 0xfe, immediate: 0xffff},", false},
 		{"mov x6, #0x25800000", "{op: compactMovImm64Shift, destination: 6, shift: 16, immediate: 0x2580},", false},
+		{"adrp x9, #0x10106d000", "{op: compactMovImm48, destination: 9, left: 0x6, right: 0x1, accumulator: 0x1, shift: 0x0, immediate: 0xd000},", false},
+		{"ldur x8, [x29, #-0x60]", "{op: compactLoadSignedOffset64, destination: 8, left: 29, immediate: 0xffa0},", false},
+		{"bic w17, w17, w16, lsl #16", "{op: compactBic32, destination: 17, left: 17, right: 16, shift: 16},", false},
+		{"cset w8, ne", "{op: compactCSet32, destination: 8, shift: uint8(compactConditionNE)},", false},
+		{"ldp x28, x27, [sp], #0x60", "{op: compactPairLoad64, destination: 28, left: 31, right: 27, accumulator: 2, immediate: 0x60},", false},
+		{"stp x22, x21, [sp, #-0x30]!", "{op: compactPairStore64, destination: 22, left: 31, right: 21, accumulator: 1, immediate: 0xffd0},", false},
+		{"ldrb w10, [x11, #0x76a]", "{op: compactLoadBaseImm8, destination: 10, left: 11, immediate: 0x76a},", false},
+		{"ldr w10, [x10, w19, sxtw #2]", "{op: compactLoadSXTW32, destination: 10, left: 10, right: 19, shift: 2},", false},
+		{"strb wzr, [x16, #0x5af]", "{op: compactStoreBaseImm8, destination: 31, left: 16, immediate: 0x5af},", false},
 		{"braa x8, x17", "", true},
 	} {
 		got, stop, err := compactInstruction(test.input)
@@ -51,6 +60,50 @@ func TestGenerateCompactSourceKeepsDisjointSegments(t *testing.T) {
 	for _, want := range []string{"start: 0x1000", "{index: 1, address: 0x2000}"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("generated source lacks %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestGenerateCompactCFGSource(t *testing.T) {
+	blocks, err := parseAnnotatedBlocks(`package recovery
+
+func rawSourceAccountEntryBlock1000(s *state, runtime *rawSourceRuntime) (next uint64, stopped bool, err error) {
+	// 0x1000: mov w1, #1
+	s.x[1] = 1
+	// 0x1004: b #0x2000
+	return 0x2000, false, nil
+}
+
+func rawSourceAccountEntryBlock2000(s *state, runtime *rawSourceRuntime) (next uint64, stopped bool, err error) {
+	// 0x2000: cmp w1, w2
+	s.compare32(uint32(s.x[1]), uint32(s.x[2]))
+	// 0x2004: b.ne #0x3000
+	return 0, false, nil
+}
+`, "rawSourceAccountEntryBlock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, skipped, reasons, err := generateCompactCFGSource("testBlocks", blocks, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 0 {
+		t.Fatalf("skipped %d blocks", skipped)
+	}
+	if len(reasons) != 0 {
+		t.Fatalf("unexpected skip reasons: %v", reasons)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"0x1000: {",
+		"terminator: compactBlockDirect",
+		"target: 0x2000",
+		"condition: compactConditionNE",
+		"alternate: 0x2008",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("generated CFG lacks %q:\n%s", want, text)
 		}
 	}
 }
