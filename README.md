@@ -27,6 +27,21 @@ go build -o unfairplay ./cmd/unfairplay
 The resulting executable is self-contained. The pure-Go enrollment evaluator
 and its sanitized, account-independent model are embedded in the binary.
 
+## Releases
+
+Pushing a tag matching `v*` runs the full test suite and publishes a GitHub
+Release containing versioned binaries for macOS arm64 and Linux amd64/arm64.
+Each archive includes the README and license notices. The release also contains
+`SHA256SUMS` covering every archive. Windows remains a compile-only CI target
+because private-file permission validation is not implemented there.
+
+```sh
+git tag -a v0.1.0 -m "UnfairPlay v0.1.0"
+git push origin v0.1.0
+```
+
+Tags containing a suffix, such as `v0.2.0-rc.1`, are published as prereleases.
+
 ## End-to-end workflow
 
 1. Sign in to the native Mac App Store. A fresh Apple Account is the most
