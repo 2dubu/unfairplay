@@ -134,6 +134,32 @@ func TestAuditARM64FirstPageUsesInstructionSections(t *testing.T) {
 	}
 }
 
+func TestAuditARM64StubHelperIgnoresLazyBindOffsets(t *testing.T) {
+	page := make([]byte, pageBytes)
+	binary.LittleEndian.PutUint32(page[:4], 0xd503201f) // Prologue alignment word.
+	for offset := 4; offset+12 <= len(page); offset += 12 {
+		binary.LittleEndian.PutUint32(page[offset:offset+4], 0x18000050)    // ldr w16, #8
+		binary.LittleEndian.PutUint32(page[offset+4:offset+8], 0x14000000)  // b .
+		binary.LittleEndian.PutUint32(page[offset+8:offset+12], 0x00000001) // Lazy-bind data.
+	}
+	ranges := []machoFileRange{{
+		offset: 0x4000, size: pageBytes, segment: "__TEXT", section: "__stub_helper",
+		flags: sectionAttrPureInstructions | sectionAttrSomeInstructions,
+	}}
+	valid, words, mnemonics := auditARM64FirstPage(page, 0x4000, ranges)
+	if valid != 682 || words != 682 || mnemonics["LDR"] != 341 || mnemonics["B"] != 341 {
+		t.Fatalf("stub-helper audit = %d/%d, %#v", valid, words, mnemonics)
+	}
+
+	for offset := 4; offset+12 <= len(page); offset += 12 {
+		binary.LittleEndian.PutUint32(page[offset:offset+4], 0xd503201f)
+	}
+	valid, words, _ = auditARM64FirstPage(page, 0x4000, ranges)
+	if valid*100 >= words*minimumARM64InstructionValidPercent {
+		t.Fatalf("non-stub mixed page passed at %d/%d", valid, words)
+	}
+}
+
 func TestFirstARM64AuditPageSkipsEncryptedDataPage(t *testing.T) {
 	start, end := 0x4000, 0x40000
 	ranges := []machoFileRange{{offset: 0x5d10, size: 0x32cf8}}

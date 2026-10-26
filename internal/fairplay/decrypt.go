@@ -506,6 +506,35 @@ func pageOffsetAuditTrials(ciphertext []byte, record [32]byte, deriver *pageKeyD
 	return strings.Join(parts, ",")
 }
 
+func auditARM64StubHelper(data []byte) (int, int, map[string]int) {
+	type candidate struct {
+		pairs, matched int
+	}
+	best := candidate{}
+	words := len(data) / 4
+	for phase := 0; phase < 3; phase++ {
+		current := candidate{}
+		for index := phase; index+1 < words; index += 3 {
+			current.pairs++
+			first := binary.LittleEndian.Uint32(data[index*4 : index*4+4])
+			second := binary.LittleEndian.Uint32(data[(index+1)*4 : (index+2)*4])
+			firstMnemonic, firstValid := arm64Mnemonic(first)
+			secondMnemonic, secondValid := arm64Mnemonic(second)
+			if firstValid && secondValid && firstMnemonic == "LDR" && secondMnemonic == "B" {
+				current.matched++
+			}
+		}
+		if best.pairs == 0 || current.matched*best.pairs > best.matched*current.pairs {
+			best = current
+		}
+	}
+	if best.pairs >= 8 && best.matched*100 >= best.pairs*90 {
+		return best.matched * 2, best.pairs * 2, map[string]int{"LDR": best.matched, "B": best.matched}
+	}
+	valid, mnemonics := auditARM64(data)
+	return valid, words, mnemonics
+}
+
 func auditARM64FirstPage(page []byte, pageOffset uint64, ranges []machoFileRange) (int, int, map[string]int) {
 	if len(ranges) == 0 {
 		valid, mnemonics := auditARM64(page)
@@ -522,9 +551,16 @@ func auditARM64FirstPage(page []byte, pageOffset uint64, ranges []machoFileRange
 		if start >= end {
 			continue
 		}
-		observed, counts := auditARM64(page[start-pageOffset : end-pageOffset])
+		data := page[start-pageOffset : end-pageOffset]
+		observed, sectionWords, counts := 0, 0, map[string]int(nil)
+		if section.segment == "__TEXT" && section.section == "__stub_helper" {
+			observed, sectionWords, counts = auditARM64StubHelper(data)
+		} else {
+			observed, counts = auditARM64(data)
+			sectionWords = len(data) / 4
+		}
 		valid += observed
-		words += int((end - start) / 4)
+		words += sectionWords
 		for mnemonic, count := range counts {
 			mnemonics[mnemonic] += count
 		}
@@ -580,8 +616,8 @@ func auditAdditionalARM64Pages(output []byte, start, count, auditedIndex int, ra
 		}
 		checked[index] = true
 		pageStart := start + index*pageBytes
-		valid, _ := auditARM64(output[pageStart : pageStart+pageBytes])
-		if valid*100 >= (pageBytes/4)*minimumARM64InstructionValidPercent {
+		valid, words, _ := auditARM64FirstPage(output[pageStart:pageStart+pageBytes], uint64(pageStart), ranges)
+		if words != 0 && valid*100 >= words*minimumARM64InstructionValidPercent {
 			plausible++
 		}
 	}

@@ -247,16 +247,22 @@ func TestMachOInstructionSectionInventory(t *testing.T) {
 	blob := make([]byte, 32)
 	binary.LittleEndian.PutUint32(blob, mhMagic64)
 	binary.LittleEndian.PutUint32(blob[4:], cpuTypeARM64)
-	segment := make([]byte, 72+80)
+	segment := make([]byte, 72+2*80)
 	binary.LittleEndian.PutUint32(segment, lcSegment64)
 	binary.LittleEndian.PutUint32(segment[4:], uint32(len(segment)))
-	binary.LittleEndian.PutUint32(segment[64:], 1)
+	binary.LittleEndian.PutUint32(segment[64:], 2)
 	section := segment[72:]
 	copy(section[:16], "__text")
 	copy(section[16:32], "__TEXT")
 	binary.LittleEndian.PutUint64(section[40:], 0x280)
 	binary.LittleEndian.PutUint32(section[48:], 0x1180)
 	binary.LittleEndian.PutUint32(section[64:], sectionAttrPureInstructions|sectionAttrSomeInstructions)
+	stubHelper := segment[72+80:]
+	copy(stubHelper[:16], "__stub_helper")
+	copy(stubHelper[16:32], "__TEXT")
+	binary.LittleEndian.PutUint64(stubHelper[40:], 0x180)
+	binary.LittleEndian.PutUint32(stubHelper[48:], 0x1400)
+	binary.LittleEndian.PutUint32(stubHelper[64:], sectionAttrPureInstructions|sectionAttrSomeInstructions)
 	blob = append(blob, segment...)
 
 	encryption := make([]byte, 24)
@@ -279,8 +285,11 @@ func TestMachOInstructionSectionInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(layout.instructionRanges) != 1 || layout.instructionRanges[0] != (machoFileRange{
+	if len(layout.instructionRanges) != 2 || layout.instructionRanges[0] != (machoFileRange{
 		offset: 0x1180, size: 0x280, segment: "__TEXT", section: "__text",
+		flags: sectionAttrPureInstructions | sectionAttrSomeInstructions,
+	}) || layout.instructionRanges[1] != (machoFileRange{
+		offset: 0x1400, size: 0x180, segment: "__TEXT", section: "__stub_helper",
 		flags: sectionAttrPureInstructions | sectionAttrSomeInstructions,
 	}) {
 		t.Fatalf("unexpected instruction ranges: %#v", layout.instructionRanges)
