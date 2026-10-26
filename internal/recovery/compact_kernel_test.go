@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"reflect"
 	"testing"
 	"unsafe"
 )
@@ -69,6 +70,37 @@ func TestCompactKernelEncoding(t *testing.T) {
 	}
 	if got := len(compact26A428OuterHooks); got != 6 {
 		t.Fatalf("outer hook count = %d, want 6", got)
+	}
+}
+
+func TestCompactProfileBinaryRoundTrip(t *testing.T) {
+	sections := []compactProfileSection{
+		{id: 1, blocks: compact26A428AccountEntryBlocks},
+		{id: 2, blocks: compact26A428BootstrapBlocks},
+		{id: 3, blocks: compact26A428SelectionBlocks},
+		{id: 4, blocks: compact26A428SINFEntryBlocks00},
+		{id: 5, blocks: compact26A428SINFEntryBlocks01},
+		{id: 6, blocks: compact26A428SINFEntryBlocks02},
+		{id: 7, blocks: compact26A428SINFEntryBlocks03},
+		{id: 8, blocks: compact26A428SINFEntryBlocks04},
+		{id: 9, blocks: compact26A428SINFEntryBlocks05},
+	}
+	encoded, err := marshalCompactProfile(sections)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := unmarshalCompactProfile(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, section := range sections {
+		if !reflect.DeepEqual(decoded[section.id], section.blocks) {
+			t.Fatalf("compact profile section %d changed after round trip", section.id)
+		}
+	}
+	encoded[len(encoded)-1] ^= 1
+	if _, err := unmarshalCompactProfile(encoded); err == nil {
+		t.Fatal("corrupt compact profile was accepted")
 	}
 }
 
