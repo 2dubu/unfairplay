@@ -28,6 +28,10 @@ func TestTranslateLegacyInstructionForms(t *testing.T) {
 		{"eor x0, x17, x0, ror #61", "compactXorROR64"},
 		{"uxtl v4.8h, v4.8b", "compactVectorUnsignedShiftLong"},
 		{"uxtl2 v18.8h, v17.16b", "compactVectorUnsignedShiftLong"},
+		{"sub x11, x11, x11, lsr #16", "compactSubLSR64"},
+		{"ldrb w13, [x11, w10, sxtw]", "compactLoadSXTW8"},
+		{"ldr q28, [sp, #32]", "compactLoadVector"},
+		{"ldp q27, q26, [sp, #720]", "compactPairLoadVector"},
 	} {
 		got, stop, err := compactInstruction(test.source)
 		if err != nil || stop || !strings.Contains(got, test.opcode) {

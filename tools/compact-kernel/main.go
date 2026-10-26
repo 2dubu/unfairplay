@@ -43,6 +43,7 @@ var (
 	subImmediateShift64          = regexp.MustCompile(`^sub x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+), lsl #(\d+)$`)
 	addShiftRight32              = regexp.MustCompile(`^add w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
 	subShift64                   = regexp.MustCompile(`^sub x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
+	subLSR64                     = regexp.MustCompile(`^sub x(\d+), x(\d+), x(\d+), lsr #(\d+)$`)
 	subExtended32                = regexp.MustCompile(`^sub w(\d+), w(\d+), w(\d+), uxtb$`)
 	xorImmediate32               = regexp.MustCompile(`^eor w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	andImmediate32               = regexp.MustCompile(`^and w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
@@ -68,6 +69,7 @@ var (
 	loadSXTW64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), sxtw(?: #(\d+))?\]$`)
 	loadUXTW32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), uxtw(?: #(\d+))?\]$`)
 	loadUXTW8                    = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), w(\d+), uxtw\]$`)
+	loadSXTW8                    = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), w(\d+), sxtw\]$`)
 	loadBaseImm8                 = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
 	loadSPImm8                   = regexp.MustCompile(`^ldrb w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
 	loadXIndex8                  = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), x(\d+)\]$`)
@@ -176,6 +178,8 @@ var (
 	bitClearSetFlagsLSR          = regexp.MustCompile(`^bics (w(?:\d+)|wzr), w(\d+), w(\d+), lsr #(\d+)$`)
 	conditionalCompareNegative64 = regexp.MustCompile(`^ccmn x(\d+), #(0x[0-9a-f]+|[0-9]+), #(0x[0-9a-f]+|\d+), ([a-z]+)$`)
 	gnuNegativeMov64             = regexp.MustCompile(`^mov x(\d+), #(0x[0-9a-f]+)$`)
+	gnuVectorRange               = regexp.MustCompile(`\{v(\d+)\.16b-v(\d+)\.16b\}`)
+	gnuShiftedCompare            = regexp.MustCompile(`^(cmp|cmn) ([xw]\d+), #(0x[0-9a-f]+|\d+), lsl #(0x[0-9a-f]+|\d+)$`)
 	conditionSelectIncrement32   = regexp.MustCompile(`^csinc w(\d+), (w(?:\d+)|wzr), (w(?:\d+)|wzr), ([a-z]+)$`)
 	testImmediate64              = regexp.MustCompile(`^tst x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	exclusiveOrNot32             = regexp.MustCompile(`^eon w(\d+), w(\d+), w(\d+)$`)
@@ -190,7 +194,8 @@ var (
 	storeUXTW64                  = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
 	storePostIndex8              = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+)\], #(-?(?:0x[0-9a-f]+|[0-9]+))$`)
 	vectorDup32                  = regexp.MustCompile(`^dup v(\d+)\.(\d+)s, w(\d+)$`)
-	loadVector                   = regexp.MustCompile(`^ldr ([qds])(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	loadVector                   = regexp.MustCompile(`^ldr ([qds])(\d+), \[(sp|x\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
+	pairLoadVector               = regexp.MustCompile(`^ldp q(\d+), q(\d+), \[(sp|x\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
 	storeVector                  = regexp.MustCompile(`^stur ([qds])(\d+), \[(sp|x\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
 	vectorImmediate              = regexp.MustCompile(`^movi v(\d+)\.(\d+)([bhsd]), #([0-9a-fx]+)(?:, lsl #(\d+))?$`)
 	vectorBinary                 = regexp.MustCompile(`^(add|sub|mul|eor) v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], v(\d+)\.\d+[bhsd]$`)
@@ -897,6 +902,13 @@ func compactInstruction(disassembly string) (string, bool, error) {
 	if match := subShift64.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactSubLSL64", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
+	if match := subLSR64.FindStringSubmatch(disassembly); match != nil {
+		shift, err := number(match[4])
+		if err != nil || shift > 63 {
+			return "", false, fmt.Errorf("invalid right-shifted 64-bit SUB %q", disassembly)
+		}
+		return fields("compactSubLSR64", "destination", match[1], "left", match[2], "right", match[3], "shift", fmt.Sprint(shift)), false, nil
+	}
 	if match := subExtended32.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactSubExt32", "destination", match[1], "left", match[2], "right", match[3]), false, nil
 	}
@@ -1079,6 +1091,9 @@ func compactInstruction(disassembly string) (string, bool, error) {
 	}
 	if match := loadUXTW8.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactLoadUXTW8", "destination", match[1], "left", match[2], "right", match[3]), false, nil
+	}
+	if match := loadSXTW8.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactLoadSXTW8", "destination", match[1], "left", match[2], "right", match[3]), false, nil
 	}
 	if match := loadBaseImm8.FindStringSubmatch(disassembly); match != nil {
 		immediate := uint64(0)
@@ -1390,10 +1405,23 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		if match[4] != "" {
 			immediate, err = number(match[4])
 		}
-		if err != nil || immediate > 0xffff {
+		base, ok := baseRegisterNumber(match[3])
+		if err != nil || !ok || immediate > 0xffff {
 			return "", false, fmt.Errorf("invalid vector load %q", disassembly)
 		}
-		return fields("compactLoadVector", "destination", match[2], "left", match[3], "accumulator", fmt.Sprint(bytes), "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+		return fields("compactLoadVector", "destination", match[2], "left", base, "accumulator", fmt.Sprint(bytes), "immediate", fmt.Sprintf("%#x", immediate)), false, nil
+	}
+	if match := pairLoadVector.FindStringSubmatch(disassembly); match != nil {
+		base, ok := baseRegisterNumber(match[3])
+		immediate := uint64(0)
+		var err error
+		if match[4] != "" {
+			immediate, err = number(match[4])
+		}
+		if !ok || err != nil || immediate > 0x7fff {
+			return "", false, fmt.Errorf("invalid vector pair load %q", disassembly)
+		}
+		return fields("compactPairLoadVector", "destination", match[1], "right", match[2], "left", base, "immediate", fmt.Sprintf("%#x", immediate)), false, nil
 	}
 	if match := storeVector.FindStringSubmatch(disassembly); match != nil {
 		bytes := 16
@@ -2423,6 +2451,26 @@ func machoInstructionText(data []byte, pc uint64) string {
 	result := strings.ToLower(arm64asm.GNUSyntax(instruction))
 	result = strings.ReplaceAll(result, ", ", ",")
 	result = strings.ReplaceAll(result, ",", ", ")
+	result = gnuVectorRange.ReplaceAllStringFunc(result, func(value string) string {
+		match := gnuVectorRange.FindStringSubmatch(value)
+		start, startErr := strconv.Atoi(match[1])
+		end, endErr := strconv.Atoi(match[2])
+		if startErr != nil || endErr != nil || start < 0 || end < start || end > 31 || end-start >= 4 {
+			return value
+		}
+		registers := make([]string, 0, end-start+1)
+		for index := start; index <= end; index++ {
+			registers = append(registers, fmt.Sprintf("v%d.16b", index))
+		}
+		return "{" + strings.Join(registers, ", ") + "}"
+	})
+	if match := gnuShiftedCompare.FindStringSubmatch(result); match != nil {
+		immediate, immediateErr := number(match[3])
+		shift, shiftErr := number(match[4])
+		if immediateErr == nil && shiftErr == nil && shift <= 63 && immediate <= ^uint64(0)>>shift {
+			return fmt.Sprintf("%s %s, #%#x", match[1], match[2], immediate<<shift)
+		}
+	}
 	if match := gnuNegativeMov64.FindStringSubmatch(result); match != nil {
 		value, err := strconv.ParseUint(match[2], 0, 64)
 		if err == nil && value > math.MaxInt64 {

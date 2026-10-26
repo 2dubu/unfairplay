@@ -282,6 +282,9 @@ const (
 	compactMNeg32
 	compactRORImm64
 	compactXorROR64
+	compactLoadSXTW8
+	compactSubLSR64
+	compactPairLoadVector
 	compactOpcodeCount
 )
 
@@ -409,6 +412,27 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			s.x[d] = rotateRight(s.x[left], int(instruction.shift), 64)
 		case compactXorROR64:
 			s.x[d] = s.x[left] ^ rotateRight(s.x[right], int(instruction.shift), 64)
+		case compactLoadSXTW8:
+			address := s.x[left] + uint64(int64(int32(s.x[right])))
+			value, err := s.load(address, 1)
+			if err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			s.x[d] = uint64(byte(value))
+		case compactSubLSR64:
+			s.x[d] = s.x[left] - (s.x[right] >> instruction.shift)
+		case compactPairLoadVector:
+			base := s.x[left]
+			if instruction.left == 31 {
+				base = s.sp
+			}
+			address := addOffset(base, int64(int16(instruction.immediate)))
+			if err := s.loadVector(d, address, 16); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
+			if err := s.loadVector(int(instruction.right), address+16, 16); err != nil {
+				return fmt.Errorf("compact kernel %#x: %w", pc, err)
+			}
 		case compactXorROR32:
 			s.x[d] = uint64(uint32(s.x[left]) ^ uint32(rotateRight(uint64(uint32(s.x[right])), int(instruction.shift), 32)))
 		case compactOrROR32:
@@ -1077,7 +1101,11 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 		case compactVectorDup32:
 			s.vectorDup(d, int(instruction.immediate), 32, uint64(uint32(s.x[left])))
 		case compactLoadVector:
-			if err := s.loadVector(d, addOffset(s.x[left], int64(instruction.immediate)), int(instruction.accumulator)); err != nil {
+			base := s.x[left]
+			if instruction.left == 31 {
+				base = s.sp
+			}
+			if err := s.loadVector(d, addOffset(base, int64(instruction.immediate)), int(instruction.accumulator)); err != nil {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 		case compactASRImm32:

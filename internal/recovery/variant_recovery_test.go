@@ -67,6 +67,16 @@ func TestLegacyCompactInstructions(t *testing.T) {
 			t.Fatalf("result=%#x", s.x[2])
 		}
 	})
+	t.Run("subtract-shift-right-64", func(t *testing.T) {
+		s := newState(&model{pages: make(map[uint64][]byte)})
+		s.x[0], s.x[1] = 0x1000, 0x800
+		if err := runCompactKernel(s, compactKernel{instructions: []compactInstruction{{op: compactSubLSR64, destination: 2, left: 0, right: 1, shift: 4}}}); err != nil {
+			t.Fatal(err)
+		}
+		if s.x[2] != 0xf80 {
+			t.Fatalf("result=%#x", s.x[2])
+		}
+	})
 }
 
 func TestRecoveryWorkersKeepMappingsPrivate(t *testing.T) {
