@@ -60,18 +60,22 @@ Test a model without keeping the decrypted IPA:
 Use `unfairplay doctor` to check a capture, IPA, or model. Use
 `unfairplay profile` to inspect a fairplayd binary.
 
-Create a deterministic CFG-root profile for further build support with:
+Create a code profile for an exact fairplayd binary:
 
 ```sh
 ./unfairplay profile --binary /path/to/fairplayd.arm64e \
   --recovery-profile-output fairplayd.recovery-profile.gz
 ```
 
+The profile contains code locations and import names. It contains no account
+data and does not execute fairplayd. It helps add native support for new macOS
+builds, but creating it alone does not enable decryption.
+
 ## Support
 
 Verified profiles: `25G83`, `26A428`/`26A434`, and `26B118` compatibility
-mode. Unknown arm64e builds are accepted only if model recovery and full IPA
-validation succeed.
+mode. Native `26B118` execution is not enabled yet. Unknown arm64e builds are
+accepted only when model recovery and full IPA validation succeed.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.
