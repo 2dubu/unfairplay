@@ -83,5 +83,28 @@ func frameCore(input [16]byte) [16]byte {
 }
 
 func frameTransform(_ *model, input [16]byte) ([16]byte, error) {
-	return frameSemantic26A428.apply(frameCore(input)), nil
+	output, _ := frameSemantic26A428.apply(frameCore(input))
+	return output, nil
+}
+
+func frameTransformState(input [16]byte) ([16]byte, uint32) {
+	return frameSemantic26A428.apply(frameCore(input))
+}
+
+func applyRecoveredEnrollmentFrame(s *state) (uint64, error) {
+	const inputAddress = uint64(0x7000000fb524)
+	const outputAddress = uint64(0x7000000fb724)
+	inputBytes, err := s.outputBytes(inputAddress, 16)
+	if err != nil {
+		return 0, err
+	}
+	var input [16]byte
+	copy(input[:], inputBytes)
+	output, exitWord := frameTransformState(input)
+	if err := s.store(outputAddress, output[:]); err != nil {
+		return 0, err
+	}
+	s.x = [31]uint64{0x21, 0x4b, 0x101074000, 0x7000000ffcc8, outputAddress, 0x101075b40, 0xa6, 0xa5cd4cf, 0x10030db7c, 0x5f79, 0x12, 0, 5, 0x100f4feb0, 0x5b, 0, 0x100f86660, 0x57c9, 0, 0xb1, 0x44, 0x53, 0x10105b6f0, 0x100d61250, 0x28, 0xb5, uint64(exitWord), 0x76, 0x73, 0x7000000ffdd0, 0xda}
+	s.n, s.z, s.c, s.v = false, false, false, false
+	return 0x10030db7c, nil
 }

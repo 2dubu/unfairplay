@@ -18,6 +18,9 @@ func frameTestInput(index uint32) (result [16]byte) {
 }
 
 func TestRecoveredFrameTransform(t *testing.T) {
+	if digest := sha256.Sum256(frameSemanticProfileCompressed); hex.EncodeToString(digest[:]) != "c279626e963ba99c6760b901fa96dc232ef0d665f9f7ad83ea2087ad35ecc918" {
+		t.Fatalf("semantic frame profile digest = %x", digest)
+	}
 	value, err := loadModelBytes(embeddedModelBytes())
 	if err != nil {
 		t.Fatal(err)
@@ -47,14 +50,51 @@ func TestRecoveredFrameTransform(t *testing.T) {
 		}
 	}
 	hash := sha256.New()
+	stateHash := sha256.New()
+	var exitBytes [4]byte
 	for index := range 4096 {
-		output, err := frameTransform(value, frameTestInput(uint32(index)))
-		if err != nil {
-			t.Fatal(err)
-		}
+		input := frameTestInput(uint32(index))
+		output, exitWord := frameTransformState(input)
 		_, _ = hash.Write(output[:])
+		_, _ = stateHash.Write(output[:])
+		binary.LittleEndian.PutUint32(exitBytes[:], exitWord)
+		_, _ = stateHash.Write(exitBytes[:])
 	}
 	if got := hex.EncodeToString(hash.Sum(nil)); got != "82ec2f3bd4146e2f206043962b6c43302540c32d8cc7d9a4d54f73ad27fbe804" {
 		t.Fatalf("frame corpus digest = %s", got)
+	}
+	if got := hex.EncodeToString(stateHash.Sum(nil)); got != "c44831133e5d50cc022097ea5b36746deeb297a182872dbb220fcabfaffd83ac" {
+		t.Fatalf("frame state corpus digest = %s", got)
+	}
+}
+
+func TestApplyRecoveredEnrollmentFrame(t *testing.T) {
+	value, err := loadModelBytes(embeddedModelBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := newState(value)
+	worker.reset()
+	input := frameTestInput(17)
+	if err := worker.store(0x7000000fb524, input[:]); err != nil {
+		t.Fatal(err)
+	}
+	expected, exitWord := frameTransformState(input)
+	next, err := applyRecoveredEnrollmentFrame(worker)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next != 0x10030db7c || uint32(worker.x[26]) != exitWord || worker.x[4] != 0x7000000fb724 {
+		t.Fatalf("frame exit = next %#x x26 %#x x4 %#x", next, worker.x[26], worker.x[4])
+	}
+	observed, err := worker.outputBytes(0x7000000fb724, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(observed, expected[:]) {
+		t.Fatalf("stored frame = %x, want %x", observed, expected)
+	}
+	if worker.n || worker.z || worker.c || worker.v {
+		t.Fatal("frame exit flags are not clear")
 	}
 }

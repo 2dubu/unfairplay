@@ -26,10 +26,13 @@ type frameSemanticFinalByte struct {
 }
 
 type frameSemanticModel struct {
-	inputConstant [16]byte
-	inputColumns  [128][16]byte
-	rounds        []frameSemanticRound
-	final         [16]frameSemanticFinalByte
+	inputConstant     [16]byte
+	inputColumns      [128][16]byte
+	rounds            []frameSemanticRound
+	exitInputs        [4]byte
+	exitBaseline      [4]byte
+	exitContributions [4][4][256]byte
+	final             [16]frameSemanticFinalByte
 }
 
 //go:embed profiles/macos26a428-frame-semantic.bin.gz
@@ -69,7 +72,7 @@ func parseFrameSemanticProfile(encoded []byte) (frameSemanticModel, error) {
 		return result, fmt.Errorf("invalid semantic frame profile magic")
 	}
 	var version uint32
-	if err := binary.Read(reader, binary.LittleEndian, &version); err != nil || version != 1 {
+	if err := binary.Read(reader, binary.LittleEndian, &version); err != nil || version != 2 {
 		return result, fmt.Errorf("unsupported semantic frame profile version %d", version)
 	}
 	if _, err := io.ReadFull(reader, result.inputConstant[:]); err != nil {
@@ -109,6 +112,24 @@ func parseFrameSemanticProfile(encoded []byte) (frameSemanticModel, error) {
 				if _, err := io.ReadFull(reader, round.tables[position][value][:]); err != nil {
 					return result, err
 				}
+			}
+		}
+	}
+	if _, err := io.ReadFull(reader, result.exitInputs[:]); err != nil {
+		return result, err
+	}
+	for _, input := range result.exitInputs {
+		if input >= 16 {
+			return result, fmt.Errorf("invalid semantic frame exit input")
+		}
+	}
+	if _, err := io.ReadFull(reader, result.exitBaseline[:]); err != nil {
+		return result, err
+	}
+	for outputByte := range 4 {
+		for slot := range 4 {
+			if _, err := io.ReadFull(reader, result.exitContributions[outputByte][slot][:]); err != nil {
+				return result, err
 			}
 		}
 	}
@@ -168,7 +189,7 @@ func parseFrameSemanticProfile(encoded []byte) (frameSemanticModel, error) {
 	return result, nil
 }
 
-func (model frameSemanticModel) apply(input [16]byte) (output [16]byte) {
+func (model frameSemanticModel) apply(input [16]byte) (output [16]byte, exitWord uint32) {
 	state := model.inputConstant
 	for bit, column := range model.inputColumns {
 		if input[bit/8]&(byte(1)<<uint(bit%8)) != 0 {
@@ -177,7 +198,16 @@ func (model frameSemanticModel) apply(input [16]byte) (output [16]byte) {
 			}
 		}
 	}
-	for _, round := range model.rounds {
+	for roundIndex, round := range model.rounds {
+		if roundIndex == 6 {
+			for outputByte := range 4 {
+				value := model.exitBaseline[outputByte]
+				for slot, position := range model.exitInputs {
+					value ^= model.exitContributions[outputByte][slot][state[position]]
+				}
+				exitWord |= uint32(value) << uint(outputByte*8)
+			}
+		}
 		next := round.baseline
 		for position, value := range state {
 			for slot, target := range round.targets[position] {
@@ -197,5 +227,5 @@ func (model frameSemanticModel) apply(input [16]byte) (output [16]byte) {
 		}
 		output[target] = entry.baseline ^ entry.encode[decoded]
 	}
-	return output
+	return output, exitWord
 }
