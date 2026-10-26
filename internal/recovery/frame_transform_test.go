@@ -46,4 +46,15 @@ func TestRecoveredFrameTransform(t *testing.T) {
 			t.Fatalf("deterministic frame %d = %s, want %s", index, got, expected)
 		}
 	}
+	hash := sha256.New()
+	for index := range 4096 {
+		output, err := frameTransform(value, frameTestInput(uint32(index)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = hash.Write(output[:])
+	}
+	if got := hex.EncodeToString(hash.Sum(nil)); got != "82ec2f3bd4146e2f206043962b6c43302540c32d8cc7d9a4d54f73ad27fbe804" {
+		t.Fatalf("frame corpus digest = %s", got)
+	}
 }
