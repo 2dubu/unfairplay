@@ -74,6 +74,19 @@ An enrollment is the FairPlay state created when an Apple Account uses the Mac
 App Store on a Mac. It links the account, Mac, and FairPlay selector. `setup`
 turns that state into a reusable private model.
 
+### What are SINF, SUPF, SIDB, and SC Info?
+
+- **Personalized SINF:** an app license created for one Store enrollment. It
+  identifies the enrollment and protects the app-specific key.
+- **SUPF:** per-executable records used to derive keys and IVs for encrypted
+  Mach-O pages. Apps, extensions, frameworks, and watch apps may each have one.
+- **`SC_Info`:** the directory inside an installed app or IPA that contains its
+  SINF and SUPF license files.
+- **System `SC Info`:** the private Mac FairPlay state directory. Its SIDB and
+  SIDS files contain enrollment state, not app content.
+
+These files are private. Do not publish or share them.
+
 ### Do I need to run setup for every app?
 
 No. One model can decrypt different IPAs personalized for the same enrollment.
@@ -88,6 +101,18 @@ the matching IPA decrypts and passes validation.
 Patches and test reports are welcome. Include the macOS build, fairplayd
 SHA-256, UnfairPlay commit, and complete error. Never share SIDB, SINF, hardware
 identity, enrollment models, decrypted apps, or Apple credentials.
+
+### Can decryption run on another operating system?
+
+Yes. Collection must start on an enrolled Mac. You can either run `setup` on
+that Mac and securely copy the resulting model, or copy a complete private
+`collect` bundle and run `recover` elsewhere. The bundle contains the installed
+license files, system SC Info state, built-in IOMACAddress, matching IPA, macOS
+build metadata, and hash-checked fairplayd reference bytes.
+
+The recovered model and personalized IPAs can then be used on macOS or Linux;
+fairplayd is never executed. Windows builds compile, but Windows decryption is
+not enabled until equivalent private-file permission checks are implemented.
 
 ## Support
 
