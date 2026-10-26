@@ -27,10 +27,22 @@ Example manifest:
       "expected_reference_code_source": "embedded-profile",
       "expected_images": 10,
       "expected_pages": 11004
+    },
+    {
+      "name": "saved-ipa-control",
+      "ipa": "/private/path/App.ipa",
+      "model": "/private/path/fairplay-enrollment.bin",
+      "expected_model_sha256": "...",
+      "expected_ipa_sha256": "...",
+      "expected_reference_code_source": "existing-model",
+      "expected_images": 39,
+      "expected_pages": 10080
     }
   ]
 }
 ```
 
-The command fails on any changed hash, image count, page count, or incomplete
-decryption. Use it before creating a release tag.
+Capture controls test complete recovery. IPA/model controls test reusable
+decryption across other accounts and app layouts. The command fails on any
+changed hash, image count, page count, or incomplete decryption. Use it before
+creating a release tag.

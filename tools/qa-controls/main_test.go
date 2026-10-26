@@ -10,6 +10,15 @@ func TestValidateManifest(t *testing.T) {
 	if err := validateManifest(manifest); err != nil {
 		t.Fatal(err)
 	}
+	manifest.Controls = []qaControl{{Name: "verify", IPA: "/private/App.ipa", Model: "/private/model.bin"}}
+	if err := validateManifest(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Controls[0].Capture = "/private/capture"
+	if err := validateManifest(manifest); err == nil {
+		t.Fatal("accepted mixed recover and verify control")
+	}
+	manifest.Controls[0].Capture = ""
 	manifest.Controls = append(manifest.Controls, manifest.Controls[0])
 	if err := validateManifest(manifest); err == nil {
 		t.Fatal("accepted duplicate QA control")

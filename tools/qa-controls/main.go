@@ -24,7 +24,9 @@ type qaManifest struct {
 
 type qaControl struct {
 	Name                    string `json:"name"`
-	Capture                 string `json:"capture"`
+	Capture                 string `json:"capture,omitempty"`
+	IPA                     string `json:"ipa,omitempty"`
+	Model                   string `json:"model,omitempty"`
 	Reference               string `json:"reference_binary,omitempty"`
 	ExpectedModelSHA256     string `json:"expected_model_sha256,omitempty"`
 	ExpectedIPASHA256       string `json:"expected_ipa_sha256,omitempty"`
@@ -45,6 +47,7 @@ type recoveryResult struct {
 
 type qaResult struct {
 	Name                string `json:"name"`
+	Mode                string `json:"mode"`
 	ModelSHA256         string `json:"model_sha256"`
 	DecryptedIPASHA256  string `json:"decrypted_ipa_sha256"`
 	EncryptedImages     int    `json:"encrypted_images"`
@@ -66,8 +69,10 @@ func validateManifest(manifest qaManifest) error {
 	}
 	seen := make(map[string]bool)
 	for _, control := range manifest.Controls {
-		if control.Name == "" || filepath.Base(control.Name) != control.Name || control.Capture == "" || seen[control.Name] {
-			return fmt.Errorf("invalid QA control name or capture")
+		recoveryMode := control.Capture != ""
+		verifyMode := control.IPA != "" || control.Model != ""
+		if control.Name == "" || filepath.Base(control.Name) != control.Name || seen[control.Name] || recoveryMode == verifyMode || verifyMode && (control.IPA == "" || control.Model == "") || !recoveryMode && control.Reference != "" {
+			return fmt.Errorf("invalid QA control %q", control.Name)
 		}
 		seen[control.Name] = true
 		for _, value := range []string{control.ExpectedModelSHA256, control.ExpectedIPASHA256, control.ExpectedEvaluatorSHA256} {
@@ -120,10 +125,17 @@ func checkControl(control qaControl, result recoveryResult, modelSHA256 string) 
 }
 
 func runControl(ctx context.Context, binary, root string, control qaControl) (qaResult, error) {
-	output := filepath.Join(root, control.Name)
-	arguments := []string{"recover", "--capture", control.Capture, "--output", output}
-	if control.Reference != "" {
-		arguments = append(arguments, "--reference-binary", control.Reference)
+	mode := "verify"
+	arguments := []string{"verify", "--input", control.IPA, "--model", control.Model}
+	modelPath := control.Model
+	if control.Capture != "" {
+		mode = "recover"
+		output := filepath.Join(root, control.Name)
+		arguments = []string{"recover", "--capture", control.Capture, "--output", output}
+		if control.Reference != "" {
+			arguments = append(arguments, "--reference-binary", control.Reference)
+		}
+		modelPath = filepath.Join(output, "fairplay-enrollment.bin")
 	}
 	command := exec.CommandContext(ctx, binary, arguments...)
 	stdout, err := command.Output()
@@ -137,7 +149,10 @@ func runControl(ctx context.Context, binary, root string, control qaControl) (qa
 	if err := json.Unmarshal(stdout, &recovered); err != nil {
 		return qaResult{}, fmt.Errorf("control %s returned invalid JSON: %w", control.Name, err)
 	}
-	modelSHA256, err := fileSHA256(filepath.Join(output, "fairplay-enrollment.bin"))
+	if mode == "verify" {
+		recovered.ReferenceCodeSource = "existing-model"
+	}
+	modelSHA256, err := fileSHA256(modelPath)
 	if err != nil {
 		return qaResult{}, err
 	}
@@ -145,7 +160,7 @@ func runControl(ctx context.Context, binary, root string, control qaControl) (qa
 		return qaResult{}, err
 	}
 	return qaResult{
-		Name: control.Name, ModelSHA256: modelSHA256, DecryptedIPASHA256: recovered.DecryptedIPASHA256,
+		Name: control.Name, Mode: mode, ModelSHA256: modelSHA256, DecryptedIPASHA256: recovered.DecryptedIPASHA256,
 		EncryptedImages: recovered.EncryptedImages, DecryptedPages: recovered.DecryptedPages,
 		ReferenceCodeSource: recovered.ReferenceCodeSource,
 	}, nil
