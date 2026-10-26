@@ -66,6 +66,29 @@ The profile contains code locations and import names. It contains no account
 data and does not execute fairplayd. It helps add native support for new macOS
 builds, but creating it alone does not enable decryption.
 
+## FAQ
+
+### What is an enrollment?
+
+An enrollment is the FairPlay state created when an Apple Account uses the Mac
+App Store on a Mac. It links the account, Mac, and FairPlay selector. `setup`
+turns that state into a reusable private model.
+
+### Do I need to run setup for every app?
+
+No. One model can decrypt different IPAs personalized for the same enrollment.
+Each app still has its own key inside its personalized SINF.
+
+### Why might another macOS build fail?
+
+Apple changes fairplayd code and state layouts between builds. UnfairPlay fails
+closed when a path is not verified. It never publishes a recovered model until
+the matching IPA decrypts and passes validation.
+
+Patches and test reports are welcome. Include the macOS build, fairplayd
+SHA-256, UnfairPlay commit, and complete error. Never share SIDB, SINF, hardware
+identity, enrollment models, decrypted apps, or Apple credentials.
+
 ## Support
 
 Verified enrollment contracts: `25G83`, `26A428`/`26A434`, and `26B118`.
