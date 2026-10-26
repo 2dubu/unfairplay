@@ -34,9 +34,10 @@ Recover the model and validate it:
   --output App.recovery
 ```
 
-Some legacy `26A428`/`26A434` enrollments also need
-`--reference-binary /path/to/fairplayd.arm64e`. Only the exact supported hash
-is accepted. `--selection-max-blocks` can raise the bounded execution limit.
+For exact `26A428`/`26A434` captures, UnfairPlay automatically uses the
+captured fairplayd as hash-checked reference code. `--reference-binary` is an
+optional override for archived research captures. `--selection-max-blocks`
+can raise the bounded execution limit.
 
 Decrypt another IPA from the same enrollment:
 
@@ -92,6 +93,8 @@ recovery models, or decrypted apps. Decrypted IPAs are analysis files and need
 signing before installation.
 
 ## Releases
+
+Run the private control matrix in [QA.md](QA.md) before tagging a release.
 
 Tags matching `v*` publish binaries and `SHA256SUMS` through GitHub Actions.
 Tags such as `v0.2.0-rc.1` create prereleases.

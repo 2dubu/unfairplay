@@ -134,13 +134,28 @@ func newRecoverCommand() *cobra.Command {
 			return recoverEnrollment(command.Context(), options)
 		},
 	}
-	command.Flags().StringVar(&options.Reference, "reference-binary", "", "Hash-matched arm64e fairplayd for extended recovery")
+	command.Flags().StringVar(&options.Reference, "reference-binary", "", "Override hash-matched fairplayd reference code")
 	command.Flags().IntVar(&options.SelectionMaxBlocks, "selection-max-blocks", 2_000_000, "Selection execution limit (1..20000000)")
 	command.Flags().StringVar(&options.Capture, "capture", "", "Private capture directory")
 	command.Flags().StringVar(&options.Output, "output", "", "New private recovery directory")
 	_ = command.MarkFlagRequired("capture")
 	_ = command.MarkFlagRequired("output")
 	return command
+}
+
+func recoveryReference(options recoverOptions, manifest fairplay.EnrollmentCaptureManifest) (string, string, error) {
+	if options.Reference != "" {
+		return options.Reference, "explicit-binary", nil
+	}
+	if manifest.FairPlay.EvaluatorSHA256 == "" || !strings.EqualFold(manifest.FairPlay.EvaluatorSHA256, manifest.FairPlayd.SHA256) {
+		return "", "embedded-profile", nil
+	}
+	relative := filepath.FromSlash(manifest.FairPlayd.Path)
+	clean := filepath.Clean(relative)
+	if relative == "" || filepath.IsAbs(relative) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", "", fmt.Errorf("capture contains an unsafe fairplayd path")
+	}
+	return filepath.Join(options.Capture, clean), "captured-exact-binary", nil
 }
 
 func recoverEnrollment(ctx context.Context, options recoverOptions) error {
@@ -157,6 +172,10 @@ func recoverEnrollment(ctx context.Context, options recoverOptions) error {
 	}
 	if !canonical.RecoveryReady {
 		return errors.New("canonical enrollment input is not recovery-ready")
+	}
+	referencePath, referenceSource, err := recoveryReference(options, manifest)
+	if err != nil {
+		return err
 	}
 	if err := os.Mkdir(options.Output, 0o700); err != nil {
 		return err
@@ -192,7 +211,7 @@ func recoverEnrollment(ctx context.Context, options recoverOptions) error {
 		mappings = append([]string{"/" + manifest.App.Executable + "=" + canonical.PrivateExecutablePath()}, mappings...)
 		recovered, err = recovery.Recover(recovery.Options{
 			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), ExecutablePath: executablePath,
-			ReferencePath: options.Reference, SelectionMaxBlocks: options.SelectionMaxBlocks,
+			ReferencePath: referencePath, SelectionMaxBlocks: options.SelectionMaxBlocks,
 		})
 		if err == nil {
 			selectedProfile = inputProfile.name
@@ -232,7 +251,8 @@ func recoverEnrollment(ctx context.Context, options recoverOptions) error {
 		"decrypted_ipa_sha256": result.OutputSHA256, "encrypted_images": result.EncryptedImages,
 		"decrypted_pages": result.DecryptedPages, "input_profile": selectedProfile,
 		"recovery_iterations": recovered.Iterations, "recovery_state_sha256": recovered.StateSHA256,
-		"promotion_gate": "complete-sinf-and-ipa-validation",
+		"promotion_gate":        "complete-sinf-and-ipa-validation",
+		"reference_code_source": referenceSource,
 	}
 	document, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {

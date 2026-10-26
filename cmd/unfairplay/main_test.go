@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
-
-	"github.com/DrWhax/unfairplay/internal/fairplay"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/DrWhax/unfairplay/internal/fairplay"
 )
 
 func TestCommandsAreRegistered(t *testing.T) {
@@ -66,6 +66,31 @@ func TestCollectExposesArchivedExecutablePath(t *testing.T) {
 	}
 	if command.Flags().Lookup("installed-executable-path") == nil {
 		t.Fatal("collect has no archived executable path override")
+	}
+}
+
+func TestRecoveryReferenceSelection(t *testing.T) {
+	exact := fairplay.EnrollmentCaptureManifest{
+		FairPlayd: fairplay.EnrollmentCaptureFile{Path: "fairplayd/fairplayd.arm64e", SHA256: fairplay.FairPlayBuild26A428Hash},
+		FairPlay:  fairplay.FairPlayBuildSupport{EvaluatorSHA256: fairplay.FairPlayBuild26A428Hash},
+	}
+	path, source, err := recoveryReference(recoverOptions{Capture: "/capture"}, exact)
+	if err != nil || path != filepath.Join("/capture", "fairplayd", "fairplayd.arm64e") || source != "captured-exact-binary" {
+		t.Fatalf("exact reference: path=%q source=%q err=%v", path, source, err)
+	}
+	portable := exact
+	portable.FairPlayd.SHA256 = fairplay.FairPlayBuild26B118Hash
+	path, source, err = recoveryReference(recoverOptions{Capture: "/capture"}, portable)
+	if err != nil || path != "" || source != "embedded-profile" {
+		t.Fatalf("portable reference: path=%q source=%q err=%v", path, source, err)
+	}
+	path, source, err = recoveryReference(recoverOptions{Capture: "/capture", Reference: "/archive/fairplayd"}, portable)
+	if err != nil || path != "/archive/fairplayd" || source != "explicit-binary" {
+		t.Fatalf("explicit reference: path=%q source=%q err=%v", path, source, err)
+	}
+	exact.FairPlayd.Path = "../fairplayd"
+	if _, _, err := recoveryReference(recoverOptions{Capture: "/capture"}, exact); err == nil {
+		t.Fatal("accepted unsafe captured fairplayd path")
 	}
 }
 
