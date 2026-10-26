@@ -295,26 +295,26 @@ func auditARM64(page []byte) (int, map[string]int) {
 	valid := 0
 	for offset := 0; offset+4 <= len(page); offset += 4 {
 		word := binary.LittleEndian.Uint32(page[offset : offset+4])
-		if word&0xffe0001f == 0 {
+		if mnemonic, ok := arm64Mnemonic(word); ok {
 			valid++
-			counts["UDF"]++
-			continue
+			counts[mnemonic]++
 		}
-		instruction, err := arm64asm.Decode(page[offset : offset+4])
-		if err != nil {
-			// x/arch/arm64asm does not currently decode these ARMv8.2-A
-			// half-precision Advanced SIMD forms. Modern app binaries use them
-			// heavily enough that otherwise-valid code can fail the page audit.
-			if mnemonic, ok := supplementalARM64Mnemonic(word); ok {
-				valid++
-				counts[mnemonic]++
-			}
-			continue
-		}
-		valid++
-		counts[instruction.Op.String()]++
 	}
 	return valid, counts
+}
+
+func arm64Mnemonic(word uint32) (string, bool) {
+	if word&0xffe0001f == 0 {
+		return "UDF", true
+	}
+	var encoded [4]byte
+	binary.LittleEndian.PutUint32(encoded[:], word)
+	instruction, err := arm64asm.Decode(encoded[:])
+	if err == nil {
+		return instruction.Op.String(), true
+	}
+	// x/arch/arm64asm does not currently decode every allocated ARM64 form.
+	return supplementalARM64Mnemonic(word)
 }
 
 func supplementalARM64Mnemonic(word uint32) (string, bool) {
@@ -328,6 +328,84 @@ func supplementalARM64Mnemonic(word uint32) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+type arm64AuditCount struct {
+	name  string
+	count int
+}
+
+func topARM64AuditCounts(counts map[string]int, limit int) string {
+	ordered := make([]arm64AuditCount, 0, len(counts))
+	for name, count := range counts {
+		ordered = append(ordered, arm64AuditCount{name: name, count: count})
+	}
+	sort.Slice(ordered, func(left, right int) bool {
+		if ordered[left].count != ordered[right].count {
+			return ordered[left].count > ordered[right].count
+		}
+		return ordered[left].name < ordered[right].name
+	})
+	if len(ordered) > limit {
+		ordered = ordered[:limit]
+	}
+	parts := make([]string, len(ordered))
+	for index, value := range ordered {
+		parts[index] = fmt.Sprintf("%s:%d", value.name, value.count)
+	}
+	return strings.Join(parts, ",")
+}
+
+func auditARM64PageDetails(page []byte, pageOffset uint64, ranges []machoFileRange) (map[string]int, map[string]int) {
+	mnemonics := make(map[string]int)
+	invalid := make(map[string]int)
+	pageEnd := pageOffset + uint64(len(page))
+	for _, section := range ranges {
+		start := max(pageOffset, section.offset)
+		end := min(pageEnd, section.offset+section.size)
+		start = (start + 3) &^ 3
+		end &^= 3
+		for cursor := start; cursor+4 <= end; cursor += 4 {
+			word := binary.LittleEndian.Uint32(page[cursor-pageOffset : cursor-pageOffset+4])
+			if mnemonic, ok := arm64Mnemonic(word); ok {
+				mnemonics[mnemonic]++
+			} else {
+				invalid[fmt.Sprintf("%03x", word>>20)]++
+			}
+		}
+	}
+	return mnemonics, invalid
+}
+
+func instructionRangesAtPage(pageOffset uint64, ranges []machoFileRange) string {
+	pageEnd := pageOffset + pageBytes
+	var result []string
+	for _, section := range ranges {
+		if pageOffset >= section.offset+section.size || pageEnd <= section.offset {
+			continue
+		}
+		name := section.section
+		if section.segment != "" {
+			name = section.segment + "," + name
+		}
+		if name == "" {
+			name = "unnamed"
+		}
+		result = append(result, fmt.Sprintf("%s@%#x+%#x/flags=%#x", name, section.offset, section.size, section.flags))
+	}
+	if len(result) == 0 {
+		return "none"
+	}
+	return strings.Join(result, ";")
+}
+
+func instructionRangeContainingPage(pageOffset uint64, ranges []machoFileRange) (machoFileRange, bool) {
+	for _, section := range ranges {
+		if pageOffset >= section.offset && pageOffset+pageBytes <= section.offset+section.size {
+			return section, true
+		}
+	}
+	return machoFileRange{}, false
 }
 
 func decryptPagesInPlace(output []byte, image encryptedImage, records [][32]byte, deriver *pageKeyDeriver) ([][16]byte, error) {
@@ -362,6 +440,63 @@ func decryptPagesInPlace(output []byte, image encryptedImage, records [][32]byte
 	}
 	group.Wait()
 	return keys, nil
+}
+
+func diagnosticARM64Page(start, end int, ranges []machoFileRange) (int, bool) {
+	for pass := 0; pass < 2; pass++ {
+		for _, section := range ranges {
+			if pass == 0 && (section.segment != "__TEXT" || section.section != "__text" || section.flags&sectionAttrPureInstructions == 0) {
+				continue
+			}
+			low := max(uint64(start), section.offset)
+			high := min(uint64(end), section.offset+section.size)
+			page := (low + pageBytes - 1) &^ uint64(pageBytes-1)
+			if page+pageBytes <= high {
+				return int(page), true
+			}
+		}
+	}
+	return firstARM64AuditPage(start, end, ranges)
+}
+
+func pageOffsetAuditTrials(ciphertext []byte, record [32]byte, deriver *pageKeyDeriver, image encryptedImage, pageStart int) string {
+	if len(ciphertext) != pageBytes || pageStart < int(image.layout.cryptOffset) {
+		return "unavailable"
+	}
+	pageIndex := (pageStart - int(image.layout.cryptOffset)) / pageBytes
+	pageTerm := uint64(pageIndex * pageBytes)
+	absolute := image.sliceOffset + uint64(image.layout.cryptOffset) + pageTerm
+	type trial struct {
+		name         string
+		offset       uint64
+		littleEndian bool
+	}
+	trials := []trial{
+		{"absolute-per-page", absolute, false},
+		{"slice-relative-per-page", uint64(image.layout.cryptOffset) + pageTerm, false},
+		{"page-relative", pageTerm, false},
+		{"absolute-region-base", image.sliceOffset + uint64(image.layout.cryptOffset), false},
+		{"absolute-per-page-le", absolute, true},
+	}
+	parts := make([]string, 0, len(trials))
+	for _, candidate := range trials {
+		var key [16]byte
+		if candidate.littleEndian {
+			var padding [8]byte
+			binary.LittleEndian.PutUint64(padding[:], candidate.offset)
+			key = deriver.pageKeyWithPadding(record[:16], padding)
+		} else {
+			key = deriver.pageKey(record[:16], candidate.offset)
+		}
+		block, _ := aes.NewCipher(key[:])
+		scratch := append([]byte(nil), ciphertext...)
+		cipher.NewCBCDecrypter(block, record[16:]).CryptBlocks(scratch, scratch)
+		valid, words, _ := auditARM64FirstPage(scratch, uint64(pageStart), image.layout.instructionRanges)
+		parts = append(parts, fmt.Sprintf("%s=%d/%d", candidate.name, valid, words))
+		clear(key[:])
+		clear(scratch)
+	}
+	return strings.Join(parts, ",")
 }
 
 func auditARM64FirstPage(page []byte, pageOffset uint64, ranges []machoFileRange) (int, int, map[string]int) {
@@ -472,6 +607,15 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 			return nil, fmt.Errorf("%s: encrypted source fails CodeDirectory", image.member)
 		}
 	}
+	diagnosticPageStart, hasDiagnosticPage := 0, false
+	var diagnosticCiphertext []byte
+	if isARM64InstructionSet(image.layout.cpuType) {
+		diagnosticPageStart, hasDiagnosticPage = diagnosticARM64Page(start, end, image.layout.instructionRanges)
+		if hasDiagnosticPage && diagnosticPageStart >= start && diagnosticPageStart+pageBytes <= end {
+			diagnosticCiphertext = append([]byte(nil), output[diagnosticPageStart:diagnosticPageStart+pageBytes]...)
+			defer clear(diagnosticCiphertext)
+		}
+	}
 	keys, err := decryptPagesInPlace(output, image, records, deriver)
 	if err != nil {
 		return nil, err
@@ -486,6 +630,7 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 	structurallyPlausible := false
 	if isARM64InstructionSet(image.layout.cpuType) {
 		bestValid, bestWords, bestStart := 0, 0, start
+		bestFullValid, bestFullWords, bestFullStart := 0, 0, 0
 		if len(image.layout.instructionRanges) == 0 {
 			valid, mnemonics = auditARM64(output[start : start+pageBytes])
 			instructionWords = pageBytes / 4
@@ -506,6 +651,10 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 				if bestWords == 0 || observed*bestWords > bestValid*words {
 					bestValid, bestWords, bestStart = observed, words, candidate
 				}
+				if _, full := instructionRangeContainingPage(uint64(candidate), image.layout.instructionRanges); full &&
+					(bestFullWords == 0 || observed*bestFullWords > bestFullValid*words) {
+					bestFullValid, bestFullWords, bestFullStart = observed, words, candidate
+				}
 				if observed*100 >= words*minimumARM64InstructionValidPercent {
 					auditPageStart = candidate
 					valid, instructionWords, mnemonics = observed, words, counts
@@ -516,7 +665,23 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 		}
 		if !structurallyPlausible {
 			best := output[bestStart : bestStart+pageBytes]
-			return nil, fmt.Errorf("%s: best executable page has only %d/%d valid ARM64 words (SHA-256 %s)", image.member, bestValid, bestWords, digest(best))
+			mnemonics, invalid := auditARM64PageDetails(best, uint64(bestStart), image.layout.instructionRanges)
+			fullPage := "none"
+			if bestFullWords != 0 {
+				fullPage = fmt.Sprintf("%d/%d@%#x[%s]", bestFullValid, bestFullWords, bestFullStart,
+					instructionRangesAtPage(uint64(bestFullStart), image.layout.instructionRanges))
+			}
+			trials := "unavailable"
+			if len(diagnosticCiphertext) == pageBytes {
+				index := (diagnosticPageStart - start) / pageBytes
+				if index >= 0 && index < len(records) {
+					trials = pageOffsetAuditTrials(diagnosticCiphertext, records[index], deriver, image, diagnosticPageStart)
+				}
+			}
+			return nil, fmt.Errorf("%s: best executable page has only %d/%d valid ARM64 words (SHA-256 %s); audit page=%#x ranges=[%s] full-page=%s mnemonics=[%s] invalid-classes=[%s] offset-trials=[%s]",
+				image.member, bestValid, bestWords, digest(best), bestStart,
+				instructionRangesAtPage(uint64(bestStart), image.layout.instructionRanges), fullPage,
+				topARM64AuditCounts(mnemonics, 8), topARM64AuditCounts(invalid, 8), trials)
 		}
 		auditedPageIndex := (auditPageStart - start) / pageBytes
 		if err := auditAdditionalARM64Pages(output, start, len(records), auditedPageIndex, image.layout.instructionRanges); err != nil {

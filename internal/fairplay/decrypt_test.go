@@ -141,6 +141,60 @@ func TestAuditAdditionalARM64PagesRejectsWrongPageKey(t *testing.T) {
 	}
 }
 
+func TestDecryptRejectsMixedInstructionPageWithDiagnostics(t *testing.T) {
+	blob, layout := signedAuditFixture(t, pageBytes, pageBytes, 12, 2)
+	layout.cpuType = cpuTypeARM64
+	layout.cryptID = 1
+	layout.cryptIDOffset = 16
+	layout.instructionRanges = []machoFileRange{{
+		offset: pageBytes, size: 598 * 4, segment: "__TEXT", section: "__mixed",
+		flags: sectionAttrSomeInstructions,
+	}}
+	binary.LittleEndian.PutUint32(blob[layout.cryptIDOffset:], 1)
+
+	var logical [16]byte
+	for index := range logical {
+		logical[index] = byte(index + 1)
+	}
+	var record [32]byte
+	for index := range record {
+		record[index] = byte(0x40 + index)
+	}
+	plaintext := bytes.Repeat([]byte{0xff}, pageBytes)
+	for offset := 0; offset < 409*4; offset += 4 {
+		binary.LittleEndian.PutUint32(plaintext[offset:offset+4], 0xd503201f)
+	}
+	mask := appMaskFromLogicalKey(logical)
+	deriver := newPageKeyDeriver(mask)
+	key := deriver.pageKey(record[:16], pageBytes)
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	cipher.NewCBCEncrypter(block, record[16:]).CryptBlocks(blob[pageBytes:2*pageBytes], plaintext)
+	clear(key[:])
+
+	directory := blob[int(layout.signatureOffset)+20:]
+	for slot := 0; slot < int(layout.signatureOffset)/pageBytes; slot++ {
+		hash, err := hashCodePage(2, blob[slot*pageBytes:(slot+1)*pageBytes])
+		if err != nil {
+			t.Fatal(err)
+		}
+		copy(directory[44+slot*32:], hash)
+	}
+
+	image := encryptedImage{member: "Payload/Test.app/Test", layout: layout, sliceSize: uint64(len(blob))}
+	_, err = decryptImage(blob, image, [][32]byte{record}, mask, deriver)
+	if err == nil {
+		t.Fatal("mixed instruction page passed the structural audit")
+	}
+	for _, want := range []string{"409/598", "__TEXT,__mixed", "full-page=none", "offset-trials=[absolute-per-page=409/598"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("diagnostic error %q does not contain %q", err, want)
+		}
+	}
+}
+
 func TestDecryptUniversalSliceUsesEachPageOffset(t *testing.T) {
 	blob, layout := signedAuditFixture(t, pageBytes, 2*pageBytes, 12, 2)
 	layout.cpuType = cpuTypeARM64

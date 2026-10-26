@@ -42,7 +42,16 @@ type machoLayout struct {
 }
 
 type machoFileRange struct {
-	offset, size uint64
+	offset, size     uint64
+	segment, section string
+	flags            uint32
+}
+
+func machoName(value []byte) string {
+	if index := bytes.IndexByte(value, 0); index >= 0 {
+		value = value[:index]
+	}
+	return string(value)
 }
 
 func sameMachoLayout(left, right machoLayout) bool {
@@ -170,7 +179,10 @@ func parseThinMachO(blob []byte, totalSize uint64) (machoLayout, error) {
 				if offset > totalSize || sectionBytes > totalSize-offset {
 					return result, fmt.Errorf("Mach-O instruction section exceeds file")
 				}
-				candidate := machoFileRange{offset: offset, size: sectionBytes}
+				candidate := machoFileRange{
+					offset: offset, size: sectionBytes,
+					section: machoName(section[:16]), segment: machoName(section[16:32]), flags: flags,
+				}
 				for _, previous := range result.instructionRanges {
 					if candidate.offset < previous.offset+previous.size && previous.offset < candidate.offset+candidate.size {
 						return result, fmt.Errorf("Mach-O instruction sections overlap")

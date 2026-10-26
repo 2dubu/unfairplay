@@ -279,7 +279,10 @@ func TestMachOInstructionSectionInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(layout.instructionRanges) != 1 || layout.instructionRanges[0] != (machoFileRange{offset: 0x1180, size: 0x280}) {
+	if len(layout.instructionRanges) != 1 || layout.instructionRanges[0] != (machoFileRange{
+		offset: 0x1180, size: 0x280, segment: "__TEXT", section: "__text",
+		flags: sectionAttrPureInstructions | sectionAttrSomeInstructions,
+	}) {
 		t.Fatalf("unexpected instruction ranges: %#v", layout.instructionRanges)
 	}
 }
