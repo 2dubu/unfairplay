@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
 	"debug/macho"
 	"encoding/binary"
 	"flag"
 	"fmt"
 	"go/format"
+	"io"
 	"math"
 	"math/bits"
 	"os"
@@ -1984,11 +1988,20 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		return fields("compactCSELZeroEq32", "destination", match[1], "right", match[2]), false, nil
 	}
 	if match := conditionSet.FindStringSubmatch(disassembly); match != nil {
-		condition, ok := conditionConstant(match[2])
+		canonical, ok := compactConditionConstant(match[2])
 		if !ok {
 			return "", false, fmt.Errorf("unsupported CSET condition %q", match[2])
 		}
-		return fields("compactCSet32", "destination", match[1], "shift", condition), false, nil
+		switch canonical {
+		case "compactConditionEQ":
+			return fields("compactCSet32EQ", "destination", match[1]), false, nil
+		case "compactConditionLO":
+			return fields("compactCSet32LO", "destination", match[1]), false, nil
+		case "compactConditionHI":
+			return fields("compactCSet32HI", "destination", match[1]), false, nil
+		default:
+			return fields("compactCSet32", "destination", match[1], "shift", "uint8("+canonical+")"), false, nil
+		}
 	}
 	if match := conditionSelect.FindStringSubmatch(disassembly); match != nil {
 		left, leftOK := registerNumber(match[3])
@@ -2323,6 +2336,139 @@ func generateCompactSource(name string, annotated []annotatedInstruction) ([]byt
 	return format.Source([]byte(source))
 }
 
+const (
+	compactSeedProfileMagic          = "FPCFG1\x00\x00"
+	compactSeedProfileVersion uint32 = 1
+	maximumSeedProfileBytes          = 256 * 1024 * 1024
+)
+
+func compactProfileStarts(path string) (map[uint64]bool, error) {
+	encoded, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(encoded) > maximumSeedProfileBytes {
+		return nil, fmt.Errorf("seed compact profile is too large")
+	}
+	if len(encoded) >= 2 && encoded[0] == 0x1f && encoded[1] == 0x8b {
+		stream, err := gzip.NewReader(bytes.NewReader(encoded))
+		if err != nil {
+			return nil, err
+		}
+		decoded, readErr := io.ReadAll(io.LimitReader(stream, maximumSeedProfileBytes+1))
+		closeErr := stream.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		if len(decoded) > maximumSeedProfileBytes {
+			return nil, fmt.Errorf("seed compact profile is too large")
+		}
+		encoded = decoded
+	}
+	if len(encoded) < 16+32 {
+		return nil, fmt.Errorf("seed compact profile is truncated")
+	}
+	payload, checksum := encoded[:len(encoded)-32], encoded[len(encoded)-32:]
+	digest := sha256.Sum256(payload)
+	if !bytes.Equal(checksum, digest[:]) {
+		return nil, fmt.Errorf("seed compact profile checksum mismatch")
+	}
+	reader := bytes.NewReader(payload)
+	var magic [8]byte
+	var version, sectionCount uint32
+	if _, err := io.ReadFull(reader, magic[:]); err != nil || string(magic[:]) != compactSeedProfileMagic ||
+		binary.Read(reader, binary.LittleEndian, &version) != nil || version != compactSeedProfileVersion ||
+		binary.Read(reader, binary.LittleEndian, &sectionCount) != nil || sectionCount == 0 || sectionCount > 255 {
+		return nil, fmt.Errorf("invalid seed compact profile header")
+	}
+	starts := make(map[uint64]bool)
+	seenSections := make(map[byte]bool)
+	for range sectionCount {
+		sectionID, err := reader.ReadByte()
+		if err != nil || sectionID == 0 || seenSections[sectionID] {
+			return nil, fmt.Errorf("invalid seed compact profile section")
+		}
+		seenSections[sectionID] = true
+		var sectionReserved [7]byte
+		var blockCount, reserved uint32
+		if _, err := io.ReadFull(reader, sectionReserved[:]); err != nil || sectionReserved != [7]byte{} ||
+			binary.Read(reader, binary.LittleEndian, &blockCount) != nil || blockCount == 0 ||
+			binary.Read(reader, binary.LittleEndian, &reserved) != nil || reserved != 0 {
+			return nil, fmt.Errorf("invalid seed compact profile section header")
+		}
+		previous := uint64(0)
+		for index := uint32(0); index < blockCount; index++ {
+			var address uint64
+			var control [8]byte
+			var target, alternate uint64
+			var instructionCount uint32
+			if err := binary.Read(reader, binary.LittleEndian, &address); err != nil || address == 0 || index != 0 && address <= previous {
+				return nil, fmt.Errorf("invalid seed compact profile block address %#x after %#x in section %d at index %d", address, previous, sectionID, index)
+			}
+			if err := ioReadFull(reader, control[:]); err != nil || control[5] != 0 || control[6] != 0 || control[7] != 0 {
+				return nil, fmt.Errorf("invalid seed compact profile block control at %#x", address)
+			}
+			if err := binary.Read(reader, binary.LittleEndian, &target); err != nil {
+				return nil, fmt.Errorf("read seed compact profile target at %#x: %w", address, err)
+			}
+			if err := binary.Read(reader, binary.LittleEndian, &alternate); err != nil {
+				return nil, fmt.Errorf("read seed compact profile alternate at %#x: %w", address, err)
+			}
+			if err := binary.Read(reader, binary.LittleEndian, &instructionCount); err != nil {
+				return nil, fmt.Errorf("read seed compact profile instruction count at %#x: %w", address, err)
+			}
+			if err := binary.Read(reader, binary.LittleEndian, &reserved); err != nil || reserved != 0 {
+				return nil, fmt.Errorf("invalid seed compact profile block header at %#x", address)
+			}
+			previous = address
+			starts[address] = true
+			instructionBytes := int64(instructionCount) * 10
+			if instructionBytes < 0 || instructionBytes > int64(reader.Len()) {
+				return nil, fmt.Errorf("seed compact profile instructions are truncated")
+			}
+			if _, err := reader.Seek(instructionBytes, io.SeekCurrent); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if reader.Len() != 0 {
+		return nil, fmt.Errorf("seed compact profile has trailing data")
+	}
+	return starts, nil
+}
+
+func ioReadFull(reader io.Reader, value []byte) error {
+	_, err := io.ReadFull(reader, value)
+	return err
+}
+
+type addressSetFlag map[uint64]bool
+
+func (values addressSetFlag) String() string {
+	addresses := make([]uint64, 0, len(values))
+	for address := range values {
+		addresses = append(addresses, address)
+	}
+	sort.Slice(addresses, func(left, right int) bool { return addresses[left] < addresses[right] })
+	parts := make([]string, len(addresses))
+	for index, address := range addresses {
+		parts[index] = fmt.Sprintf("%#x", address)
+	}
+	return strings.Join(parts, ",")
+}
+
+func (values addressSetFlag) Set(value string) error {
+	address, err := number(value)
+	if err != nil || address == 0 || address%4 != 0 {
+		return fmt.Errorf("invalid seed start %q", value)
+	}
+	values[address] = true
+	return nil
+}
+
 func openMachoARM64eText(path string) ([]byte, uint64, error) {
 	var file *macho.File
 	fat, fatErr := macho.OpenFat(path)
@@ -2480,20 +2626,11 @@ func machoInstructionText(data []byte, pc uint64) string {
 	return result
 }
 
-func annotatedMachoBlocks(path string) ([]annotatedBlock, error) {
-	text, textBase, err := openMachoARM64eText(path)
-	if err != nil {
-		return nil, err
-	}
-	layout, err := fairplay.InspectFairPlayRecoveryCodeLayout(path)
-	if err != nil {
-		return nil, err
-	}
-	starts := layout.BasicBlocks
+func annotatedBlocksFromStarts(text []byte, textBase uint64, starts []uint64) []annotatedBlock {
 	result := make([]annotatedBlock, 0, len(starts))
 	textEnd := textBase + uint64(len(text))
 	for index, start := range starts {
-		if start < textBase || start >= textEnd {
+		if start < textBase || start >= textEnd || (start-textBase)%4 != 0 {
 			continue
 		}
 		next := textEnd
@@ -2502,28 +2639,63 @@ func annotatedMachoBlocks(path string) ([]annotatedBlock, error) {
 		}
 		limit := min(next, start+512*4)
 		block := annotatedBlock{name: fmt.Sprintf("machoBlock%x", start), start: start}
-		terminated := false
 		for pc := start; pc+4 <= limit; pc += 4 {
 			offset := pc - textBase
 			instruction := annotatedInstruction{pc: pc, disassembly: machoInstructionText(text[offset:offset+4], pc)}
 			block.instructions = append(block.instructions, instruction)
 			if _, err := compactTerminator(instruction); err == nil {
-				terminated = true
 				break
 			}
-		}
-		if !terminated && next < textEnd && start+uint64(len(block.instructions))*4 == next {
-			block.returnTarget = next
 		}
 		if len(block.instructions) != 0 {
 			result = append(result, block)
 		}
 	}
-	return result, nil
+	return result
+}
+
+func annotatedMachoBlocks(path string, seedStarts map[uint64]bool) ([]annotatedBlock, error) {
+	text, textBase, err := openMachoARM64eText(path)
+	if err != nil {
+		return nil, err
+	}
+	layout, err := fairplay.InspectFairPlayRecoveryCodeLayout(path)
+	if err != nil {
+		return nil, err
+	}
+	startsSet := make(map[uint64]bool, len(layout.BasicBlocks)+len(seedStarts))
+	for _, start := range layout.BasicBlocks {
+		startsSet[start] = true
+	}
+	for start := range seedStarts {
+		startsSet[start] = true
+	}
+	starts := make([]uint64, 0, len(startsSet))
+	for start := range startsSet {
+		starts = append(starts, start)
+	}
+	sort.Slice(starts, func(left, right int) bool { return starts[left] < starts[right] })
+	return annotatedBlocksFromStarts(text, textBase, starts), nil
+}
+
+func excludeAnnotatedBlocks(blocks []annotatedBlock, excluded map[uint64]bool) []annotatedBlock {
+	if len(excluded) == 0 {
+		return blocks
+	}
+	result := make([]annotatedBlock, 0, len(blocks))
+	for _, block := range blocks {
+		if !excluded[block.start] {
+			result = append(result, block)
+		}
+	}
+	return result
 }
 
 func main() {
+	seedStartsFlag := make(addressSetFlag)
 	machoPath := flag.String("macho", "", "extract CFG blocks directly from an arm64e Mach-O")
+	seedProfilePath := flag.String("seed-profile", "", "compact profile whose verified starts split and are excluded from Mach-O output")
+	flag.Var(seedStartsFlag, "seed-start", "additional verified block start to split and exclude (repeatable)")
 	inputPath := flag.String("input", "", "generated Go kernel source")
 	outputPath := flag.String("output", "", "generated compact profile Go file")
 	name := flag.String("name", "", "Go variable name for the compact kernel")
@@ -2537,18 +2709,40 @@ func main() {
 		fmt.Fprintln(os.Stderr, "exactly one of --input or --macho, plus --output and a valid --name, is required")
 		os.Exit(2)
 	}
+	if (*seedProfilePath != "" || len(seedStartsFlag) != 0) && *machoPath == "" {
+		fmt.Fprintln(os.Stderr, "--seed-profile and --seed-start require --macho")
+		os.Exit(2)
+	}
 	if *machoPath != "" {
-		blocks, err := annotatedMachoBlocks(*machoPath)
+		seedStarts := make(map[uint64]bool, len(seedStartsFlag))
+		for address := range seedStartsFlag {
+			seedStarts[address] = true
+		}
+		var err error
+		if *seedProfilePath != "" {
+			profileStarts, profileErr := compactProfileStarts(*seedProfilePath)
+			err = profileErr
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			for address := range profileStarts {
+				seedStarts[address] = true
+			}
+		}
+		allBlocks, err := annotatedMachoBlocks(*machoPath, seedStarts)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+		blocks := excludeAnnotatedBlocks(allBlocks, seedStarts)
 		formatted, skipped, reasons, err := generateCompactCFGSource(*name, blocks, *limit, *verboseSkips)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-		fmt.Fprintf(os.Stderr, "discovered %d Mach-O blocks; generated %d compact blocks; skipped %d unsupported blocks\n", len(blocks), strings.Count(string(formatted), "start:"), skipped)
+		fmt.Fprintf(os.Stderr, "discovered %d Mach-O blocks; excluded %d verified starts; generated %d compact blocks; skipped %d unsafe or unsupported blocks\n",
+			len(allBlocks), len(allBlocks)-len(blocks), strings.Count(string(formatted), "start:"), skipped)
 		type reasonCount struct {
 			reason string
 			count  int

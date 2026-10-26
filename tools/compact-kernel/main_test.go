@@ -1,6 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"encoding/binary"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -23,6 +29,7 @@ func TestCompactInstruction(t *testing.T) {
 		{"ldur x8, [x29, #-0x60]", "{op: compactLoadSignedOffset64, destination: 8, left: 29, immediate: 0xffa0},", false},
 		{"bic w17, w17, w16, lsl #16", "{op: compactBic32, destination: 17, left: 17, right: 16, shift: 16},", false},
 		{"cset w8, ne", "{op: compactCSet32, destination: 8, shift: uint8(compactConditionNE)},", false},
+		{"cset w8, cc", "{op: compactCSet32LO, destination: 8},", false},
 		{"ldp x28, x27, [sp], #0x60", "{op: compactPairLoad64, destination: 28, left: 31, right: 27, accumulator: 2, immediate: 0x60},", false},
 		{"stp x22, x21, [sp, #-0x30]!", "{op: compactPairStore64, destination: 22, left: 31, right: 21, accumulator: 1, immediate: 0xffd0},", false},
 		{"ldrb w10, [x11, #0x76a]", "{op: compactLoadBaseImm8, destination: 10, left: 11, immediate: 0x76a},", false},
@@ -49,6 +56,86 @@ func TestCompactInstruction(t *testing.T) {
 		}
 		if got != test.want || stop != test.stop {
 			t.Fatalf("%q = %q, stop=%t; want %q, stop=%t", test.input, got, stop, test.want, test.stop)
+		}
+	}
+}
+
+func TestMachOBlocksDoNotInventFallthrough(t *testing.T) {
+	text := make([]byte, 8)
+	binary.LittleEndian.PutUint32(text[0:4], 0xd503201f) // nop
+	binary.LittleEndian.PutUint32(text[4:8], 0xd65f03c0) // ret
+	blocks := annotatedBlocksFromStarts(text, 0x1000, []uint64{0x1000, 0x1004})
+	if len(blocks) != 2 || blocks[0].returnTarget != 0 {
+		t.Fatalf("unexpected Mach-O blocks: %+v", blocks)
+	}
+	source, skipped, reasons, err := generateCompactCFGSource("testBlocks", blocks, 0, false)
+	if err != nil || skipped != 1 || reasons["terminator nop"] != 1 {
+		t.Fatalf("unsafe fallthrough was not rejected: skipped=%d reasons=%v err=%v", skipped, reasons, err)
+	}
+	textSource := string(source)
+	if strings.Contains(textSource, "0x1000:") || !strings.Contains(textSource, "0x1004:") {
+		t.Fatalf("unexpected generated blocks:\n%s", textSource)
+	}
+}
+
+func TestCompactSeedProfileStarts(t *testing.T) {
+	var payload bytes.Buffer
+	payload.WriteString(compactSeedProfileMagic)
+	_ = binary.Write(&payload, binary.LittleEndian, compactSeedProfileVersion)
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(1))
+	payload.WriteByte(1)
+	payload.Write(make([]byte, 7))
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(1))
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(0))
+	_ = binary.Write(&payload, binary.LittleEndian, uint64(0x1000))
+	payload.Write(make([]byte, 8))
+	_ = binary.Write(&payload, binary.LittleEndian, uint64(0))
+	_ = binary.Write(&payload, binary.LittleEndian, uint64(0))
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(0))
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(0))
+	digest := sha256.Sum256(payload.Bytes())
+	payload.Write(digest[:])
+
+	path := filepath.Join(t.TempDir(), "seed.bin.gz")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream := gzip.NewWriter(file)
+	if _, err := stream.Write(payload.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := stream.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	starts, err := compactProfileStarts(path)
+	if err != nil || len(starts) != 1 || !starts[0x1000] {
+		t.Fatalf("seed starts = %v, %v", starts, err)
+	}
+	blocks := []annotatedBlock{{start: 0x1000}, {start: 0x2000}}
+	filtered := excludeAnnotatedBlocks(blocks, starts)
+	if len(filtered) != 1 || filtered[0].start != 0x2000 {
+		t.Fatalf("seed exclusion = %+v", filtered)
+	}
+}
+
+func TestAddressSetFlag(t *testing.T) {
+	values := make(addressSetFlag)
+	if err := values.Set("0x2000"); err != nil {
+		t.Fatal(err)
+	}
+	if err := values.Set("4096"); err != nil {
+		t.Fatal(err)
+	}
+	if got := values.String(); got != "0x1000,0x2000" {
+		t.Fatalf("address set = %q", got)
+	}
+	for _, bad := range []string{"0", "3", "nope"} {
+		if err := values.Set(bad); err == nil {
+			t.Fatalf("accepted invalid seed start %q", bad)
 		}
 	}
 }

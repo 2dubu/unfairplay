@@ -55,7 +55,7 @@ func TestExternalMachoBlockExtraction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocks, err := annotatedMachoBlocks(path)
+	blocks, err := annotatedMachoBlocks(path, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +86,48 @@ func TestExternalMachoBlockExtraction(t *testing.T) {
 		if !found {
 			t.Fatalf("missing extracted block %#x", address)
 		}
+	}
+}
+
+func TestExternalSeededMachoExtraction(t *testing.T) {
+	path := os.Getenv("UNFAIRPLAY_PROFILE_BINARY")
+	if path == "" {
+		t.Skip("external FairPlay profile fixture is not configured")
+	}
+	layout, err := fairplay.InspectFairPlayRecoveryCodeLayout(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.BinarySHA256 != fairplay.FairPlayBuild26A428Hash {
+		t.Skip("seeded extraction geometry is pinned to the 26A428/26A434 image")
+	}
+	seeds, err := compactProfileStarts("../../internal/recovery/profiles/macos26a428-compact-cfg.bin.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, address := range []uint64{0x1000103a8, 0x1008fe5d4, 0x10093fe44, 0x10093ff14, 0x1009f0994} {
+		seeds[address] = true
+	}
+	all, err := annotatedMachoBlocks(path, seeds)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks := excludeAnnotatedBlocks(all, seeds)
+	for _, block := range blocks {
+		if block.returnTarget != 0 {
+			t.Fatalf("Mach-O block %#x invented fallthrough %#x", block.start, block.returnTarget)
+		}
+		if seeds[block.start] {
+			t.Fatalf("verified block %#x was not excluded", block.start)
+		}
+	}
+	generated, skipped, _, err := generateCompactCFGSource("safeExtracted", blocks, 0, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 59747 || len(all)-len(blocks) != 5523 || strings.Count(string(generated), "start:") != 52498 || skipped != 1726 {
+		t.Fatalf("seeded extraction geometry changed: all=%d excluded=%d generated=%d skipped=%d",
+			len(all), len(all)-len(blocks), strings.Count(string(generated), "start:"), skipped)
 	}
 }
 
