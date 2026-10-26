@@ -319,6 +319,13 @@ func arm64Mnemonic(word uint32) (string, bool) {
 
 func supplementalARM64Mnemonic(word uint32) (string, bool) {
 	switch {
+	case word&0x3fa07c00 == 0x08a07c00:
+		return "CAS", true // CAS/CASA/CASL/CASAL, byte through 64-bit.
+	case word&0xbfa07c00 == 0x08207c00:
+		return "CASP", true // CASP/CASPA/CASPL/CASPAL register pairs.
+	case word&0x3f200c00 == 0x38200000 && (word>>12)&0xf <= 8:
+		operation := [...]string{"LDADD", "LDCLR", "LDEOR", "LDSET", "LDSMAX", "LDSMIN", "LDUMAX", "LDUMIN", "SWP"}[(word>>12)&0xf]
+		return operation, true // ARMv8.1 LSE atomic read-modify-write family.
 	case word&0xbf80f400 == 0x0f001000:
 		return "FMLA", true // FMLA <Vd>.<T>, <Vn>.<T>, <Vm>.H[index]
 	case word&0xbfe0fc00 == 0x0e403400:

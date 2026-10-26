@@ -87,8 +87,30 @@ func TestAuditARM64AcceptsARMv82HalfPrecisionSIMD(t *testing.T) {
 	}
 }
 
+func TestAuditARM64AcceptsLSEAtomics(t *testing.T) {
+	words := []uint32{
+		0xc8a07c41, // cas x0, x1, [x2]
+		0xc8e0fc41, // casal x0, x1, [x2]
+		0x48207c82, // casp x0, x1, x2, x3, [x4]
+		0x4860fc82, // caspal x0, x1, x2, x3, [x4]
+		0xf8200041, // ldadd x0, x1, [x2]
+		0xf8e02041, // ldeoral x0, x1, [x2]
+		0x38a00041, // ldaddab w0, w1, [x2]
+		0xf8e08041, // swpal x0, x1, [x2]
+	}
+	page := make([]byte, len(words)*4)
+	for index, word := range words {
+		binary.LittleEndian.PutUint32(page[index*4:index*4+4], word)
+	}
+	valid, mnemonics := auditARM64(page)
+	if valid != len(words) || mnemonics["CAS"] != 2 || mnemonics["CASP"] != 2 ||
+		mnemonics["LDADD"] != 2 || mnemonics["LDEOR"] != 1 || mnemonics["SWP"] != 1 {
+		t.Fatalf("LSE audit = %d/%d, %#v", valid, len(words), mnemonics)
+	}
+}
+
 func TestSupplementalARM64MnemonicRejectsNearbyUnallocatedEncodings(t *testing.T) {
-	for _, word := range []uint32{0x4f801214, 0x4e643694, 0x4ee537ff} {
+	for _, word := range []uint32{0x4f801214, 0x4e643694, 0x4ee537ff, 0xc8a07841, 0x48207882, 0xf8209041} {
 		if mnemonic, ok := supplementalARM64Mnemonic(word); ok {
 			t.Errorf("%#08x unexpectedly decoded as %s", word, mnemonic)
 		}
