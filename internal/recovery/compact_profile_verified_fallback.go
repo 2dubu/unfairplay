@@ -6,6 +6,17 @@ package recovery
 // automatically decodable block is not accepted here until its boundaries,
 // instructions, and terminator have been reviewed.
 var compact26A428VerifiedFallbackBlocks = map[uint64]compactBlock{
+	0x1000103a8: {start: 0x1000103a8, instructions: []compactInstruction{
+		{op: compactLoadBase32, destination: 8, left: 0},
+		{op: compactSub32, destination: 8, left: 8, right: 0},
+		{op: compactTstImm32, left: 8, right: 0x0, accumulator: 0x0, immediate: 0x1},
+		{op: compactMovImm32, destination: 8, immediate: 0x2070},
+		{op: compactMovK32, destination: 8, shift: 16, immediate: 0x318a},
+		{op: compactMovImm32, destination: 9, immediate: 0x7bc5},
+		{op: compactMovK32, destination: 9, shift: 16, immediate: 0xce75},
+		{op: compactCSEL32, destination: 8, left: 9, right: 8, shift: uint8(compactConditionEQ)},
+		{op: compactStoreBaseImm32, destination: 8, left: 0, immediate: 0x4},
+	}, terminator: compactBlockReturn},
 	0x1008fe5d4: {start: 0x1008fe5d4, instructions: []compactInstruction{
 		{op: compactMovImm32, destination: 8, immediate: 0x1848},
 		{op: compactAdd32, destination: 9, left: 10, right: 8},

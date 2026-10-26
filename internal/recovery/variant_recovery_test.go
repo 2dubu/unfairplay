@@ -167,6 +167,7 @@ func TestVerifiedFallbackContainsMigratedAccountPath(t *testing.T) {
 		terminator   compactBlockTerminator
 		register     uint8
 	}{
+		{0x1000103a8, 9, compactBlockReturn, 0},
 		{0x1008fe5d4, 12, compactBlockRegister, 8},
 		{0x10093fe44, 51, compactBlockCallRegister, 8},
 		{0x10093ff14, 6, compactBlockRegister, 8},
@@ -179,8 +180,48 @@ func TestVerifiedFallbackContainsMigratedAccountPath(t *testing.T) {
 			t.Fatalf("verified fallback block %#x is incorrect: %+v", test.address, block)
 		}
 	}
-	if _, ok := compact26A428VerifiedFallbackBlocks[0x1000103a8]; ok {
-		t.Fatal("unverified continuation was added to the fallback map")
+	value, err := loadModelBytes(embeddedModelBytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := newState(value)
+	const table = uint64(0x100ff1ef0)
+	callTarget, err := state.load(table+0xcfb2*8, 8)
+	if err != nil || callTarget != 0x1000103a8 {
+		t.Fatalf("migrated-account call slot = %#x, %v", callTarget, err)
+	}
+	continuation, err := state.load(table+0x9d27*8, 8)
+	if err != nil || continuation != 0x100a86df8 {
+		t.Fatalf("migrated-account continuation slot = %#x, %v", continuation, err)
+	}
+	profile := embedded26A428ExecutionProfile()
+	if _, ok := recoveryBlock(continuation, profile.accountEntryBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); !ok {
+		t.Fatalf("migrated-account continuation %#x is missing", continuation)
+	}
+}
+
+func TestMigratedAccountStatusLeaf(t *testing.T) {
+	const address = uint64(0x700000001000)
+	block := compact26A428VerifiedFallbackBlocks[0x1000103a8]
+	for _, test := range []struct {
+		input, want uint32
+	}{
+		{0x1000, 0xce757bc5},
+		{0x1001, 0x318a2070},
+	} {
+		state := newState(&model{pages: map[uint64][]byte{address: make([]byte, pageSize)}})
+		state.x[0], state.x[30] = address, 0x10093ff14
+		if err := state.storeValue(address, uint64(test.input), 4); err != nil {
+			t.Fatal(err)
+		}
+		next, stopped, err := runCompactBlock(state, nil, block)
+		if err != nil || stopped || next != state.x[30] {
+			t.Fatalf("status leaf control flow = %#x, %v, %v", next, stopped, err)
+		}
+		got, err := state.load(address+4, 4)
+		if err != nil || uint32(got) != test.want {
+			t.Fatalf("status leaf(%#x) = %#x, %v; want %#x", test.input, got, err, test.want)
+		}
 	}
 }
 
@@ -224,7 +265,7 @@ func TestEmbeddedExecutionProfileGeometry(t *testing.T) {
 		profile.selectionFrameCall != 0x1002fbb24 || len(profile.onceTokens) != 4 {
 		t.Fatalf("unexpected embedded execution profile: %+v", profile)
 	}
-	if len(profile.accountEntryBlocks) != 1086 || len(profile.bootstrapBlocks) != 953 || len(profile.selectionBlocks) != 1656 || len(profile.supplementalBlocks) != 1371 || len(profile.verifiedFallbackBlocks) != 4 {
+	if len(profile.accountEntryBlocks) != 1086 || len(profile.bootstrapBlocks) != 953 || len(profile.selectionBlocks) != 1656 || len(profile.supplementalBlocks) != 1371 || len(profile.verifiedFallbackBlocks) != 5 {
 		t.Fatal("embedded execution profile has incomplete CFG maps")
 	}
 	model := &model{binaryHash: rawSourceBinaryHash}
