@@ -4,10 +4,14 @@ package recovery
 import "fmt"
 
 func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int) (uint64, int, error) {
-	pc := uint64(0x10008a644)
+	profile, err := executionProfileForModel(s.model)
+	if err != nil {
+		return 0, 0, err
+	}
+	pc := profile.sinfEntryStart
 	stopHits := 0
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
-		if pc == 0x100234cdc {
+		if pc == profile.sinfEntryStop {
 			stopHits++
 			if stopHits == 1 {
 				return pc, blockCount, nil
@@ -27,7 +31,7 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		if block, ok := recoverySINFEntryBlock(pc); ok {
+		if block, ok := recoverySINFEntryBlock(profile, pc); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact SINF-entry CFG %#x: %w", pc, err)

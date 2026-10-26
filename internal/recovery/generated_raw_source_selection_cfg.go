@@ -5,16 +5,20 @@ package recovery
 import "fmt"
 
 func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int) (uint64, int, error) {
-	pc := uint64(0x1006b10a0)
+	profile, err := executionProfileForModel(s.model)
+	if err != nil {
+		return 0, 0, err
+	}
+	pc := profile.selectionStart
 	stopHits := 0
 	frameCalls := 0
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
-		if pc == 0x1002fbb24 {
+		if pc == profile.selectionFrameCall {
 			frameCalls++
 			if frameCalls == 1 {
 				// The first invocation materializes neighboring dispatcher state.
 			} else if frameCalls == 2 {
-				next, err := applyRecoveredEnrollmentFrame(s)
+				next, err := profile.applyFrame(s)
 				if err != nil {
 					return pc, blockCount, err
 				}
@@ -24,9 +28,9 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 				return pc, blockCount, fmt.Errorf("unexpected enrollment frame invocation %d", frameCalls)
 			}
 		}
-		if pc == 0x10008a644 {
+		if pc == profile.selectionStop {
 			stopHits++
-			if stopHits == 2 {
+			if stopHits == profile.selectionStopHits {
 				return pc, blockCount, nil
 			}
 		}
@@ -44,7 +48,7 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		if block, ok := recoveryBlock(pc, compact26A428SelectionBlocks); ok {
+		if block, ok := recoveryBlock(pc, profile.selectionBlocks, profile.supplementalBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact selection CFG %#x: %w", pc, err)

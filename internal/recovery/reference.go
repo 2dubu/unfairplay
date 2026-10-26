@@ -25,7 +25,11 @@ func addReferencePages(value *model, path string) error {
 	if err != nil {
 		return err
 	}
-	if sha256.Sum256(data) != rawSourceBinaryHash {
+	profile, err := executionProfileForModel(value)
+	if err != nil {
+		return err
+	}
+	if sha256.Sum256(data) != profile.binaryHash {
 		return fmt.Errorf("reference binary SHA256 mismatch")
 	}
 	file, err := macho.NewFile(bytes.NewReader(data))

@@ -2,11 +2,15 @@
 package recovery
 
 func runRawSourceCycleBoundary(s *state, _ fault) error {
-	if err := runCompactKernel(s, compact26A428Cycle); err != nil {
+	profile, err := executionProfileForModel(s.model)
+	if err != nil {
 		return err
 	}
-	if s.x[9] == 0x10046119C {
-		return runRawSourceCycleFinal(s, fault{})
+	if err := profile.runCycle(s, fault{}); err != nil {
+		return err
+	}
+	if s.x[9] == profile.cycleFinal {
+		return profile.runCycleFinal(s, fault{})
 	}
 	return nil
 }

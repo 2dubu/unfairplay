@@ -4,9 +4,13 @@ package recovery
 import "fmt"
 
 func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int) (uint64, int, error) {
-	pc := uint64(0x10057ae74)
+	profile, err := executionProfileForModel(s.model)
+	if err != nil {
+		return 0, 0, err
+	}
+	pc := profile.bootstrapStart
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
-		if pc == 0x1005b7438 {
+		if pc == profile.bootstrapStop {
 			return pc, blockCount, nil
 		}
 		if runtime != nil && runtime.stopPC != 0 && pc == runtime.stopPC {
@@ -23,7 +27,7 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		if block, ok := recoveryBlock(pc, compact26A428BootstrapBlocks); ok {
+		if block, ok := recoveryBlock(pc, profile.bootstrapBlocks, profile.supplementalBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact bootstrap CFG %#x: %w", pc, err)

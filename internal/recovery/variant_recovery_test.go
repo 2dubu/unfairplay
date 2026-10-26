@@ -164,3 +164,29 @@ func TestSelectionBlockLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestEmbeddedExecutionProfileGeometry(t *testing.T) {
+	profile := embedded26A428ExecutionProfile()
+	if profile.name != "macos26a428" || profile.binaryHash != rawSourceBinaryHash ||
+		profile.accountEntryStart != 0x100cd1c18 || profile.accountEntryStop != 0x10057ae74 ||
+		profile.bootstrapStart != 0x10057ae74 || profile.bootstrapStop != 0x1005b7438 ||
+		profile.selectionStart != 0x1006b10a0 || profile.selectionStop != 0x10008a644 || profile.selectionStopHits != 2 ||
+		profile.sinfEntryStart != 0x10008a644 || profile.sinfEntryStop != 0x100234cdc ||
+		profile.selectionFrameCall != 0x1002fbb24 || len(profile.onceTokens) != 4 {
+		t.Fatalf("unexpected embedded execution profile: %+v", profile)
+	}
+	if len(profile.accountEntryBlocks) != 1086 || len(profile.bootstrapBlocks) != 953 || len(profile.selectionBlocks) != 1656 || len(profile.supplementalBlocks) != 1371 {
+		t.Fatal("embedded execution profile has incomplete CFG maps")
+	}
+	model := &model{binaryHash: rawSourceBinaryHash}
+	selected, err := executionProfileForModel(model)
+	if err != nil || selected.binaryHash != rawSourceBinaryHash {
+		t.Fatalf("select embedded execution profile: %v", err)
+	}
+	bad := *selected
+	bad.binaryHash[0] ^= 1
+	model.profile = &bad
+	if _, err := executionProfileForModel(model); err == nil {
+		t.Fatal("accepted an execution profile for another binary")
+	}
+}

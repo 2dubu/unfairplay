@@ -325,13 +325,17 @@ type compactHook struct {
 }
 
 func runCompactHook(s *state, action compactHookAction) error {
+	profile, err := executionProfileForModel(s.model)
+	if err != nil {
+		return err
+	}
 	switch action {
 	case compactHookDigest:
 		_, err := runRawSourceKernelLoop(s, "digest-natural")
 		return err
 	case compactHookOptional:
-		if s.x[9] == 0x1005BA520 {
-			return runRawSourceOptionalKernel(s, fault{})
+		if s.x[9] == profile.optionalStart {
+			return profile.runOptional(s, fault{})
 		}
 		return nil
 	case compactHookEven:

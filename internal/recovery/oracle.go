@@ -21,6 +21,7 @@ const (
 type model struct {
 	allowDestinationPages bool
 	selectionMaxBlocks    int
+	profile               *executionProfile
 	binaryHash            [32]byte
 	block                 uint64
 	registers             [31]uint64

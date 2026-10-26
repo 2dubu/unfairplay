@@ -4,10 +4,14 @@ package recovery
 import "fmt"
 
 func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int) (uint64, int, error) {
-	pc := uint64(0x100cd1c18)
+	profile, err := executionProfileForModel(s.model)
+	if err != nil {
+		return 0, 0, err
+	}
+	pc := profile.accountEntryStart
 	stopHits := 0
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
-		if pc == 0x10057ae74 {
+		if pc == profile.accountEntryStop {
 			stopHits++
 			if stopHits == 1 {
 				return pc, blockCount, nil
@@ -27,7 +31,7 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 			pc = next
 			continue
 		}
-		if block, ok := recoveryBlock(pc, compact26A428AccountEntryBlocks); ok {
+		if block, ok := recoveryBlock(pc, profile.accountEntryBlocks, profile.supplementalBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact account-entry CFG %#x: %w", pc, err)

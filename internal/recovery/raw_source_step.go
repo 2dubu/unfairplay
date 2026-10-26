@@ -51,17 +51,24 @@ func configureRawSourceRuntime(value *model, kernel string, fileSpecs []string, 
 		activeRawSourceRuntime = nil
 		return nil
 	}
+	profile, err := executionProfileForModel(value)
+	if err != nil {
+		return err
+	}
 	runtime := &rawSourceRuntime{
 		files:            make(map[string][]byte),
 		openFiles:        make(map[uint64]*rawSourceOpenFile),
 		nextFD:           100,
 		nextAllocation:   0x710100000000,
-		onceTokens:       map[uint64]bool{0x1010746B0: true, 0x101075B48: true, 0x101081348: true, 0x101081358: true},
+		onceTokens:       make(map[uint64]bool, len(profile.onceTokens)),
 		nextIOIterator:   0x100,
 		nextIOService:    0x200,
 		iteratorServices: make(map[uint32]uint32),
 		fakeCFValues:     make(map[uint64]rawSourceCFValue),
 		stopPC:           stopPC,
+	}
+	for _, token := range profile.onceTokens {
+		runtime.onceTokens[token] = true
 	}
 	var maxStaticAllocation uint64
 	for address := range value.pages {
@@ -383,7 +390,11 @@ func (r *rawSourceRuntime) handle(s *state, pc uint64) (uint64, error) {
 }
 
 func runRawSource(value *model, kernel string, loop bool, exactIterations int) (string, int, error) {
-	if value.binaryHash != rawSourceBinaryHash {
+	profile, err := executionProfileForModel(value)
+	if err != nil {
+		return "", 0, err
+	}
+	if value.binaryHash != profile.binaryHash {
 		return "", 0, fmt.Errorf("raw source model does not match generated fairplayd build")
 	}
 	worker := newState(value)
@@ -539,24 +550,36 @@ func currentRawSourceBytes(size int) ([]byte, error) {
 	if size != 192 && size != 224 {
 		return nil, fmt.Errorf("raw source output size must be 192 or 224 bytes")
 	}
-	return lastRawSourceState.outputBytes(0x7000000FB304, size)
+	profile, err := executionProfileForModel(lastRawSourceState.model)
+	if err != nil {
+		return nil, err
+	}
+	return lastRawSourceState.outputBytes(profile.sourceAddress, size)
 }
 
 func currentRawSourceFrameBytes() ([]byte, error) {
 	if lastRawSourceState == nil {
 		return nil, fmt.Errorf("raw source state is unavailable")
 	}
-	return lastRawSourceState.outputBytes(0x7000000FB724, 16)
+	profile, err := executionProfileForModel(lastRawSourceState.model)
+	if err != nil {
+		return nil, err
+	}
+	return lastRawSourceState.outputBytes(profile.frameAddress, 16)
 }
 
 func currentRawSourceSINFMaterialBytes() ([]byte, error) {
 	if lastRawSourceState == nil {
 		return nil, fmt.Errorf("raw source state is unavailable")
 	}
-	if lastRawSourceState.x[29] < 0x70 {
+	profile, err := executionProfileForModel(lastRawSourceState.model)
+	if err != nil {
+		return nil, err
+	}
+	if lastRawSourceState.x[29] < profile.sinfFrameOffset {
 		return nil, fmt.Errorf("current-SINF frame pointer is invalid")
 	}
-	return lastRawSourceState.outputBytes(lastRawSourceState.x[29]-0x70, 16)
+	return lastRawSourceState.outputBytes(lastRawSourceState.x[29]-profile.sinfFrameOffset, 16)
 }
 
 func rawSourceAtom(blob []byte, start, limit int, name string) (int, int, error) {
@@ -619,6 +642,10 @@ func currentRawSourceEnrollmentPack() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	profile, err := executionProfileForModel(lastRawSourceState.model)
+	if err != nil {
+		return nil, err
+	}
 	const modelBytes = 4184
 	pack := make([]byte, 0, modelBytes)
 	pack = append(pack, []byte("FPSENR2\x00")...)
@@ -627,16 +654,16 @@ func currentRawSourceEnrollmentPack() ([]byte, error) {
 	pack = append(pack, word[:]...)
 	binary.LittleEndian.PutUint32(word[:], modelBytes)
 	pack = append(pack, word[:]...)
-	pack = append(pack, rawSourceBinaryHash[:]...)
+	pack = append(pack, profile.binaryHash[:]...)
 	binary.LittleEndian.PutUint32(word[:], user)
 	pack = append(pack, word[:]...)
 	binary.LittleEndian.PutUint32(word[:], keyID)
 	pack = append(pack, word[:]...)
 	for index, value := range material {
-		pack = append(pack, value^generatedCurrentSINFKeyMask[index])
+		pack = append(pack, value^profile.currentSINFMask[index])
 	}
-	pack = append(pack, generatedCurrentSINFWhitening[:]...)
-	pack = append(pack, generatedCurrentSINFInputDecode[:]...)
+	pack = append(pack, profile.currentSINFWhite[:]...)
+	pack = append(pack, profile.currentSINFInput[:]...)
 	if len(pack) != modelBytes {
 		return nil, fmt.Errorf("generated enrollment model has invalid size %d", len(pack))
 	}
@@ -644,6 +671,10 @@ func currentRawSourceEnrollmentPack() ([]byte, error) {
 }
 
 func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {
+	profile, profileErr := executionProfileForModel(worker.model)
+	if profileErr != nil {
+		return false, profileErr
+	}
 	var exit bool
 	var err error
 	switch kernel {
@@ -651,39 +682,43 @@ func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {
 		_, _, err = runRawSourceAccountEntryCFG(worker, activeRawSourceRuntime, 1_000_000)
 		exit = true
 	case "bootstrap":
-		err = runRawSourceBootstrapKernel(worker, fault{})
-		exit = worker.x[3] != 0x10057AE74
+		err = profile.runBootstrap(worker, fault{})
+		exit = worker.x[3] != profile.bootstrapStart
 	case "bootstrap-cfg":
 		_, _, err = runRawSourceBootstrapCFG(worker, activeRawSourceRuntime, 1_000_000)
 		exit = true
 	case "writer":
 		exit = uint32(worker.x[1])+0x9FCE627E > 0xC7
-		err = runRawSourceWriterKernel(worker, fault{})
+		err = profile.runWriter(worker, fault{})
 	case "tail":
 		exit = uint32(worker.x[3])+0x9FCE627E >= 0x12C
-		err = runRawSourceTailKernel(worker, fault{})
+		err = profile.runTail(worker, fault{})
 	case "even":
 		exit = uint32(worker.x[12])+2 > 0x63
-		err = runRawSourceEvenKernel(worker, fault{})
+		err = profile.runEven(worker, fault{})
 	case "odd":
 		exit = uint32(worker.x[1])+0x9FCE627F > 0x64
-		err = runRawSourceOddKernel(worker, fault{})
+		err = profile.runOdd(worker, fault{})
 	case "digest":
-		err = runRawSourceDigestKernel(worker, fault{})
+		err = profile.runDigest(worker, fault{})
 	case "outer":
-		err = runRawSourceOuterIteration(worker, fault{})
-		if err == nil && worker.x[12] == 0x1007822CC {
+		err = profile.runOuter(worker, fault{})
+		if err == nil && worker.x[12] == profile.outerCycle {
 			err = runRawSourceCycleBoundary(worker, fault{})
-			exit = rawSourceCycleExited(worker)
+			if err == nil {
+				exit, err = rawSourceCycleExited(worker)
+			}
 		} else {
-			exit = worker.x[12] != 0x1005B7438
+			exit = worker.x[12] != profile.outerStart
 		}
 	case "cycle":
 		err = runRawSourceCycleBoundary(worker, fault{})
-		exit = rawSourceCycleExited(worker)
+		if err == nil {
+			exit, err = rawSourceCycleExited(worker)
+		}
 	case "outer-primary":
-		err = runRawSourceOuterIteration(worker, fault{})
-		exit = worker.x[12] != 0x1005B7438
+		err = profile.runOuter(worker, fault{})
+		exit = worker.x[12] != profile.outerStart
 	default:
 		return false, fmt.Errorf("unknown raw source kernel %q", kernel)
 	}
@@ -693,22 +728,30 @@ func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {
 	if kernel == "digest" {
 		exit = worker.z
 		if !exit {
-			err = runRawSourceDigestPrologue(worker, fault{})
+			err = profile.runDigestPrologue(worker, fault{})
 		}
 	}
 	return exit, err
 }
 
-func rawSourceCycleExited(worker *state) bool {
-	if worker.x[9] == 0x1005B7438 {
-		return false
+func rawSourceCycleExited(worker *state) (bool, error) {
+	profile, err := executionProfileForModel(worker.model)
+	if err != nil {
+		return false, err
 	}
-	return worker.x[8] != 0x1005B7438
+	if worker.x[9] == profile.outerStart {
+		return false, nil
+	}
+	return worker.x[8] != profile.outerStart, nil
 }
 
 func runRawSourceKernelLoop(worker *state, kernel string) (int, error) {
 	if kernel == "digest-natural" {
-		if err := runRawSourceDigestPrologue(worker, fault{}); err != nil {
+		profile, err := executionProfileForModel(worker.model)
+		if err != nil {
+			return 0, err
+		}
+		if err := profile.runDigestPrologue(worker, fault{}); err != nil {
 			return 0, err
 		}
 		kernel = "digest"
