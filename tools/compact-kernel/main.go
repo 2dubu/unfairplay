@@ -2,15 +2,21 @@ package main
 
 import (
 	"bufio"
+	"debug/macho"
+	"encoding/binary"
 	"flag"
 	"fmt"
 	"go/format"
+	"math"
 	"math/bits"
 	"os"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/DrWhax/unfairplay/internal/fairplay"
+	"golang.org/x/arch/arm64/arm64asm"
 )
 
 var (
@@ -43,6 +49,7 @@ var (
 	andImmediate64               = regexp.MustCompile(`^and x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	xorNotImmediate64            = regexp.MustCompile(`^eor x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	xorLSR64                     = regexp.MustCompile(`^eor x(\d+), x(\d+), x(\d+), lsr #(\d+)$`)
+	xorROR64                     = regexp.MustCompile(`^eor x(\d+), x(\d+), x(\d+), ror #(\d+)$`)
 	logicalImmediate64           = regexp.MustCompile(`^(orr|eor) x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	orImmediate32                = regexp.MustCompile(`^orr w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	orShift64                    = regexp.MustCompile(`^orr x(\d+), x(\d+), x(\d+), lsl #(\d+)$`)
@@ -100,6 +107,7 @@ var (
 	not32                        = regexp.MustCompile(`^mvn w(\d+), w(\d+)$`)
 	orNotLSL32                   = regexp.MustCompile(`^orn w(\d+), w(\d+), w(\d+)(?:, lsl #(\d+))?$`)
 	rotateRight32                = regexp.MustCompile(`^ror w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
+	rotateRight64                = regexp.MustCompile(`^ror x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	shiftRight32                 = regexp.MustCompile(`^lsr w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	shiftRight64                 = regexp.MustCompile(`^lsr x(\d+), x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	shiftRightZero64             = regexp.MustCompile(`^lsr x(\d+), xzr, #(0x[0-9a-f]+|[0-9]+)$`)
@@ -133,7 +141,7 @@ var (
 	compareRegister64            = regexp.MustCompile(`^cmp x(\d+), x(\d+)$`)
 	compareExtByte32             = regexp.MustCompile(`^cmp w(\d+), w(\d+), (uxtb|sxtb)$`)
 	compareLSR32                 = regexp.MustCompile(`^cmp w(\d+), w(\d+), lsr #(\d+)$`)
-	conditionalCompare           = regexp.MustCompile(`^ccmp ([xw])(\d+), ([xw](?:\d+)|#(?:0x[0-9a-f]+|[0-9]+)), #(\d+), ([a-z]+)$`)
+	conditionalCompare           = regexp.MustCompile(`^ccmp ([xw])(\d+), ([xw](?:\d+)|#(?:0x[0-9a-f]+|[0-9]+)), #(0x[0-9a-f]+|\d+), ([a-z]+)$`)
 	selectZeroEq32               = regexp.MustCompile(`^csel w(\d+), wzr, w(\d+), eq$`)
 	branchAuth                   = regexp.MustCompile(`^braa x\d+, x\d+$`)
 	addressPage                  = regexp.MustCompile(`^adrp x(\d+), #(0x[0-9a-f]+)$`)
@@ -160,13 +168,14 @@ var (
 	conditionSelect              = regexp.MustCompile(`^csel ([wx])(\d+), ([wx](?:\d+)|[wx]zr), ([wx](?:\d+)|[wx]zr), ([a-z]+)$`)
 	conditionIncrement           = regexp.MustCompile(`^cinc ([wx])(\d+), [wx](\d+), ([a-z]+)$`)
 	conditionNegate              = regexp.MustCompile(`^cneg w(\d+), w(\d+), ([a-z]+)$`)
-	conditionalCompareNegative   = regexp.MustCompile(`^ccmn w(\d+), #(0x[0-9a-f]+|[0-9]+), #(\d+), ([a-z]+)$`)
+	conditionalCompareNegative   = regexp.MustCompile(`^ccmn w(\d+), #(0x[0-9a-f]+|[0-9]+), #(0x[0-9a-f]+|\d+), ([a-z]+)$`)
 	andSetFlags                  = regexp.MustCompile(`^ands w(\d+), w(\d+), w(\d+)$`)
 	andSetFlagsImmediate         = regexp.MustCompile(`^ands w(\d+), w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	bitClearSetFlags             = regexp.MustCompile(`^bics (w(?:\d+)|wzr), w(\d+), w(\d+)$`)
 	andSetFlagsLSR               = regexp.MustCompile(`^ands w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
 	bitClearSetFlagsLSR          = regexp.MustCompile(`^bics (w(?:\d+)|wzr), w(\d+), w(\d+), lsr #(\d+)$`)
-	conditionalCompareNegative64 = regexp.MustCompile(`^ccmn x(\d+), #(0x[0-9a-f]+|[0-9]+), #(\d+), ([a-z]+)$`)
+	conditionalCompareNegative64 = regexp.MustCompile(`^ccmn x(\d+), #(0x[0-9a-f]+|[0-9]+), #(0x[0-9a-f]+|\d+), ([a-z]+)$`)
+	gnuNegativeMov64             = regexp.MustCompile(`^mov x(\d+), #(0x[0-9a-f]+)$`)
 	conditionSelectIncrement32   = regexp.MustCompile(`^csinc w(\d+), (w(?:\d+)|wzr), (w(?:\d+)|wzr), ([a-z]+)$`)
 	testImmediate64              = regexp.MustCompile(`^tst x(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	exclusiveOrNot32             = regexp.MustCompile(`^eon w(\d+), w(\d+), w(\d+)$`)
@@ -187,6 +196,7 @@ var (
 	vectorBinary                 = regexp.MustCompile(`^(add|sub|mul|eor) v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], v(\d+)\.\d+[bhsd]$`)
 	vectorMAC                    = regexp.MustCompile(`^(mla|mls) v(\d+)\.(\d+)([bhsd]), v(\d+)\.\d+[bhsd], v(\d+)\.\d+[bhsd]$`)
 	vectorUnsignedShiftLong      = regexp.MustCompile(`^(ushll|ushll2) v(\d+)\.(\d+)([hsd]), v(\d+)\.\d+([bhs]), #(\d+|0x[0-9a-f]+)$`)
+	vectorUnsignedExtendLong     = regexp.MustCompile(`^(uxtl|uxtl2) v(\d+)\.(\d+)([hsd]), v(\d+)\.(\d+)([bhs])$`)
 	vectorMove64                 = regexp.MustCompile(`^fmov d(\d+), d(\d+)$`)
 	vectorUnsignedMultiplyLong   = regexp.MustCompile(`^(umull|umull2) v(\d+)\.(\d+)([sd]), v(\d+)\.\d+([hs]), v(\d+)\.\d+[hs]$`)
 	vectorEor3                   = regexp.MustCompile(`^eor3 v(\d+)\.16b, v(\d+)\.16b, v(\d+)\.16b, v(\d+)\.16b$`)
@@ -226,17 +236,17 @@ var (
 	subUXTH32                    = regexp.MustCompile(`^sub w(\d+), w(\d+), w(\d+), uxth$`)
 	orNotShift                   = regexp.MustCompile(`^orn ([xw])(\d+), [xw](\d+), [xw](\d+)(?:, (lsl|lsr) #(\d+))?$`)
 	not64                        = regexp.MustCompile(`^mvn x(\d+), x(\d+)$`)
-	noopInstruction              = regexp.MustCompile(`^pacibsp$`)
+	noopInstruction              = regexp.MustCompile(`^(?:pacibsp|nop|hint #(0x[0-9a-f]+|\d+))$`)
 	blockFunction                = regexp.MustCompile(`^func ([A-Za-z_][A-Za-z0-9_]*)(?:\([^)]*\))`)
 	branchDirect                 = regexp.MustCompile(`^b #(0x[0-9a-f]+)$`)
 	branchConditional            = regexp.MustCompile(`^b\.([a-z]+) #(0x[0-9a-f]+)$`)
 	branchLink                   = regexp.MustCompile(`^bl #(0x[0-9a-f]+)$`)
 	branchCompareZero            = regexp.MustCompile(`^(cbz|cbnz) ([xw])(\d+), #(0x[0-9a-f]+)$`)
-	branchTestBit                = regexp.MustCompile(`^(tbz|tbnz) [xw](\d+), #(\d+), #(0x[0-9a-f]+)$`)
-	branchRegister               = regexp.MustCompile(`^braa x(\d+), x\d+$`)
-	callRegister                 = regexp.MustCompile(`^blraa x(\d+), x\d+$`)
-	callRegisterZero             = regexp.MustCompile(`^blraaz x(\d+)$`)
-	returnRegister               = regexp.MustCompile(`^ret(?:ab)?$`)
+	branchTestBit                = regexp.MustCompile(`^(tbz|tbnz) [xw](\d+), #(0x[0-9a-f]+|\d+), #(0x[0-9a-f]+)$`)
+	branchRegister               = regexp.MustCompile(`^(?:br|braa|brab|braaz|brabz) x(\d+)(?:, x\d+)?$`)
+	callRegister                 = regexp.MustCompile(`^(?:blr|blraa|blrab|blraaz|blrabz) x(\d+)(?:, x\d+)?$`)
+	callRegisterZero             = regexp.MustCompile(`^(?:blraaz|blrabz) x(\d+)$`)
+	returnRegister               = regexp.MustCompile(`^ret(?:(?:aa)|(?:ab))?$`)
 	literalReturn                = regexp.MustCompile(`^\s*return (0x[0-9a-f]+), false, nil$`)
 	literalStopReturn            = regexp.MustCompile(`^\s*return (0x[0-9a-f]+), true, nil$`)
 	identifier                   = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -283,7 +293,8 @@ func conditionConstant(name string) (string, bool) {
 func compactConditionConstant(name string) (string, bool) {
 	constants := map[string]string{
 		"eq": "compactConditionEQ", "ne": "compactConditionNE",
-		"hs": "compactConditionHS", "lo": "compactConditionLO",
+		"hs": "compactConditionHS", "cs": "compactConditionHS",
+		"lo": "compactConditionLO", "cc": "compactConditionLO",
 		"mi": "compactConditionMI", "pl": "compactConditionPL",
 		"vs": "compactConditionVS", "vc": "compactConditionVC",
 		"hi": "compactConditionHI", "ls": "compactConditionLS",
@@ -963,6 +974,13 @@ func compactInstruction(disassembly string) (string, bool, error) {
 	if match := xorLSR64.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactXorLSR64", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
+	if match := xorROR64.FindStringSubmatch(disassembly); match != nil {
+		shift, err := number(match[4])
+		if err != nil || shift > 63 {
+			return "", false, fmt.Errorf("invalid EOR rotate %q", disassembly)
+		}
+		return fields("compactXorROR64", "destination", match[1], "left", match[2], "right", match[3], "shift", fmt.Sprint(shift)), false, nil
+	}
 	if match := orImmediate32.FindStringSubmatch(disassembly); match != nil {
 		immediate, err := number(match[3])
 		if err != nil || immediate > 0xffffffff {
@@ -1445,6 +1463,27 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		packed := uint16(lanes) | uint16(inputBits)<<8
 		return fields("compactVectorUnsignedShiftLong", "destination", match[2], "left", match[5], "accumulator", fmt.Sprint(high), "shift", fmt.Sprint(amount), "immediate", fmt.Sprintf("%#x", packed)), false, nil
 	}
+	if match := vectorUnsignedExtendLong.FindStringSubmatch(disassembly); match != nil {
+		lanes, lanesErr := number(match[3])
+		inputLanes, inputLanesErr := number(match[6])
+		inputBitsBySuffix := map[string]uint64{"b": 8, "h": 16, "s": 32}
+		outputBitsBySuffix := map[string]uint64{"h": 16, "s": 32, "d": 64}
+		inputBits, ok := inputBitsBySuffix[match[7]]
+		outputBits := outputBitsBySuffix[match[4]]
+		high := uint8(0)
+		if match[1] == "uxtl2" {
+			high = 1
+		}
+		wantInputLanes := lanes
+		if high != 0 {
+			wantInputLanes = lanes * 2
+		}
+		if lanesErr != nil || inputLanesErr != nil || !ok || outputBits != inputBits*2 || lanes == 0 || lanes*outputBits > 128 || inputLanes != wantInputLanes {
+			return "", false, fmt.Errorf("invalid vector unsigned extend-long %q", disassembly)
+		}
+		packed := uint16(lanes) | uint16(inputBits)<<8
+		return fields("compactVectorUnsignedShiftLong", "destination", match[2], "left", match[5], "accumulator", fmt.Sprint(high), "shift", "0", "immediate", fmt.Sprintf("%#x", packed)), false, nil
+	}
 	if match := vectorMove64.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactVectorMove64", "destination", match[1], "left", match[2]), false, nil
 	}
@@ -1621,6 +1660,13 @@ func compactInstruction(disassembly string) (string, bool, error) {
 			return "", false, fmt.Errorf("invalid ROR %q", disassembly)
 		}
 		return fields("compactRORImm32", "destination", match[1], "left", match[2], "shift", fmt.Sprint(shift)), false, nil
+	}
+	if match := rotateRight64.FindStringSubmatch(disassembly); match != nil {
+		shift, err := number(match[3])
+		if err != nil || shift > 63 {
+			return "", false, fmt.Errorf("invalid 64-bit rotate %q", disassembly)
+		}
+		return fields("compactRORImm64", "destination", match[1], "left", match[2], "shift", fmt.Sprint(shift)), false, nil
 	}
 	if match := shiftRight32.FindStringSubmatch(disassembly); match != nil {
 		shift, err := number(match[3])
@@ -2249,7 +2295,187 @@ func generateCompactSource(name string, annotated []annotatedInstruction) ([]byt
 	return format.Source([]byte(source))
 }
 
+func openMachoARM64eText(path string) ([]byte, uint64, error) {
+	var file *macho.File
+	fat, fatErr := macho.OpenFat(path)
+	if fatErr == nil {
+		defer fat.Close()
+		for index := range fat.Arches {
+			candidate := fat.Arches[index].File
+			if candidate.Cpu == macho.CpuArm64 && uint32(candidate.SubCpu)&0x00ffffff == 2 {
+				file = candidate
+				if uint32(candidate.SubCpu)&0xff000000 == 0 {
+					break
+				}
+			}
+		}
+	} else {
+		thin, err := macho.Open(path)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer thin.Close()
+		file = thin
+	}
+	if file == nil || file.Cpu != macho.CpuArm64 || uint32(file.SubCpu)&0x00ffffff != 2 {
+		return nil, 0, fmt.Errorf("Mach-O is not arm64e")
+	}
+	section := file.Section("__text")
+	if section == nil || section.Seg != "__TEXT" {
+		return nil, 0, fmt.Errorf("Mach-O has no __TEXT,__text section")
+	}
+	text, err := section.Data()
+	return text, section.Addr, err
+}
+
+func machoPCRelativeTarget(instruction arm64asm.Inst, pc uint64) (uint64, bool) {
+	for _, argument := range instruction.Args {
+		relative, ok := argument.(arm64asm.PCRel)
+		if !ok {
+			continue
+		}
+		target := int64(pc) + int64(relative)
+		if target < 0 {
+			return 0, false
+		}
+		return uint64(target), true
+	}
+	return 0, false
+}
+
+func machoAuthenticatedBranch(word uint32) (string, bool) {
+	target, modifier := (word>>5)&31, word&31
+	switch word & 0xfffffc00 {
+	case 0xd71f0800:
+		return fmt.Sprintf("braa x%d, x%d", target, modifier), true
+	case 0xd71f0c00:
+		return fmt.Sprintf("brab x%d, x%d", target, modifier), true
+	case 0xd73f0800:
+		return fmt.Sprintf("blraa x%d, x%d", target, modifier), true
+	case 0xd73f0c00:
+		return fmt.Sprintf("blrab x%d, x%d", target, modifier), true
+	}
+	switch word & 0xfffffc1f {
+	case 0xd61f081f:
+		return fmt.Sprintf("braaz x%d", target), true
+	case 0xd61f0c1f:
+		return fmt.Sprintf("brabz x%d", target), true
+	case 0xd63f081f:
+		return fmt.Sprintf("blraaz x%d", target), true
+	case 0xd63f0c1f:
+		return fmt.Sprintf("blrabz x%d", target), true
+	}
+	switch word {
+	case 0xd65f0bff:
+		return "retaa", true
+	case 0xd65f0fff:
+		return "retab", true
+	}
+	return "", false
+}
+
+func machoInstructionText(data []byte, pc uint64) string {
+	word := binary.LittleEndian.Uint32(data)
+	if word&0xffe08000 == 0xce000000 { // EOR3 Vd.16B, Vn.16B, Vm.16B, Va.16B
+		return fmt.Sprintf("eor3 v%d.16b, v%d.16b, v%d.16b, v%d.16b", word&31, (word>>5)&31, (word>>16)&31, (word>>10)&31)
+	}
+	if word&0xffffffe0 == 0xdac123e0 { // PACIZA Xd
+		return fmt.Sprintf("paciza x%d", word&31)
+	}
+	if authenticated, ok := machoAuthenticatedBranch(word); ok {
+		return authenticated
+	}
+	instruction, err := arm64asm.Decode(data)
+	if err != nil {
+		return fmt.Sprintf(".word %#x", word)
+	}
+	op := instruction.Op.String()
+	target, hasTarget := machoPCRelativeTarget(instruction, pc)
+	switch op {
+	case "B":
+		if !hasTarget {
+			break
+		}
+		if condition, ok := instruction.Args[0].(arm64asm.Cond); ok {
+			return fmt.Sprintf("b.%s #%#x", strings.ToLower(fmt.Sprint(condition)), target)
+		}
+		return fmt.Sprintf("b #%#x", target)
+	case "BL":
+		if hasTarget {
+			return fmt.Sprintf("bl #%#x", target)
+		}
+	case "CBZ", "CBNZ":
+		if hasTarget {
+			return fmt.Sprintf("%s %s, #%#x", strings.ToLower(op), strings.ToLower(fmt.Sprint(instruction.Args[0])), target)
+		}
+	case "TBZ", "TBNZ":
+		if hasTarget {
+			return fmt.Sprintf("%s %s, %s, #%#x", strings.ToLower(op), strings.ToLower(fmt.Sprint(instruction.Args[0])), strings.ToLower(fmt.Sprint(instruction.Args[1])), target)
+		}
+	case "ADRP":
+		if relative, ok := instruction.Args[1].(arm64asm.PCRel); ok {
+			target := int64(pc&^0xfff) + int64(relative)
+			if target >= 0 {
+				return fmt.Sprintf("adrp %s, #%#x", strings.ToLower(fmt.Sprint(instruction.Args[0])), uint64(target))
+			}
+		}
+	}
+	result := strings.ToLower(arm64asm.GNUSyntax(instruction))
+	result = strings.ReplaceAll(result, ", ", ",")
+	result = strings.ReplaceAll(result, ",", ", ")
+	if match := gnuNegativeMov64.FindStringSubmatch(result); match != nil {
+		value, err := strconv.ParseUint(match[2], 0, 64)
+		if err == nil && value > math.MaxInt64 {
+			return fmt.Sprintf("mov x%s, #-0x%x", match[1], uint64(0)-value)
+		}
+	}
+	return result
+}
+
+func annotatedMachoBlocks(path string) ([]annotatedBlock, error) {
+	text, textBase, err := openMachoARM64eText(path)
+	if err != nil {
+		return nil, err
+	}
+	layout, err := fairplay.InspectFairPlayRecoveryCodeLayout(path)
+	if err != nil {
+		return nil, err
+	}
+	starts := layout.BasicBlocks
+	result := make([]annotatedBlock, 0, len(starts))
+	textEnd := textBase + uint64(len(text))
+	for index, start := range starts {
+		if start < textBase || start >= textEnd {
+			continue
+		}
+		next := textEnd
+		if index+1 < len(starts) {
+			next = starts[index+1]
+		}
+		limit := min(next, start+512*4)
+		block := annotatedBlock{name: fmt.Sprintf("machoBlock%x", start), start: start}
+		terminated := false
+		for pc := start; pc+4 <= limit; pc += 4 {
+			offset := pc - textBase
+			instruction := annotatedInstruction{pc: pc, disassembly: machoInstructionText(text[offset:offset+4], pc)}
+			block.instructions = append(block.instructions, instruction)
+			if _, err := compactTerminator(instruction); err == nil {
+				terminated = true
+				break
+			}
+		}
+		if !terminated && next < textEnd && start+uint64(len(block.instructions))*4 == next {
+			block.returnTarget = next
+		}
+		if len(block.instructions) != 0 {
+			result = append(result, block)
+		}
+	}
+	return result, nil
+}
+
 func main() {
+	machoPath := flag.String("macho", "", "extract CFG blocks directly from an arm64e Mach-O")
 	inputPath := flag.String("input", "", "generated Go kernel source")
 	outputPath := flag.String("output", "", "generated compact profile Go file")
 	name := flag.String("name", "", "Go variable name for the compact kernel")
@@ -2259,9 +2485,47 @@ func main() {
 	prunedOutput := flag.String("pruned-output", "", "write CFG source without blocks replaced by a complete compact profile")
 	pruneOnlyPrefix := flag.String("prune-only-prefix", "", "remove generated CFG switch and block functions with this prefix")
 	flag.Parse()
-	if *inputPath == "" || *outputPath == "" || *pruneOnlyPrefix == "" && !identifier.MatchString(*name) {
-		fmt.Fprintln(os.Stderr, "--input, --output, and a valid --name are required")
+	if (*inputPath == "") == (*machoPath == "") || *outputPath == "" || *pruneOnlyPrefix == "" && !identifier.MatchString(*name) {
+		fmt.Fprintln(os.Stderr, "exactly one of --input or --macho, plus --output and a valid --name, is required")
 		os.Exit(2)
+	}
+	if *machoPath != "" {
+		blocks, err := annotatedMachoBlocks(*machoPath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		formatted, skipped, reasons, err := generateCompactCFGSource(*name, blocks, *limit, *verboseSkips)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "discovered %d Mach-O blocks; generated %d compact blocks; skipped %d unsupported blocks\n", len(blocks), strings.Count(string(formatted), "start:"), skipped)
+		type reasonCount struct {
+			reason string
+			count  int
+		}
+		ordered := make([]reasonCount, 0, len(reasons))
+		for reason, count := range reasons {
+			ordered = append(ordered, reasonCount{reason, count})
+		}
+		sort.Slice(ordered, func(left, right int) bool {
+			if ordered[left].count != ordered[right].count {
+				return ordered[left].count > ordered[right].count
+			}
+			return ordered[left].reason < ordered[right].reason
+		})
+		if len(ordered) > 20 {
+			ordered = ordered[:20]
+		}
+		for _, item := range ordered {
+			fmt.Fprintf(os.Stderr, "%6d %s\n", item.count, item.reason)
+		}
+		if err := os.WriteFile(*outputPath, formatted, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
 	}
 	inputBytes, err := os.ReadFile(*inputPath)
 	if err != nil {

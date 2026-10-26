@@ -1,8 +1,12 @@
 package main
 
 import (
+	"fmt"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/DrWhax/unfairplay/internal/fairplay"
 )
 
 func TestTranslateLegacyInstructionForms(t *testing.T) {
@@ -19,6 +23,11 @@ func TestTranslateLegacyInstructionForms(t *testing.T) {
 		{"tst x17, x12", "compactTestRegister64"},
 		{"mneg w8, w8, w16", "compactMNeg32"},
 		{"mneg x8, x8, x16", "compactMNeg64"},
+		{"ror x16, x16, #8", "compactRORImm64"},
+		{"ccmp x11, #0x0, #0x4, eq", "compactCCmpImm64"},
+		{"eor x0, x17, x0, ror #61", "compactXorROR64"},
+		{"uxtl v4.8h, v4.8b", "compactVectorUnsignedShiftLong"},
+		{"uxtl2 v18.8h, v17.16b", "compactVectorUnsignedShiftLong"},
 	} {
 		got, stop, err := compactInstruction(test.source)
 		if err != nil || stop || !strings.Contains(got, test.opcode) {
@@ -30,6 +39,49 @@ func TestTranslateLegacyInstructionForms(t *testing.T) {
 	}
 	if _, _, err := compactLogicalMaskFields("orr", "0", "1", 0x123456789abcdef0); err == nil {
 		t.Fatal("accepted an invalid ARM64 logical immediate")
+	}
+}
+
+func TestExternalMachoBlockExtraction(t *testing.T) {
+	path := os.Getenv("UNFAIRPLAY_PROFILE_BINARY")
+	if path == "" {
+		t.Skip("external FairPlay profile fixture is not configured")
+	}
+	layout, err := fairplay.InspectFairPlayRecoveryCodeLayout(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blocks, err := annotatedMachoBlocks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocks) != len(layout.BasicBlocks) {
+		t.Fatalf("annotated blocks=%d layout blocks=%d", len(blocks), len(layout.BasicBlocks))
+	}
+	wanted := map[uint64]bool{}
+	switch layout.BinarySHA256 {
+	case fairplay.FairPlayBuild26A428Hash:
+		wanted[0x1001511f0] = false
+		wanted[0x100151304] = false
+	case fairplay.FairPlayBuild26B118Hash:
+		wanted[0x10026d170] = false
+	default:
+		return
+	}
+	for _, block := range blocks {
+		if _, ok := wanted[block.start]; !ok {
+			continue
+		}
+		generated, skipped, _, err := generateCompactCFGSource("selected", []annotatedBlock{block}, 0, true)
+		if err != nil || skipped != 0 || !strings.Contains(string(generated), fmt.Sprintf("%#x:", block.start)) {
+			t.Fatalf("block %#x was not translated: skipped=%d err=%v", block.start, skipped, err)
+		}
+		wanted[block.start] = true
+	}
+	for address, found := range wanted {
+		if !found {
+			t.Fatalf("missing extracted block %#x", address)
+		}
 	}
 }
 

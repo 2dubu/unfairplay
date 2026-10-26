@@ -280,6 +280,8 @@ const (
 	compactLogicalMask64
 	compactTestRegister64
 	compactMNeg32
+	compactRORImm64
+	compactXorROR64
 	compactOpcodeCount
 )
 
@@ -399,6 +401,10 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			s.x[d] = uint64(uint32(s.x[left]) | ^uint32(shiftLeft(uint64(uint32(s.x[right])), int(instruction.shift), 32)))
 		case compactRORImm32:
 			s.x[d] = uint64(uint32(rotateRight(uint64(uint32(s.x[left])), int(instruction.shift), 32)))
+		case compactRORImm64:
+			s.x[d] = rotateRight(s.x[left], int(instruction.shift), 64)
+		case compactXorROR64:
+			s.x[d] = s.x[left] ^ rotateRight(s.x[right], int(instruction.shift), 64)
 		case compactXorROR32:
 			s.x[d] = uint64(uint32(s.x[left]) ^ uint32(rotateRight(uint64(uint32(s.x[right])), int(instruction.shift), 32)))
 		case compactOrROR32:

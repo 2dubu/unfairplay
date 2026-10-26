@@ -34,18 +34,19 @@ type FairPlayShapeMatch struct {
 }
 
 type FairPlayBinaryProfile struct {
-	Schema              string                 `json:"schema"`
-	SHA256              string                 `json:"sha256"`
-	Bytes               int64                  `json:"bytes"`
-	TextAddress         uint64                 `json:"text_address"`
-	TextBytes           uint64                 `json:"text_bytes"`
-	StructuralFamily    string                 `json:"structural_family,omitempty"`
-	UniqueAnchorCount   int                    `json:"unique_anchor_count"`
-	ExactAnchorCount    int                    `json:"exact_anchor_count"`
-	PortableAnchorCount int                    `json:"portable_anchor_count"`
-	ShapeAnchorCount    int                    `json:"shape_anchor_count"`
-	PortableCandidate   bool                   `json:"portable_candidate"`
-	Anchors             []FairPlayBinaryAnchor `json:"anchors"`
+	Schema              string                              `json:"schema"`
+	SHA256              string                              `json:"sha256"`
+	Bytes               int64                               `json:"bytes"`
+	TextAddress         uint64                              `json:"text_address"`
+	TextBytes           uint64                              `json:"text_bytes"`
+	StructuralFamily    string                              `json:"structural_family,omitempty"`
+	UniqueAnchorCount   int                                 `json:"unique_anchor_count"`
+	ExactAnchorCount    int                                 `json:"exact_anchor_count"`
+	PortableAnchorCount int                                 `json:"portable_anchor_count"`
+	ShapeAnchorCount    int                                 `json:"shape_anchor_count"`
+	PortableCandidate   bool                                `json:"portable_candidate"`
+	Anchors             []FairPlayBinaryAnchor              `json:"anchors"`
+	RecoveryCodeProfile *FairPlayRecoveryCodeProfileSummary `json:"recovery_code_profile,omitempty"`
 }
 
 type fairPlayAnchorPattern struct {

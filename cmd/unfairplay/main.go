@@ -374,7 +374,7 @@ func newDoctorCommand() *cobra.Command {
 }
 
 func newProfileCommand() *cobra.Command {
-	var binaryPath, outputPath string
+	var binaryPath, outputPath, recoveryProfilePath string
 	command := &cobra.Command{
 		Use:   "profile",
 		Short: "Inspect an arm64e fairplayd without executing it",
@@ -382,6 +382,17 @@ func newProfileCommand() *cobra.Command {
 			profile, err := fairplay.InspectFairPlayBinaryProfile(binaryPath)
 			if err != nil {
 				return err
+			}
+			if recoveryProfilePath != "" {
+				encoded, summary, err := fairplay.BuildFairPlayRecoveryCodeProfile(binaryPath)
+				if err != nil {
+					return err
+				}
+				defer clear(encoded)
+				if err := writePrivateFile(recoveryProfilePath, encoded); err != nil {
+					return err
+				}
+				profile.RecoveryCodeProfile = &summary
 			}
 			if outputPath != "" {
 				document, err := json.MarshalIndent(profile, "", "  ")
@@ -397,6 +408,7 @@ func newProfileCommand() *cobra.Command {
 	}
 	command.Flags().StringVar(&binaryPath, "binary", "", "arm64e or universal fairplayd Mach-O")
 	command.Flags().StringVar(&outputPath, "output", "", "New private JSON profile")
+	command.Flags().StringVar(&recoveryProfilePath, "recovery-profile-output", "", "New hash-bound recovery code profile")
 	_ = command.MarkFlagRequired("binary")
 	return command
 }

@@ -47,6 +47,26 @@ func TestLegacyCompactInstructions(t *testing.T) {
 			t.Fatalf("result=%#x", s.x[2])
 		}
 	})
+	t.Run("rotate-right-64", func(t *testing.T) {
+		s := newState(&model{pages: make(map[uint64][]byte)})
+		s.x[0] = 0x1122334455667788
+		if err := runCompactKernel(s, compactKernel{instructions: []compactInstruction{{op: compactRORImm64, destination: 1, left: 0, shift: 8}}}); err != nil {
+			t.Fatal(err)
+		}
+		if s.x[1] != 0x8811223344556677 {
+			t.Fatalf("result=%#x", s.x[1])
+		}
+	})
+	t.Run("xor-rotate-right-64", func(t *testing.T) {
+		s := newState(&model{pages: make(map[uint64][]byte)})
+		s.x[0], s.x[1] = 0x0102030405060708, 0x1122334455667788
+		if err := runCompactKernel(s, compactKernel{instructions: []compactInstruction{{op: compactXorROR64, destination: 2, left: 0, right: 1, shift: 8}}}); err != nil {
+			t.Fatal(err)
+		}
+		if s.x[2] != 0x891321374153617f {
+			t.Fatalf("result=%#x", s.x[2])
+		}
+	})
 }
 
 func TestRecoveryWorkersKeepMappingsPrivate(t *testing.T) {

@@ -60,6 +60,13 @@ Test a model without keeping the decrypted IPA:
 Use `unfairplay doctor` to check a capture, IPA, or model. Use
 `unfairplay profile` to inspect a fairplayd binary.
 
+Create a deterministic CFG-root profile for further build support with:
+
+```sh
+./unfairplay profile --binary /path/to/fairplayd.arm64e \
+  --recovery-profile-output fairplayd.recovery-profile.gz
+```
+
 ## Support
 
 Verified profiles: `25G83`, `26A428`/`26A434`, and `26B118` compatibility
