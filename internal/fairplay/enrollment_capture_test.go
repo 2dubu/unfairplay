@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"howett.net/plist"
@@ -73,8 +74,8 @@ func TestInspectSINFAndModel(t *testing.T) {
 
 func TestFairPlayBuildRecoverySupport(t *testing.T) {
 	legacy, ok := LookupFairPlayBuild(FairPlayBuild25G83Hash)
-	if !ok || !legacy.Recovery || !legacy.Decrypt || legacy.Status != "portable-contract-verified" ||
-		legacy.ValidationBasis != "canonical-contract-with-portable-evaluator" || legacy.CompatibilitySHA256 != FairPlayBuild26A428Hash {
+	if !ok || !legacy.Recovery || !legacy.Decrypt || legacy.Status != "portable-semantic-verified" ||
+		legacy.ValidationBasis != "canonical-contract-with-portable-semantic-evaluator" || legacy.EvaluatorSHA256 != FairPlayBuild26A428Hash {
 		t.Fatalf("25G83 support = %#v, %v", legacy, ok)
 	}
 	stable, ok := LookupFairPlayBuild(FairPlayBuild26A428Hash)
@@ -82,7 +83,7 @@ func TestFairPlayBuildRecoverySupport(t *testing.T) {
 		t.Fatalf("26A428 support = %#v, %v", stable, ok)
 	}
 	compat, ok := LookupFairPlayBuild(FairPlayBuild26B118Hash)
-	if !ok || !compat.Recovery || !compat.Decrypt || compat.Status != "supported-with-compatibility" || compat.CompatibilitySHA256 != FairPlayBuild26A428Hash {
+	if !ok || !compat.Recovery || !compat.Decrypt || compat.Profile != "portable-current-sinf" || compat.Status != "portable-semantic-verified" || compat.EvaluatorSHA256 != FairPlayBuild26A428Hash {
 		t.Fatalf("26B118 support = %#v, %v", compat, ok)
 	}
 }
@@ -90,8 +91,8 @@ func TestFairPlayBuildRecoverySupport(t *testing.T) {
 func TestUnknownFairPlayBuildUsesPortableValidation(t *testing.T) {
 	const unknownHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	support, known := ResolveFairPlayBuildSupport(unknownHash, "future-build")
-	if known || !support.Recovery || support.Decrypt || support.Status != "portable-validation-required" ||
-		support.CompatibilitySHA256 != FairPlayBuild26A428Hash {
+	if known || !support.Recovery || support.Decrypt || support.Status != "portable-semantic-validation-required" ||
+		support.EvaluatorSHA256 != FairPlayBuild26A428Hash {
 		t.Fatalf("unknown build support = %#v, known=%v", support, known)
 	}
 	invalid, known := ResolveFairPlayBuildSupport("not-a-sha256", "future-build")
@@ -100,21 +101,43 @@ func TestUnknownFairPlayBuildUsesPortableValidation(t *testing.T) {
 	}
 	profile := &FairPlayBinaryProfile{StructuralFamily: "family-v1", PortableCandidate: true}
 	matched := applyFairPlayBinaryProfile(support, false, profile)
-	if matched.Profile != "family-v1" || matched.Status != "portable-structure-matched" || !matched.Recovery || matched.Decrypt {
+	if matched.Profile != "family-v1" || matched.Status != "portable-semantic-structure-matched" || !matched.Recovery || matched.Decrypt {
 		t.Fatalf("structurally matched support = %#v", matched)
 	}
 }
 
-func TestCompatibilityModelMatchesCaptureBuild(t *testing.T) {
+func TestSemanticEvaluatorModelMatchesCapture(t *testing.T) {
 	capture := &EnrollmentCaptureManifest{
 		FairPlayd: EnrollmentCaptureFile{SHA256: FairPlayBuild26B118Hash},
 		FairPlay:  supportedFairPlayHashes[FairPlayBuild26B118Hash],
 	}
-	if !modelMatchesCaptureBuild(FairPlayBuild26A428Hash, capture) {
-		t.Fatal("checked compatibility model did not match the 26B118 capture")
+	if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, capture) {
+		t.Fatal("portable semantic evaluator model did not match the 26B118 capture")
 	}
-	if modelMatchesCaptureBuild("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", capture) {
-		t.Fatal("unrelated model matched the compatibility capture")
+	if modelMatchesCaptureEvaluator("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", capture) {
+		t.Fatal("unrelated evaluator model matched the capture")
+	}
+}
+
+func TestPortableSemanticEvaluatorMatrix(t *testing.T) {
+	for _, hash := range []string{FairPlayBuild25G83Hash, FairPlayBuild26A428Hash, FairPlayBuild26B118Hash} {
+		support, ok := LookupFairPlayBuild(hash)
+		if !ok || support.EvaluatorProfile != "macos26a428" || support.EvaluatorSHA256 != FairPlayBuild26A428Hash {
+			t.Fatalf("build %s evaluator metadata: %#v", hash, support)
+		}
+		capture := &EnrollmentCaptureManifest{FairPlayd: EnrollmentCaptureFile{SHA256: hash}, FairPlay: support}
+		if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, capture) {
+			t.Fatalf("portable evaluator did not match build %s", hash)
+		}
+	}
+	support, _ := LookupFairPlayBuild(FairPlayBuild26B118Hash)
+	encoded, err := json.Marshal(support)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(encoded)
+	if !strings.Contains(text, `"evaluator_profile":"macos26a428"`) || !strings.Contains(text, `"evaluator_source_sha256":"`+FairPlayBuild26A428Hash+`"`) || strings.Contains(text, "compatib") {
+		t.Fatalf("unexpected semantic evaluator metadata: %s", text)
 	}
 }
 
@@ -148,7 +171,7 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.FairPlay.Status != "supported-with-compatibility" || loaded.FairPlay.CompatibilitySHA256 != FairPlayBuild26A428Hash {
+	if loaded.FairPlay.Status != "portable-semantic-verified" || loaded.FairPlay.EvaluatorSHA256 != FairPlayBuild26A428Hash {
 		t.Fatalf("capture support metadata was not refreshed: %#v", loaded.FairPlay)
 	}
 	if err := os.WriteFile(privatePath, []byte("changed"), 0o600); err != nil {

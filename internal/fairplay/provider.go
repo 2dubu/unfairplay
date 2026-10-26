@@ -141,20 +141,20 @@ func resolveLogicalKey(sinf []byte, model currentSINFModel, modelName, modelSHA2
 		providerKind = "current-sinf-whitebox-direct-v3"
 	}
 	result.Evidence = map[string]any{
-		"provider_kind":          providerKind,
-		"provider_status":        0,
-		"selector_status":        0,
-		"status_patched":         false,
-		"device_state_imported":  false,
-		"state_origin":           stateOrigin,
-		"hardware_backend":       "none",
-		"runtime_hardware_calls": 0,
-		"request_selector":       selector.Identifier(),
-		"model_name":             modelName,
-		"model_sha256":           modelSHA256,
-		"model_version":          model.version,
-		"fairplayd_sha256":       hex.EncodeToString(model.fairplaydHash[:]),
-		"logical_key_sha256":     digest(logical[:]),
+		"provider_kind":           providerKind,
+		"provider_status":         0,
+		"selector_status":         0,
+		"status_patched":          false,
+		"device_state_imported":   false,
+		"state_origin":            stateOrigin,
+		"hardware_backend":        "none",
+		"runtime_hardware_calls":  0,
+		"request_selector":        selector.Identifier(),
+		"model_name":              modelName,
+		"model_sha256":            modelSHA256,
+		"model_version":           model.version,
+		"evaluator_source_sha256": hex.EncodeToString(model.fairplaydHash[:]),
+		"logical_key_sha256":      digest(logical[:]),
 	}
 	return result, nil
 }

@@ -29,13 +29,13 @@ type SINFDiagnostic struct {
 }
 
 type EnrollmentModelDiagnostic struct {
-	Path          string        `json:"path"`
-	SHA256        string        `json:"sha256"`
-	Bytes         int           `json:"bytes"`
-	Version       uint32        `json:"version"`
-	FairPlaydHash string        `json:"fairplayd_sha256"`
-	Selector      *SINFSelector `json:"selector,omitempty"`
-	SelectorID    string        `json:"selector_id,omitempty"`
+	Path                  string        `json:"path"`
+	SHA256                string        `json:"sha256"`
+	Bytes                 int           `json:"bytes"`
+	Version               uint32        `json:"version"`
+	EvaluatorSourceSHA256 string        `json:"evaluator_source_sha256"`
+	Selector              *SINFSelector `json:"selector,omitempty"`
+	SelectorID            string        `json:"selector_id,omitempty"`
 }
 
 type FairPlayDoctorReport struct {
@@ -58,21 +58,21 @@ type FairPlayDoctorReport struct {
 }
 
 type EnrollmentCaptureDiagnostic struct {
-	ProductVersion  string                 `json:"product_version"`
-	BuildVersion    string                 `json:"build_version"`
-	FairPlaydSHA256 string                 `json:"fairplayd_sha256"`
-	FairPlaySupport FairPlayBuildSupport   `json:"fairplay_support"`
-	BinaryProfile   *FairPlayBinaryProfile `json:"fairplay_binary_profile,omitempty"`
-	SelectorID      string                 `json:"selector_id"`
-	Files           int                    `json:"files"`
-	HasIPA          bool                   `json:"has_ipa"`
+	ProductVersion    string                 `json:"product_version"`
+	BuildVersion      string                 `json:"build_version"`
+	FairPlaydSHA256   string                 `json:"fairplayd_sha256"`
+	EnrollmentSupport FairPlayBuildSupport   `json:"enrollment_support"`
+	BinaryProfile     *FairPlayBinaryProfile `json:"fairplay_binary_profile,omitempty"`
+	SelectorID        string                 `json:"selector_id"`
+	Files             int                    `json:"files"`
+	HasIPA            bool                   `json:"has_ipa"`
 }
 
 type FairPlayHostDiagnostic struct {
 	ProductVersion     string                 `json:"product_version"`
 	BuildVersion       string                 `json:"build_version"`
 	FairPlaydSHA256    string                 `json:"fairplayd_sha256"`
-	FairPlaySupport    FairPlayBuildSupport   `json:"fairplay_support"`
+	EnrollmentSupport  FairPlayBuildSupport   `json:"enrollment_support"`
 	BinaryProfile      *FairPlayBinaryProfile `json:"fairplay_binary_profile,omitempty"`
 	StateAccessible    bool                   `json:"state_accessible"`
 	StateFiles         int                    `json:"state_files"`
@@ -98,10 +98,10 @@ func InspectLocalFairPlayHost() (FairPlayHostDiagnostic, error) {
 		return result, err
 	}
 	support, known := ResolveFairPlayBuildSupport(result.FairPlaydSHA256, result.BuildVersion)
-	result.FairPlaySupport = support
+	result.EnrollmentSupport = support
 	if profile, profileErr := InspectFairPlayBinaryProfile("/System/Library/PrivateFrameworks/CoreFP.framework/Versions/A/fairplayd"); profileErr == nil {
 		result.BinaryProfile = &profile
-		result.FairPlaySupport = applyFairPlayBinaryProfile(result.FairPlaySupport, known, result.BinaryProfile)
+		result.EnrollmentSupport = applyFairPlayBinaryProfile(result.EnrollmentSupport, known, result.BinaryProfile)
 	}
 	entries, stateErr := os.ReadDir("/private/var/db/fpsd/SC Info")
 	if stateErr == nil {
@@ -144,7 +144,7 @@ func InspectSINF(data []byte) (SINFDiagnostic, error) {
 			result.LegacyMarkers = true
 		}
 	}
-	// Current Store enrollments can retain crdt/asdt compatibility atoms. The
+	// Current Store enrollments can retain legacy crdt/asdt atoms. The
 	// protected private-payload geometry, not those optional markers, is the
 	// useful non-secret preflight signal.
 	result.CurrentLayout = result.PrivateBytes == 440 || result.PrivateBytes == 448
@@ -165,7 +165,7 @@ func InspectEnrollmentModel(path string) (EnrollmentModelDiagnostic, error) {
 	digest := sha256.Sum256(pack)
 	result = EnrollmentModelDiagnostic{
 		Path: path, SHA256: hex.EncodeToString(digest[:]), Bytes: len(pack), Version: model.version,
-		FairPlaydHash: hex.EncodeToString(model.fairplaydHash[:]),
+		EvaluatorSourceSHA256: hex.EncodeToString(model.fairplaydHash[:]),
 	}
 	if model.hasSelector {
 		selector := model.selector
@@ -292,12 +292,12 @@ func validatedModelForSINF(ipaPath, member, modelPath string,
 			if parseErr != nil {
 				return "", parseErr
 			}
-			if modelMatchesCaptureBuild(hex.EncodeToString(model.fairplaydHash[:]), capture) {
+			if modelMatchesCaptureEvaluator(hex.EncodeToString(model.fairplaydHash[:]), capture) {
 				eligible = append(eligible, pack)
 			}
 		}
 		if len(eligible) == 0 {
-			return "", fmt.Errorf("no enrollment model matches the capture's FairPlay build")
+			return "", fmt.Errorf("no enrollment model matches the capture's semantic evaluator")
 		}
 		material, err = ResolveLogicalKeyWithModels(sinf, eligible)
 	} else {
@@ -310,8 +310,8 @@ func validatedModelForSINF(ipaPath, member, modelPath string,
 		if parseErr != nil {
 			return "", parseErr
 		}
-		if !modelMatchesCaptureBuild(hex.EncodeToString(model.fairplaydHash[:]), capture) {
-			return "", fmt.Errorf("enrollment model does not match the capture's FairPlay build")
+		if !modelMatchesCaptureEvaluator(hex.EncodeToString(model.fairplaydHash[:]), capture) {
+			return "", fmt.Errorf("enrollment model does not match the capture's semantic evaluator")
 		}
 		material, err = ResolveLogicalKeyWithModel(sinf, pack)
 	}
@@ -328,9 +328,9 @@ func validatedModelForSINF(ipaPath, member, modelPath string,
 	return "", fmt.Errorf("validated enrollment model is missing from diagnostics")
 }
 
-func modelMatchesCaptureBuild(modelHash string, capture *EnrollmentCaptureManifest) bool {
+func modelMatchesCaptureEvaluator(modelHash string, capture *EnrollmentCaptureManifest) bool {
 	return capture == nil || modelHash == capture.FairPlayd.SHA256 ||
-		capture.FairPlay.CompatibilitySHA256 != "" && modelHash == capture.FairPlay.CompatibilitySHA256
+		capture.FairPlay.EvaluatorSHA256 != "" && modelHash == capture.FairPlay.EvaluatorSHA256
 }
 
 func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport {
@@ -342,14 +342,14 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 	if capturePath == "" {
 		if host, err := InspectLocalFairPlayHost(); err == nil {
 			report.Host = &host
-			report.Checks["supported_fairplayd"] = host.FairPlaySupport.Decrypt
-			report.Checks["portable_recovery_available"] = host.FairPlaySupport.Recovery
-			report.Checks["verified_fairplayd"] = host.FairPlaySupport.Decrypt
+			report.Checks["supported_enrollment_contract"] = host.EnrollmentSupport.Decrypt
+			report.Checks["portable_semantic_recovery_available"] = host.EnrollmentSupport.Recovery
+			report.Checks["verified_enrollment_contract"] = host.EnrollmentSupport.Decrypt
 			if host.BinaryProfile != nil {
-				report.Checks["portable_structure_match"] = host.BinaryProfile.PortableCandidate
+				report.Checks["diagnostic_structure_match"] = host.BinaryProfile.PortableCandidate
 			}
-			if host.FairPlaySupport.Recovery && !host.FairPlaySupport.Decrypt {
-				report.Checks["portable_recovery_candidate"] = true
+			if host.EnrollmentSupport.Recovery && !host.EnrollmentSupport.Decrypt {
+				report.Checks["portable_semantic_validation_candidate"] = true
 				report.Warnings = append(report.Warnings,
 					"this fairplayd hash is not independently verified; collect a matching IPA and require complete recovery validation")
 			}
@@ -366,22 +366,22 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 		} else {
 			captureManifest = &capture
 			report.Capture = &EnrollmentCaptureDiagnostic{
-				ProductVersion:  capture.ProductVersion,
-				BuildVersion:    capture.BuildVersion,
-				FairPlaydSHA256: capture.FairPlayd.SHA256,
-				FairPlaySupport: capture.FairPlay,
-				BinaryProfile:   capture.BinaryProfile,
-				SelectorID:      capture.App.SelectorID,
-				Files:           len(capture.Files),
-				HasIPA:          capture.IPA != nil,
+				ProductVersion:    capture.ProductVersion,
+				BuildVersion:      capture.BuildVersion,
+				FairPlaydSHA256:   capture.FairPlayd.SHA256,
+				EnrollmentSupport: capture.FairPlay,
+				BinaryProfile:     capture.BinaryProfile,
+				SelectorID:        capture.App.SelectorID,
+				Files:             len(capture.Files),
+				HasIPA:            capture.IPA != nil,
 			}
 			report.CaptureVerified = true
 			report.Checks["capture_integrity"] = true
-			report.Checks["supported_fairplayd"] = capture.FairPlay.Decrypt
-			report.Checks["portable_recovery_available"] = capture.FairPlay.Recovery
-			report.Checks["verified_fairplayd"] = capture.FairPlay.Decrypt
+			report.Checks["supported_enrollment_contract"] = capture.FairPlay.Decrypt
+			report.Checks["portable_semantic_recovery_available"] = capture.FairPlay.Recovery
+			report.Checks["verified_enrollment_contract"] = capture.FairPlay.Decrypt
 			if capture.BinaryProfile != nil {
-				report.Checks["portable_structure_match"] = capture.BinaryProfile.PortableCandidate
+				report.Checks["diagnostic_structure_match"] = capture.BinaryProfile.PortableCandidate
 			}
 			canonical, normalizeErr := NormalizeEnrollmentCapture(capturePath, capture)
 			if normalizeErr != nil {
@@ -391,9 +391,9 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 				report.Checks["canonical_enrollment_input"] = canonical.RecoveryReady
 			}
 			if capture.FairPlay.Recovery && !capture.FairPlay.Decrypt {
-				report.Checks["portable_recovery_candidate"] = true
+				report.Checks["portable_semantic_validation_candidate"] = true
 				report.Warnings = append(report.Warnings,
-					"this fairplayd hash is not independently verified; recovery will use the portable evaluator and promote a model only after complete SINF and IPA validation")
+					"this fairplayd hash is not independently verified; recovery will use the portable semantic evaluator and promote a model only after complete SINF and IPA validation")
 			}
 			if ipaPath == "" && capture.IPA != nil {
 				resolved, resolveErr := captureFilePath(capturePath, capture.IPA.Path)
@@ -455,7 +455,7 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 		for _, sinf := range report.SINF {
 			matched := false
 			for _, model := range report.Models {
-				if modelMatchesCaptureBuild(model.FairPlaydHash, captureManifest) &&
+				if modelMatchesCaptureEvaluator(model.EvaluatorSourceSHA256, captureManifest) &&
 					(model.SelectorID == sinf.SelectorID || model.SelectorID == "" && len(report.Models) == 1) {
 					matched = true
 				}
@@ -505,14 +505,14 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 		report.NextActions = append(report.NextActions, "recover fairplay-enrollment.bin with fairplay-enroll recover")
 	}
 	if modelPath != "" && report.CompatibleModel != "" {
-		report.NextActions = append(report.NextActions, "run fairplay-decrypt with the compatible model")
+		report.NextActions = append(report.NextActions, "run unfairplay decrypt with the validated model")
 	}
 	if len(report.SINF) != 0 || captureManifest != nil || modelPath != "" {
 		report.Ready = len(report.Errors) == 0 && report.Checks["current_sinf_layout"] &&
-			(captureManifest == nil || report.Checks["capture_integrity"] && report.Checks["portable_recovery_available"] && report.Checks["capture_selector_match"] && report.Checks["canonical_enrollment_input"]) &&
+			(captureManifest == nil || report.Checks["capture_integrity"] && report.Checks["portable_semantic_recovery_available"] && report.Checks["capture_selector_match"] && report.Checks["canonical_enrollment_input"]) &&
 			(modelPath == "" || report.Checks["sinf_model_validation"])
 	} else if report.Host != nil {
-		report.Ready = report.Checks["portable_recovery_available"] && report.Checks["native_state_accessible"] && report.Checks["hardware_iomac"]
+		report.Ready = report.Checks["portable_semantic_recovery_available"] && report.Checks["native_state_accessible"] && report.Checks["hardware_iomac"]
 	}
 	report.DecryptReady = modelPath != "" && report.Ready && report.CompatibleModel != ""
 	return report

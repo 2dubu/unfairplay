@@ -225,7 +225,9 @@ func recoverEnrollment(ctx context.Context, options recoverOptions) error {
 		"schema": "unfairplay-enrollment-recovery-v1", "success": true,
 		"selector": manifest.App.SelectorID, "fairplayd_sha256": manifest.FairPlayd.SHA256,
 		"fairplayd_status": manifest.FairPlay.Status, "validation_basis": manifest.FairPlay.ValidationBasis,
-		"canonical_contract": canonical.Contract, "canonical_input_sha256": canonical.FingerprintSHA256,
+		"evaluator_profile": manifest.FairPlay.EvaluatorProfile, "evaluator_source_sha256": manifest.FairPlay.EvaluatorSHA256,
+		"portable_semantic_evaluator": manifest.FairPlay.EvaluatorSHA256 != "" && manifest.FairPlay.EvaluatorSHA256 != manifest.FairPlayd.SHA256,
+		"canonical_contract":          canonical.Contract, "canonical_input_sha256": canonical.FingerprintSHA256,
 		"enrollment_model": enrollment, "decrypted_ipa": decrypted,
 		"decrypted_ipa_sha256": result.OutputSHA256, "encrypted_images": result.EncryptedImages,
 		"decrypted_pages": result.DecryptedPages, "input_profile": selectedProfile,
@@ -348,7 +350,7 @@ func newDoctorCommand() *cobra.Command {
 	var capture, ipa, model, reportPath string
 	command := &cobra.Command{
 		Use:   "doctor",
-		Short: "Diagnose capture, SINF, model, and build compatibility",
+		Short: "Diagnose capture, SINF, model, and evaluator support",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			report := fairplay.DoctorFairPlay(capture, ipa, model)
 			if reportPath != "" {

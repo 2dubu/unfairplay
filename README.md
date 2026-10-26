@@ -73,9 +73,13 @@ builds, but creating it alone does not enable decryption.
 
 ## Support
 
-Verified profiles: `25G83`, `26A428`/`26A434`, and `26B118` compatibility
-mode. Native `26B118` execution is not enabled yet. Unknown arm64e builds are
-accepted only when model recovery and full IPA validation succeed.
+Verified enrollment contracts: `25G83`, `26A428`/`26A434`, and `26B118`.
+`25G83` and `26B118` use the portable semantic evaluator; native fairplayd
+execution is not required. Unknown arm64e builds are accepted only when model
+recovery and full IPA validation succeed.
+
+The evaluator source build is recorded for audit purposes. UnfairPlay does not
+load or run that fairplayd binary during recovery.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.

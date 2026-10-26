@@ -34,27 +34,28 @@ const (
 )
 
 type FairPlayBuildSupport struct {
-	Profile              string `json:"profile"`
-	Build                string `json:"build"`
-	Status               string `json:"status"`
-	ValidationBasis      string `json:"validation_basis,omitempty"`
-	Recovery             bool   `json:"recovery"`
-	Decrypt              bool   `json:"end_to_end_decryption"`
-	CompatibilityProfile string `json:"compatibility_profile,omitempty"`
-	CompatibilitySHA256  string `json:"compatibility_fairplayd_sha256,omitempty"`
+	Profile          string `json:"profile"`
+	Build            string `json:"build"`
+	Status           string `json:"status"`
+	ValidationBasis  string `json:"validation_basis,omitempty"`
+	Recovery         bool   `json:"recovery"`
+	Decrypt          bool   `json:"end_to_end_decryption"`
+	EvaluatorProfile string `json:"evaluator_profile,omitempty"`
+	EvaluatorSHA256  string `json:"evaluator_source_sha256,omitempty"`
 }
 
 var supportedFairPlayHashes = map[string]FairPlayBuildSupport{
 	FairPlayBuild25G83Hash: {
-		Profile: "portable-current-sinf", Build: "25G83", Status: "portable-contract-verified", ValidationBasis: "canonical-contract-with-portable-evaluator", Recovery: true, Decrypt: true,
-		CompatibilityProfile: "macos26a428", CompatibilitySHA256: FairPlayBuild26A428Hash,
+		Profile: "portable-current-sinf", Build: "25G83", Status: "portable-semantic-verified", ValidationBasis: "canonical-contract-with-portable-semantic-evaluator", Recovery: true, Decrypt: true,
+		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
 	},
 	FairPlayBuild26A428Hash: {
 		Profile: "macos26a428", Build: "26A428", Status: "supported", ValidationBasis: "exact-binary-profile-and-canonical-contract", Recovery: true, Decrypt: true,
+		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
 	},
 	FairPlayBuild26B118Hash: {
-		Profile: "macos26b118", Build: "26B118", Status: "supported-with-compatibility", ValidationBasis: "canonical-contract-with-compatibility-evaluator", Recovery: true, Decrypt: true,
-		CompatibilityProfile: "macos26a428", CompatibilitySHA256: FairPlayBuild26A428Hash,
+		Profile: "portable-current-sinf", Build: "26B118", Status: "portable-semantic-verified", ValidationBasis: "canonical-contract-with-portable-semantic-evaluator", Recovery: true, Decrypt: true,
+		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
 	},
 }
 
@@ -66,7 +67,7 @@ func LookupFairPlayBuild(hash string) (FairPlayBuildSupport, bool) {
 // ResolveFairPlayBuildSupport returns exact validation metadata for known
 // builds and a fail-closed portable recovery candidate for every other build.
 // The portable path does not execute the captured daemon. It consumes the
-// captured enrollment inputs with the embedded evaluator and promotes a model
+// captured enrollment inputs with the portable semantic evaluator and promotes a model
 // only after complete SINF and IPA validation succeeds.
 func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool) {
 	if support, ok := LookupFairPlayBuild(hash); ok {
@@ -78,14 +79,14 @@ func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool
 		return FairPlayBuildSupport{Build: build, Status: "invalid-fairplayd-identity"}, false
 	}
 	return FairPlayBuildSupport{
-		Profile:              "portable-current-sinf",
-		Build:                build,
-		Status:               "portable-validation-required",
-		ValidationBasis:      "complete-sinf-and-ipa-promotion-gate",
-		Recovery:             true,
-		Decrypt:              false,
-		CompatibilityProfile: "macos26a428",
-		CompatibilitySHA256:  FairPlayBuild26A428Hash,
+		Profile:          "portable-current-sinf",
+		Build:            build,
+		Status:           "portable-semantic-validation-required",
+		ValidationBasis:  "portable-semantic-evaluator-plus-complete-ipa-promotion-gate",
+		Recovery:         true,
+		Decrypt:          false,
+		EvaluatorProfile: "macos26a428",
+		EvaluatorSHA256:  FairPlayBuild26A428Hash,
 	}, false
 }
 
@@ -94,8 +95,8 @@ func applyFairPlayBinaryProfile(support FairPlayBuildSupport, known bool, profil
 		return support
 	}
 	support.Profile = profile.StructuralFamily
-	support.Status = "portable-structure-matched"
-	support.ValidationBasis = "structural-profile-plus-end-to-end-promotion-gate"
+	support.Status = "portable-semantic-structure-matched"
+	support.ValidationBasis = "structural-profile-plus-portable-semantic-promotion-gate"
 	return support
 }
 
@@ -123,7 +124,7 @@ type EnrollmentCaptureManifest struct {
 	ProductVersion string                  `json:"product_version"`
 	BuildVersion   string                  `json:"build_version"`
 	FairPlayd      EnrollmentCaptureFile   `json:"fairplayd"`
-	FairPlay       FairPlayBuildSupport    `json:"fairplay_support"`
+	FairPlay       FairPlayBuildSupport    `json:"enrollment_support"`
 	BinaryProfile  *FairPlayBinaryProfile  `json:"fairplay_binary_profile,omitempty"`
 	HardwareMAC    EnrollmentCaptureFile   `json:"hardware_iomac"`
 	App            EnrollmentCaptureApp    `json:"app"`
