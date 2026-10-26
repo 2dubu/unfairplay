@@ -5,8 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -16,6 +16,7 @@ import (
 )
 
 type SINFDiagnostic struct {
+	Error         string       `json:"error,omitempty"`
 	Path          string       `json:"path,omitempty"`
 	SHA256        string       `json:"sha256"`
 	Bytes         int          `json:"bytes"`
@@ -38,21 +39,22 @@ type EnrollmentModelDiagnostic struct {
 }
 
 type FairPlayDoctorReport struct {
-	Schema          string                       `json:"schema"`
-	CreatedAt       string                       `json:"created_at"`
-	Ready           bool                         `json:"ready"`
-	DecryptReady    bool                         `json:"decrypt_ready"`
-	Host            *FairPlayHostDiagnostic      `json:"host,omitempty"`
-	Capture         *EnrollmentCaptureDiagnostic `json:"capture,omitempty"`
-	CaptureVerified bool                         `json:"capture_verified"`
-	SINF            []SINFDiagnostic             `json:"sinf,omitempty"`
-	Models          []EnrollmentModelDiagnostic  `json:"models,omitempty"`
-	CompatibleModel string                       `json:"compatible_model,omitempty"`
-	CanonicalInput  *CanonicalEnrollmentInput    `json:"canonical_input,omitempty"`
-	Checks          map[string]bool              `json:"checks"`
-	Errors          []string                     `json:"errors,omitempty"`
-	Warnings        []string                     `json:"warnings,omitempty"`
-	NextActions     []string                     `json:"next_actions,omitempty"`
+	Schema                 string                       `json:"schema"`
+	CreatedAt              string                       `json:"created_at"`
+	Ready                  bool                         `json:"ready"`
+	DecryptReady           bool                         `json:"decrypt_ready"`
+	Host                   *FairPlayHostDiagnostic      `json:"host,omitempty"`
+	Capture                *EnrollmentCaptureDiagnostic `json:"capture,omitempty"`
+	CaptureVerified        bool                         `json:"capture_verified"`
+	SINF                   []SINFDiagnostic             `json:"sinf,omitempty"`
+	Models                 []EnrollmentModelDiagnostic  `json:"models,omitempty"`
+	CompatibleModel        string                       `json:"compatible_model,omitempty"`
+	CompatibleModelsBySINF map[string]string            `json:"compatible_models_by_sinf,omitempty"`
+	CanonicalInput         *CanonicalEnrollmentInput    `json:"canonical_input,omitempty"`
+	Checks                 map[string]bool              `json:"checks"`
+	Errors                 []string                     `json:"errors,omitempty"`
+	Warnings               []string                     `json:"warnings,omitempty"`
+	NextActions            []string                     `json:"next_actions,omitempty"`
 }
 
 type EnrollmentCaptureDiagnostic struct {
@@ -206,41 +208,42 @@ func inspectModelPath(path string) ([]EnrollmentModelDiagnostic, error) {
 	return result, nil
 }
 
-func inspectIPASINFs(path string) ([]SINFDiagnostic, error) {
-	archive, err := zip.OpenReader(path)
+// A nil used set scans every license for diagnostics. A non-nil set limits
+// readiness checks to licenses used by encrypted executables.
+func inspectIPASINFs(ipaPath string, used map[string]bool) ([]SINFDiagnostic, error) {
+	archive, err := zip.OpenReader(ipaPath)
 	if err != nil {
 		return nil, err
 	}
 	defer archive.Close()
 	var result []SINFDiagnostic
+	var failures []error
 	for _, file := range archive.File {
-		if !strings.Contains(file.Name, "/SC_Info/") || !strings.HasSuffix(strings.ToLower(file.Name), ".sinf") {
+		if used != nil {
+			if !used[file.Name] {
+				continue
+			}
+		} else if !(strings.Contains(file.Name, "/SC_Info/") || strings.HasPrefix(file.Name, "SC_Info/")) ||
+			!strings.HasSuffix(strings.ToLower(file.Name), ".sinf") {
 			continue
 		}
-		reader, err := file.Open()
-		if err != nil {
-			return nil, err
-		}
-		data, readErr := io.ReadAll(reader)
-		closeErr := reader.Close()
-		if readErr != nil {
-			return nil, readErr
-		}
-		if closeErr != nil {
-			return nil, closeErr
-		}
-		value, err := InspectSINF(data)
-		if err != nil {
-			return nil, fmt.Errorf("inspect %s: %w", file.Name, err)
+		data, err := zipBytes(file)
+		var value SINFDiagnostic
+		if err == nil {
+			value, err = InspectSINF(data)
 		}
 		value.Path = file.Name
+		if err != nil {
+			value.Error = err.Error()
+			failures = append(failures, fmt.Errorf("inspect %s: %w", file.Name, err))
+		}
 		result = append(result, value)
 	}
 	if len(result) == 0 {
-		return nil, fmt.Errorf("IPA contains no SINF files")
+		failures = append(failures, fmt.Errorf("IPA contains no SINF files"))
 	}
 	sort.Slice(result, func(left, right int) bool { return result[left].Path < result[right].Path })
-	return result, nil
+	return result, errors.Join(failures...)
 }
 
 func readIPASINF(path, member string) ([]byte, error) {
@@ -403,19 +406,34 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 		}
 	}
 	if ipaPath != "" {
-		sinfs, err := inspectIPASINFs(ipaPath)
+		inventory, archive, inventoryErr := openIPAInventory(ipaPath)
+		if archive != nil {
+			_ = archive.Close()
+		}
+		var used map[string]bool
+		if inventoryErr != nil {
+			report.Errors = append(report.Errors, "ipa inventory: "+inventoryErr.Error())
+		} else {
+			report.Checks["ipa_inventory"] = true
+			used = make(map[string]bool)
+			for _, image := range inventory.images {
+				used[image.sinfMember] = true
+			}
+		}
+		sinfs, err := inspectIPASINFs(ipaPath, used)
+		report.SINF = sinfs
 		if err != nil {
 			report.Errors = append(report.Errors, "ipa: "+err.Error())
-		} else {
-			report.SINF = sinfs
-			report.Checks["ipa_sinf"] = true
-			current := true
+		}
+		if len(sinfs) > 0 {
+			report.Checks["ipa_sinf"] = err == nil
+			current := err == nil
 			for _, value := range sinfs {
 				current = current && value.CurrentLayout
 			}
 			report.Checks["current_sinf_layout"] = current
 			if !current {
-				report.Warnings = append(report.Warnings, "one or more SINF files use an unsupported or legacy layout")
+				report.Warnings = append(report.Warnings, "one or more inspected SINF files use an unsupported or legacy layout")
 			}
 		}
 	}
@@ -432,28 +450,41 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 		}
 	}
 	if len(report.SINF) != 0 && len(report.Models) != 0 {
-		if len(report.SINF) != 1 {
-			report.Errors = append(report.Errors, "decryption requires exactly one SINF")
-		} else {
+		allSelectors, allValidated := true, true
+		report.CompatibleModelsBySINF = make(map[string]string)
+		for _, sinf := range report.SINF {
+			matched := false
 			for _, model := range report.Models {
 				if modelMatchesCaptureBuild(model.FairPlaydHash, captureManifest) &&
-					(model.SelectorID == report.SINF[0].SelectorID || model.SelectorID == "" && len(report.Models) == 1) {
-					report.Checks["selector_match"] = true
+					(model.SelectorID == sinf.SelectorID || model.SelectorID == "" && len(report.Models) == 1) {
+					matched = true
+				}
+			}
+			if !matched {
+				allSelectors = false
+				allValidated = false
+				report.Errors = append(report.Errors, "no enrollment model matches SINF "+sinf.Path)
+				continue
+			}
+			selected, err := validatedModelForSINF(ipaPath, sinf.Path,
+				modelPath, report.Models, captureManifest)
+			if err != nil {
+				allValidated = false
+				report.Errors = append(report.Errors, "model validation for "+sinf.Path+": "+err.Error())
+			} else {
+				report.CompatibleModelsBySINF[sinf.Path] = selected
+				if report.CompatibleModel == "" {
+					report.CompatibleModel = selected
+				} else if report.CompatibleModel != selected {
+					report.CompatibleModel = modelPath
 				}
 			}
 		}
-		if !report.Checks["selector_match"] {
-			report.Errors = append(report.Errors, "no enrollment model matches the IPA SINF selector")
-		} else {
-			selected, err := validatedModelForSINF(ipaPath, report.SINF[0].Path,
-				modelPath, report.Models, captureManifest)
-			if err != nil {
-				report.Errors = append(report.Errors, "model validation: "+err.Error())
-			} else {
-				report.CompatibleModel = selected
-				report.Checks["sinf_model_validation"] = true
-			}
+		if !allValidated {
+			report.CompatibleModel = ""
 		}
+		report.Checks["selector_match"] = allSelectors
+		report.Checks["sinf_model_validation"] = allValidated
 	}
 	if captureManifest != nil && len(report.SINF) != 0 {
 		matched := false

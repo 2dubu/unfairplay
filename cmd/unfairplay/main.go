@@ -280,6 +280,21 @@ func newDecryptCommand() *cobra.Command {
 	return command
 }
 
+func verificationSummary(result fairplay.DecryptResult) map[string]any {
+	summary := map[string]any{
+		"schema": "unfairplay-model-verification-v2", "success": true,
+		"decrypted_ipa_sha256": result.OutputSHA256,
+		"encrypted_images":     result.EncryptedImages, "decrypted_pages": result.DecryptedPages,
+		"logical_key_sha256_by_sinf": result.LogicalKeySHA256BySINF,
+		"plaintext_retained":         false,
+	}
+	if result.LogicalKeySHA256 != "" {
+		summary["schema"] = "unfairplay-model-verification-v1"
+		summary["logical_key_sha256"] = result.LogicalKeySHA256
+	}
+	return summary
+}
+
 func newVerifyCommand() *cobra.Command {
 	var inputPath, modelPath string
 	command := &cobra.Command{
@@ -314,12 +329,7 @@ func newVerifyCommand() *cobra.Command {
 				return fmt.Errorf("remove temporary plaintext: %w", err)
 			}
 			cleaned = true
-			return printJSON(map[string]any{
-				"schema": "unfairplay-model-verification-v1", "success": true,
-				"decrypted_ipa_sha256": result.OutputSHA256,
-				"encrypted_images":     result.EncryptedImages, "decrypted_pages": result.DecryptedPages,
-				"logical_key_sha256": result.LogicalKeySHA256, "plaintext_retained": false,
-			})
+			return printJSON(verificationSummary(result))
 		},
 	}
 	command.Flags().StringVar(&inputPath, "input", "", "Personalized encrypted IPA")

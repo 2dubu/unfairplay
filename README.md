@@ -42,6 +42,9 @@ Decrypt another IPA from the same enrollment:
   --model App.recovery/fairplay-enrollment.bin
 ```
 
+IPAs with extensions or watch apps are decrypted in one pass. Use a model
+directory when their SINF selectors require different enrollment models.
+
 Test a model without keeping the decrypted IPA:
 
 ```sh

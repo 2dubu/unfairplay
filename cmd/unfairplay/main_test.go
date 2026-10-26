@@ -1,6 +1,9 @@
 package main
 
 import (
+	"encoding/json"
+
+	"github.com/DrWhax/unfairplay/internal/fairplay"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,6 +16,45 @@ func TestCommandsAreRegistered(t *testing.T) {
 		if err != nil || command == root || command.Name() != name {
 			t.Fatalf("command %s is not registered: %v", name, err)
 		}
+	}
+}
+
+func TestVerificationOutputSchema(t *testing.T) {
+	for _, test := range []struct {
+		name, shared, schema string
+		hashes               map[string]string
+	}{
+		{"single", "key-a", "unfairplay-model-verification-v1", map[string]string{"App.sinf": "key-a"}},
+		{"shared", "key-a", "unfairplay-model-verification-v1", map[string]string{"App.sinf": "key-a", "Widget.sinf": "key-a"}},
+		{"distinct", "", "unfairplay-model-verification-v2", map[string]string{"App.sinf": "key-a", "Widget.sinf": "key-b"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			data, err := json.Marshal(verificationSummary(fairplay.DecryptResult{
+				LogicalKeySHA256: test.shared, LogicalKeySHA256BySINF: test.hashes,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]json.RawMessage
+			if err := json.Unmarshal(data, &got); err != nil {
+				t.Fatal(err)
+			}
+			var schema string
+			if err := json.Unmarshal(got["schema"], &schema); err != nil || schema != test.schema {
+				t.Fatalf("schema=%q err=%v", schema, err)
+			}
+			value, hasScalar := got["logical_key_sha256"]
+			if test.shared == "" {
+				if hasScalar {
+					t.Fatal("distinct-key verification emitted legacy scalar")
+				}
+			} else {
+				var hash string
+				if !hasScalar || json.Unmarshal(value, &hash) != nil || hash != test.shared {
+					t.Fatal("legacy scalar contract changed")
+				}
+			}
+		})
 	}
 }
 

@@ -2,6 +2,7 @@ package fairplay
 
 type imageReport struct {
 	Member                   string `json:"member"`
+	SINFMember               string `json:"sinf_member"`
 	SUPFMember               string `json:"supf_member"`
 	Architecture             string `json:"architecture"`
 	CPUType                  uint32 `json:"cpu_type"`
@@ -38,17 +39,18 @@ type reportFile struct {
 }
 
 type decryptionReport struct {
-	Schema            string         `json:"schema"`
-	ModelBuild        string         `json:"model_build"`
-	Input             reportFile     `json:"input"`
-	Output            reportFile     `json:"output"`
-	Provider          string         `json:"provider"`
-	Oracle            map[string]any `json:"oracle"`
-	EncryptedImages   int            `json:"encrypted_image_count"`
-	DecryptedPages    int            `json:"decrypted_page_count"`
-	Images            []*imageReport `json:"images"`
-	Complete          bool           `json:"complete"`
-	PlaintextVerified bool           `json:"plaintext_verified"`
-	SignatureVerified bool           `json:"signature_verified"`
-	Warnings          []string       `json:"warnings"`
+	Schema            string          `json:"schema"`
+	ModelBuild        string          `json:"model_build"`
+	Input             reportFile      `json:"input"`
+	Output            reportFile      `json:"output"`
+	Provider          string          `json:"provider"`
+	Oracle            map[string]any  `json:"oracle"`
+	Licenses          []licenseReport `json:"licenses,omitempty"`
+	EncryptedImages   int             `json:"encrypted_image_count"`
+	DecryptedPages    int             `json:"decrypted_page_count"`
+	Images            []*imageReport  `json:"images"`
+	Complete          bool            `json:"complete"`
+	PlaintextVerified bool            `json:"plaintext_verified"`
+	SignatureVerified bool            `json:"signature_verified"`
+	Warnings          []string        `json:"warnings"`
 }

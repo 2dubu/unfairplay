@@ -14,6 +14,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 
@@ -26,10 +27,10 @@ const (
 )
 
 type encryptedImage struct {
-	member, supfMember string
-	sliceOffset        uint64
-	sliceSize          uint64
-	layout             machoLayout
+	member, supfMember, sinfMember string
+	sliceOffset                    uint64
+	sliceSize                      uint64
+	layout                         machoLayout
 }
 
 type ipaInventory struct {
@@ -48,12 +49,13 @@ type DecryptOptions struct {
 }
 
 type DecryptResult struct {
-	OutputPath       string
-	OutputSHA256     string
-	ReportPath       string
-	EncryptedImages  int
-	DecryptedPages   int
-	LogicalKeySHA256 string
+	OutputPath             string
+	OutputSHA256           string
+	ReportPath             string
+	EncryptedImages        int
+	DecryptedPages         int
+	LogicalKeySHA256       string
+	LogicalKeySHA256BySINF map[string]string
 }
 
 func fileSHA256(path string) (string, error) {
@@ -78,11 +80,38 @@ func zipBytes(file *zip.File) ([]byte, error) {
 	return io.ReadAll(reader)
 }
 
+func adjacentSINF(member string) string {
+	return path.Join(path.Dir(member), "SC_Info", path.Base(member)+".sinf")
+}
+
+func sinfName(names map[string]bool, member string) (string, error) {
+	if candidate := adjacentSINF(member); names[candidate] {
+		return candidate, nil
+	}
+	for directory := path.Dir(member); directory != "." && directory != "/"; directory = path.Dir(directory) {
+		prefix := path.Join(directory, "SC_Info") + "/"
+		var candidates []string
+		for name := range names {
+			if strings.HasPrefix(name, prefix) && !strings.Contains(strings.TrimPrefix(name, prefix), "/") && strings.HasSuffix(strings.ToLower(name), ".sinf") {
+				candidates = append(candidates, name)
+			}
+		}
+		sort.Strings(candidates)
+		if len(candidates) == 1 {
+			return candidates[0], nil
+		}
+		if len(candidates) > 1 {
+			return "", fmt.Errorf("encrypted Mach-O %q has ambiguous containing SINFs: %s", member, strings.Join(candidates, ", "))
+		}
+	}
+	return "", fmt.Errorf("encrypted Mach-O %q has no adjacent or containing SINF", member)
+}
+
 func supfName(names map[string]bool, member string) string {
 	directory := path.Dir(member)
 	base := path.Base(member)
 	for _, suffix := range []string{".v5.supf", ".supf"} {
-		candidate := directory + "/SC_Info/" + base + suffix
+		candidate := path.Join(directory, "SC_Info", base+suffix)
 		if names[candidate] {
 			return candidate
 		}
@@ -219,6 +248,11 @@ func openIPAInventory(path string) (ipaInventory, *zip.ReadCloser, error) {
 			archive.Close()
 			return result, nil, fmt.Errorf("encrypted Mach-O %q has no adjacent SUPF", file.Name)
 		}
+		sinfMember, err := sinfName(names, file.Name)
+		if err != nil {
+			archive.Close()
+			return result, nil, err
+		}
 		table, cached := result.supfTables[supfMember]
 		if !cached {
 			supfBlob, err := zipBytes(files[supfMember])
@@ -244,7 +278,7 @@ func openIPAInventory(path string) (ipaInventory, *zip.ReadCloser, error) {
 				return result, nil, fmt.Errorf("%s: SUPF page count mismatch for architecture %#x/%#x", file.Name, slice.layout.cpuType, slice.layout.cpuSubtype)
 			}
 			result.images = append(result.images, encryptedImage{
-				member: file.Name, supfMember: supfMember,
+				member: file.Name, supfMember: supfMember, sinfMember: sinfMember,
 				sliceOffset: slice.offset, sliceSize: slice.size, layout: slice.layout,
 			})
 		}
@@ -594,48 +628,42 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		return result, err
 	}
 	defer source.Close()
-	if len(inventory.sinfMembers) != 1 {
-		return result, fmt.Errorf("FairPlay decryption requires exactly one SINF")
-	}
 	files := map[string]*zip.File{}
 	for _, file := range source.File {
 		files[file.Name] = file
 	}
-	sinf, err := zipBytes(files[inventory.sinfMembers[0]])
+	licenses, licenseReports, err := resolveIPALicenses(inventory, files, options.ModelPath)
 	if err != nil {
 		return result, err
 	}
-	var material KeyMaterial
-	if options.ModelPath == "" {
-		material, err = ResolveLogicalKey(sinf)
-	} else {
-		modelInfo, statErr := os.Stat(options.ModelPath)
-		if statErr != nil {
-			return result, fmt.Errorf("inspect FairPlay enrollment model: %w", statErr)
+	defer func() {
+		for _, license := range licenses {
+			clear(license.material.LogicalKey[:])
+			clear(license.mask[:])
 		}
-		if modelInfo.IsDir() {
-			modelPacks, readErr := readEnrollmentModelRegistry(options.ModelPath)
-			if readErr != nil {
-				return result, readErr
-			}
-			defer clearModelPacks(modelPacks)
-			material, err = ResolveLogicalKeyWithModels(sinf, modelPacks)
-		} else {
-			modelPack, readErr := readEnrollmentModel(options.ModelPath)
-			if readErr != nil {
-				return result, readErr
-			}
-			defer clear(modelPack)
-			material, err = ResolveLogicalKeyWithModel(sinf, modelPack)
+	}()
+	keyHashes := make(map[string]string, len(licenseReports))
+	sharedKeyHash, providerName, modelName := "", "", ""
+	for index, license := range licenseReports {
+		keyHashes[license.Member] = license.LogicalKeySHA256
+		if index == 0 {
+			sharedKeyHash, providerName, modelName = license.LogicalKeySHA256, license.Provider, license.ModelBuild
+			continue
+		}
+		if sharedKeyHash != license.LogicalKeySHA256 {
+			sharedKeyHash = ""
+		}
+		if providerName != license.Provider {
+			providerName = "multiple"
+		}
+		if modelName != license.ModelBuild {
+			modelName = "multiple"
 		}
 	}
-	if err != nil {
-		return result, err
+	oracle := map[string]any{"request_ipa_sha256": inventory.sha256}
+	if len(licenseReports) == 1 {
+		oracle = licenseReports[0].Oracle
 	}
-	mask := appMaskFromLogicalKey(material.LogicalKey)
-	deriver := newPageKeyDeriver(mask)
-	material.Evidence["request_ipa_sha256"] = inventory.sha256
-	material.Evidence["request_sinf_sha256"] = digest(sinf)
 	imageMap := map[string][]encryptedImage{}
 	for _, image := range inventory.images {
 		imageMap[image.member] = append(imageMap[image.member], image)
@@ -685,6 +713,7 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		if err != nil {
 			return result, err
 		}
+		license := licenses[images[0].sinfMember]
 		for _, image := range images {
 			end := image.sliceOffset + image.sliceSize
 			if end < image.sliceOffset || end > uint64(len(blob)) {
@@ -694,10 +723,11 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 			if err != nil {
 				return result, err
 			}
-			report, err := decryptImage(blob[image.sliceOffset:end], image, records, mask, deriver)
+			report, err := decryptImage(blob[image.sliceOffset:end], image, records, license.mask, license.deriver)
 			if err != nil {
 				return result, err
 			}
+			report.SINFMember = image.sinfMember
 			imageReports = append(imageReports, report)
 			pages += len(records)
 		}
@@ -715,19 +745,11 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		return result, err
 	}
 	outputHash := hex.EncodeToString(outputHasher.Sum(nil))
-	providerName, _ := material.Evidence["provider_kind"].(string)
-	if providerName == "" {
-		providerName = "unknown"
-	}
-	modelName, _ := material.Evidence["model_name"].(string)
-	if modelName == "" {
-		modelName = "unknown"
-	}
 	report := decryptionReport{
 		Schema: "unfairplay-decryption-v1", ModelBuild: modelName,
 		Input:    reportFile{Path: inventory.path, Bytes: inventory.bytes, SHA256: inventory.sha256},
 		Output:   reportFile{Path: options.OutputPath, SHA256: outputHash, Mode: "0600"},
-		Provider: providerName, Oracle: material.Evidence,
+		Provider: providerName, Oracle: oracle, Licenses: licenseReports,
 		EncryptedImages: len(imageReports), DecryptedPages: pages, Images: imageReports,
 		Complete: len(imageReports) == len(inventory.images),
 		Warnings: []string{
@@ -748,6 +770,10 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 	if err := publishFiles([]stagedFile{{tempName, options.OutputPath}, {reportTemp, options.ReportPath}}, options.Force); err != nil {
 		return result, err
 	}
-	result = DecryptResult{options.OutputPath, outputHash, options.ReportPath, len(imageReports), pages, digest(material.LogicalKey[:])}
+	result = DecryptResult{
+		OutputPath: options.OutputPath, OutputSHA256: outputHash, ReportPath: options.ReportPath,
+		EncryptedImages: len(imageReports), DecryptedPages: pages,
+		LogicalKeySHA256: sharedKeyHash, LogicalKeySHA256BySINF: keyHashes,
+	}
 	return result, nil
 }
