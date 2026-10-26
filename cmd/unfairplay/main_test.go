@@ -11,11 +11,56 @@ import (
 
 func TestCommandsAreRegistered(t *testing.T) {
 	root := newRootCommand()
-	for _, name := range []string{"collect", "recover", "decrypt", "verify", "doctor", "profile"} {
+	for _, name := range []string{"setup", "collect", "recover", "decrypt", "verify", "doctor", "profile"} {
 		command, _, err := root.Find([]string{name})
 		if err != nil || command == root || command.Name() != name {
 			t.Fatalf("command %s is not registered: %v", name, err)
 		}
+	}
+}
+
+func TestSavedModelDirectory(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "models")
+	t.Setenv(modelDirectoryEnvironment, directory)
+	if _, err := selectedModelPath(""); err == nil {
+		t.Fatal("missing saved model directory was accepted")
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	selected, err := selectedModelPath("")
+	if err != nil || selected != directory {
+		t.Fatalf("selected model path = %q, %v", selected, err)
+	}
+	explicit := filepath.Join(t.TempDir(), "explicit.bin")
+	selected, err = selectedModelPath(explicit)
+	if err != nil || selected != explicit {
+		t.Fatalf("explicit model path = %q, %v", selected, err)
+	}
+}
+
+func TestInstallEnrollmentModel(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "private", "models")
+	model := []byte("private enrollment model")
+	path, digest, reused, err := installEnrollmentModel(directory, "11223344:00000002", model)
+	if err != nil || reused || len(digest) != 64 {
+		t.Fatalf("install model = %q, %q, %v, %v", path, digest, reused, err)
+	}
+	for target, mode := range map[string]os.FileMode{directory: 0o700, path: 0o600} {
+		info, err := os.Stat(target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm() != mode {
+			t.Fatalf("private path %s mode = %v", target, info.Mode().Perm())
+		}
+	}
+	second, secondDigest, reused, err := installEnrollmentModel(directory, "11223344:00000002", model)
+	if err != nil || !reused || second != path || secondDigest != digest {
+		t.Fatalf("reuse model = %q, %q, %v, %v", second, secondDigest, reused, err)
+	}
+	if _, _, _, err := installEnrollmentModel(directory, "../unsafe:00000002", model); err == nil {
+		t.Fatal("unsafe selector was accepted as a model filename")
 	}
 }
 

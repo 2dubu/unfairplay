@@ -15,51 +15,45 @@ go build -o unfairplay ./cmd/unfairplay
 ## Usage
 
 First, sign in to the native Mac App Store. Install an iPhone or iPad app and
-open it once. Download an encrypted IPA with the same Apple Account.
+open it once. Download a matching encrypted IPA with the same Apple Account.
 
-Collect the Mac state and matching IPA:
+Set up reusable decryption once:
 
 ```sh
-sudo ./unfairplay collect \
+sudo ./unfairplay setup \
   --app /Applications/App.app \
-  --ipa App.ipa \
-  --output App.capture
+  --ipa App.ipa
 ```
 
-Recover the model and validate it:
+The saved model is private. It is tied to the Mac App Store enrollment, not to
+one app, so it can decrypt other personalized IPAs from the same enrollment.
+
+Decrypt another IPA:
 
 ```sh
-./unfairplay recover \
-  --capture App.capture \
-  --output App.recovery
+./unfairplay decrypt --input AnotherApp.ipa
 ```
 
-For exact `26A428`/`26A434` captures, UnfairPlay automatically uses the
-captured fairplayd as hash-checked reference code. `--reference-binary` is an
-optional override for archived research captures. `--selection-max-blocks`
-can raise the bounded execution limit.
+The default model directory is inside the user configuration directory. Set
+`UNFAIRPLAY_MODEL_DIR` or pass `--model` to use another location.
 
-Decrypt another IPA from the same enrollment:
+IPAs with extensions and watch apps are decrypted in one pass. Test without
+keeping plaintext with:
 
 ```sh
-./unfairplay decrypt \
-  --input AnotherApp.ipa \
-  --model App.recovery/fairplay-enrollment.bin
+./unfairplay verify --input AnotherApp.ipa
 ```
 
-IPAs with extensions or watch apps are decrypted in one pass. Use a model
-directory when their SINF selectors require different enrollment models.
+## Advanced commands
 
-Test a model without keeping the decrypted IPA:
+`collect` and `recover` expose the two setup stages for diagnostics and
+archived captures. `doctor` checks a capture, IPA, or model. `profile` inspects
+an arm64e fairplayd without executing it.
 
 ```sh
-./unfairplay verify \
-  --input AnotherApp.ipa \
-  --model App.recovery/fairplay-enrollment.bin
+sudo ./unfairplay collect --app /Applications/App.app --ipa App.ipa --output App.capture
+./unfairplay recover --capture App.capture --output App.recovery
 ```
-
-Use `unfairplay doctor` to check a capture, IPA, or model. Use
-`unfairplay profile` to inspect a fairplayd binary.
 
 Create a code profile for an exact fairplayd binary:
 
