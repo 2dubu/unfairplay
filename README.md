@@ -6,6 +6,13 @@ decrypt personalized iOS IPAs. It is a standalone Go program.
 It does not log in to Apple, buy apps, or download IPAs. You can use ipatool or
 another downloader for that part.
 
+## Legal and ethical use
+
+Use UnfairPlay only with apps you lawfully acquired and accounts and devices
+you control. It is intended for interoperability, preservation, and authorized
+research. The authors do not condone piracy, credential theft, copyright
+infringement, or unauthorized distribution of decrypted apps.
+
 ## Build
 
 ```sh
