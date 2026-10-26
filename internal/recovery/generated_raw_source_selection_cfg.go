@@ -48,7 +48,7 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		if block, ok := recoveryBlock(pc, profile.selectionBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
+		if block, ok := recoveryBlock(s, pc, profile.selectionBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact selection CFG %#x: %w", pc, err)

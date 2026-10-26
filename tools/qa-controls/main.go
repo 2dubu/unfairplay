@@ -43,6 +43,7 @@ type recoveryResult struct {
 	DecryptedPages        int    `json:"decrypted_pages"`
 	EvaluatorSourceSHA256 string `json:"evaluator_source_sha256"`
 	ReferenceCodeSource   string `json:"reference_code_source"`
+	ExtractedBlockHits    int    `json:"exact_extracted_block_hits"`
 }
 
 type qaResult struct {
@@ -53,6 +54,7 @@ type qaResult struct {
 	EncryptedImages     int    `json:"encrypted_images"`
 	DecryptedPages      int    `json:"decrypted_pages"`
 	ReferenceCodeSource string `json:"reference_code_source"`
+	ExtractedBlockHits  int    `json:"exact_extracted_block_hits"`
 }
 
 func validSHA256(value string) bool {
@@ -162,7 +164,7 @@ func runControl(ctx context.Context, binary, root string, control qaControl) (qa
 	return qaResult{
 		Name: control.Name, Mode: mode, ModelSHA256: modelSHA256, DecryptedIPASHA256: recovered.DecryptedIPASHA256,
 		EncryptedImages: recovered.EncryptedImages, DecryptedPages: recovered.DecryptedPages,
-		ReferenceCodeSource: recovered.ReferenceCodeSource,
+		ReferenceCodeSource: recovered.ReferenceCodeSource, ExtractedBlockHits: recovered.ExtractedBlockHits,
 	}, nil
 }
 

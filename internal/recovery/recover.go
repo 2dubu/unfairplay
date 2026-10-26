@@ -18,9 +18,10 @@ type Options struct {
 
 // Result is the output of one bounded enrollment recovery.
 type Result struct {
-	EnrollmentModel []byte
-	StateSHA256     string
-	Iterations      int
+	EnrollmentModel    []byte
+	StateSHA256        string
+	Iterations         int
+	ExtractedBlockHits int
 }
 
 var recoveryMu sync.Mutex
@@ -77,7 +78,11 @@ func Recover(options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations}, nil
+	hits := 0
+	if lastRawSourceState != nil {
+		hits = lastRawSourceState.extractedBlockHits
+	}
+	return Result{EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations, ExtractedBlockHits: hits}, nil
 }
 
 const defaultSelectionMaxBlocks = 2_000_000

@@ -140,6 +140,45 @@ func TestAddressSetFlag(t *testing.T) {
 	}
 }
 
+func TestCompactBinaryOutputRoundTrip(t *testing.T) {
+	blocks := []annotatedBlock{{
+		start: 0x1000,
+		instructions: []annotatedInstruction{
+			{pc: 0x1000, disassembly: "mov w1, #0x42"},
+			{pc: 0x1004, disassembly: "ret"},
+		},
+	}}
+	formatted, packed, skipped, reasons, err := generateCompactCFG("", blocks, 0, false)
+	if err != nil || formatted != nil || skipped != 0 || len(reasons) != 0 || len(packed) != 1 {
+		t.Fatalf("compact translation = source=%d blocks=%d skipped=%d reasons=%v err=%v", len(formatted), len(packed), skipped, reasons, err)
+	}
+	if len(packed[0].instructions) != 1 || packed[0].instructions[0].op != runtimeCompactOpcodeNumbers["compactMovImm32"] ||
+		packed[0].instructions[0].destination != 1 || packed[0].instructions[0].immediate != 0x42 ||
+		packed[0].terminator != uint8(runtimeCompactTerminatorNumbers["compactBlockReturn"]) {
+		t.Fatalf("unexpected packed block: %+v", packed[0])
+	}
+	first, err := marshalCompactBlocks(11, packed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := marshalCompactBlocks(11, packed)
+	if err != nil || !bytes.Equal(first, second) {
+		t.Fatal("compact output is not deterministic")
+	}
+	path := filepath.Join(t.TempDir(), "output.bin.gz")
+	if err := os.WriteFile(path, first, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	starts, err := compactProfileStarts(path)
+	if err != nil || len(starts) != 1 || !starts[0x1000] {
+		t.Fatalf("packed starts = %v, %v", starts, err)
+	}
+	if runtimeCompactOpcodeCount != 277 || len(runtimeCompactOpcodeNumbers) != runtimeCompactOpcodeCount ||
+		len(runtimeCompactTerminatorNumbers) != 9 || len(runtimeCompactConditionNumbers) != 14 {
+		t.Fatal("generated compact constants are incomplete")
+	}
+}
+
 func TestCompactInstructionRejectsUnknownOperation(t *testing.T) {
 	if _, _, err := compactInstruction("svc #0"); err == nil {
 		t.Fatal("unsupported instruction was accepted")

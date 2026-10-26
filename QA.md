@@ -46,3 +46,24 @@ Capture controls test complete recovery. IPA/model controls test reusable
 decryption across other accounts and app layouts. The command fails on any
 changed hash, image count, page count, or incomplete decryption. Use it before
 creating a release tag.
+
+## Exact-build fallback profile
+
+Regenerate the fail-closed 26A428/26A434 fallback only from the hash-matching
+arm64e `fairplayd`:
+
+```sh
+go run ./tools/compact-kernel \
+  --macho /private/path/fairplayd.arm64e \
+  --seed-profile internal/recovery/profiles/macos26a428-compact-cfg.bin.gz \
+  --seed-start 0x1000103a8 --seed-start 0x1008fe5d4 \
+  --seed-start 0x10093fe44 --seed-start 0x10093ff14 \
+  --seed-start 0x1009f0994 \
+  --compact-output --section-id 11 \
+  --output internal/recovery/profiles/macos26a428-safe-extracted.bin.gz
+```
+
+Expected output: 52,498 blocks, 1,726 rejected blocks, compressed SHA-256
+`9f0168420acf04219f22bbe0addc03846a6b51d5810874b525fbebca7ac9769b`.
+The runtime loads this profile only when the capture includes the exact
+hash-matching reference binary.

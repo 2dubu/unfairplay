@@ -49,7 +49,8 @@ func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clear(second.EnrollmentModel)
-	if first.StateSHA256 != second.StateSHA256 || first.Iterations != second.Iterations || !bytes.Equal(first.EnrollmentModel, second.EnrollmentModel) {
+	if first.StateSHA256 != second.StateSHA256 || first.Iterations != second.Iterations ||
+		first.ExtractedBlockHits != second.ExtractedBlockHits || !bytes.Equal(first.EnrollmentModel, second.EnrollmentModel) {
 		t.Fatal("repeated recovery in one process was not deterministic")
 	}
 	if manifest.IPA == nil {

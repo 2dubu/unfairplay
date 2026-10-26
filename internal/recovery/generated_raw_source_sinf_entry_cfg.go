@@ -31,7 +31,7 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		if block, ok := recoverySINFEntryBlock(profile, pc); ok {
+		if block, ok := recoverySINFEntryBlock(s, profile, pc); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact SINF-entry CFG %#x: %w", pc, err)

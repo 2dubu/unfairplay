@@ -20,6 +20,7 @@ const (
 
 type model struct {
 	allowDestinationPages bool
+	exactExtractedBlocks  map[uint64]compactBlock
 	selectionMaxBlocks    int
 	profile               *executionProfile
 	binaryHash            [32]byte
@@ -176,19 +177,20 @@ func loadModelReader(input io.Reader) (*model, error) {
 }
 
 type state struct {
-	model            *model
-	x                [31]uint64
-	vectors          [32][16]byte
-	sp               uint64
-	n, z             bool
-	c, v             bool
-	writable         map[uint64][]byte
-	touched          []uint64
-	dirty            map[uint64]bool
-	accessed         map[uint64]bool
-	initialized      map[uint64][]bool
-	mapped           map[uint64][]byte
-	destinationPages map[uint64]bool
+	model              *model
+	x                  [31]uint64
+	vectors            [32][16]byte
+	sp                 uint64
+	n, z               bool
+	c, v               bool
+	writable           map[uint64][]byte
+	touched            []uint64
+	dirty              map[uint64]bool
+	accessed           map[uint64]bool
+	initialized        map[uint64][]bool
+	mapped             map[uint64][]byte
+	destinationPages   map[uint64]bool
+	extractedBlockHits int
 }
 
 func newState(value *model) *state {

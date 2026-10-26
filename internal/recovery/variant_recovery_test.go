@@ -195,7 +195,7 @@ func TestVerifiedFallbackContainsMigratedAccountPath(t *testing.T) {
 		t.Fatalf("migrated-account continuation slot = %#x, %v", continuation, err)
 	}
 	profile := embedded26A428ExecutionProfile()
-	if _, ok := recoveryBlock(continuation, profile.accountEntryBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); !ok {
+	if _, ok := recoveryBlock(state, continuation, profile.accountEntryBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); !ok {
 		t.Fatalf("migrated-account continuation %#x is missing", continuation)
 	}
 }
@@ -226,17 +226,43 @@ func TestMigratedAccountStatusLeaf(t *testing.T) {
 }
 
 func TestRecoveryBlockPrecedence(t *testing.T) {
+	state := newState(&model{exactExtractedBlocks: map[uint64]compactBlock{1: {start: 14}, 2: {start: 24}, 3: {start: 34}, 4: {start: 44}}})
 	primary := map[uint64]compactBlock{1: {start: 11}}
 	supplemental := map[uint64]compactBlock{1: {start: 12}, 2: {start: 22}}
 	fallback := map[uint64]compactBlock{1: {start: 13}, 2: {start: 23}, 3: {start: 33}}
-	for address, want := range map[uint64]uint64{1: 11, 2: 22, 3: 33} {
-		block, ok := recoveryBlock(address, primary, supplemental, fallback)
+	for address, want := range map[uint64]uint64{1: 11, 2: 22, 3: 33, 4: 44} {
+		block, ok := recoveryBlock(state, address, primary, supplemental, fallback)
 		if !ok || block.start != want {
 			t.Fatalf("recovery block %#x = %+v, %v; want start %#x", address, block, ok, want)
 		}
 	}
-	if _, ok := recoveryBlock(4, primary, supplemental, fallback); ok {
+	if state.extractedBlockHits != 1 {
+		t.Fatalf("extracted block hits = %d, want 1", state.extractedBlockHits)
+	}
+	if _, ok := recoveryBlock(state, 5, primary, supplemental, fallback); ok {
 		t.Fatal("unknown recovery block did not fail closed")
+	}
+}
+
+func TestSafeExtractedProfileIsExactReferenceOnly(t *testing.T) {
+	value := &model{}
+	if err := addReferencePages(value, ""); err != nil {
+		t.Fatal(err)
+	}
+	if value.exactExtractedBlocks != nil {
+		t.Fatal("empty reference enabled extracted blocks")
+	}
+	blocks, err := loadCompact26A428SafeExtractedBlocks()
+	if err != nil || len(blocks) != 52_498 {
+		t.Fatalf("safe extracted blocks = %d, %v", len(blocks), err)
+	}
+	if block, ok := blocks[0x100001058]; !ok || block.terminator != compactBlockCallRegister || block.register != 16 {
+		t.Fatalf("safe extracted fixture block is missing: %+v", block)
+	}
+	for address := range compact26A428VerifiedFallbackBlocks {
+		if _, ok := blocks[address]; ok {
+			t.Fatalf("verified block %#x leaked into extracted fallback", address)
+		}
 	}
 }
 

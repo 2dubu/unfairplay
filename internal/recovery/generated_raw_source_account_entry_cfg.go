@@ -31,7 +31,7 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 			pc = next
 			continue
 		}
-		if block, ok := recoveryBlock(pc, profile.accountEntryBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
+		if block, ok := recoveryBlock(s, pc, profile.accountEntryBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact account-entry CFG %#x: %w", pc, err)

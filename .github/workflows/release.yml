@@ -21,6 +21,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - run: go generate ./tools/compact-kernel && git diff --exit-code
       - run: go test ./...
       - run: go vet ./...
 

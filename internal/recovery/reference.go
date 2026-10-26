@@ -54,6 +54,11 @@ func addReferencePages(value *model, path string) error {
 		copy(page, payload[offset:min(offset+pageSize, uint64(len(payload)))])
 		value.pages[address] = page
 	}
+	extracted, err := loadCompact26A428SafeExtractedBlocks()
+	if err != nil {
+		return fmt.Errorf("load exact-build extracted blocks: %w", err)
+	}
+	value.exactExtractedBlocks = extracted
 	value.allowDestinationPages = true
 	return nil
 }

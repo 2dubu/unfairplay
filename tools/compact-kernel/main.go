@@ -1,5 +1,7 @@
 package main
 
+//go:generate go run gen_opcodes.go -- ../../internal/recovery/compact_kernel.go ../../internal/recovery/compact_cfg.go opcode_numbers_generated.go
+
 import (
 	"bufio"
 	"bytes"
@@ -2185,12 +2187,134 @@ func compactTerminator(instruction annotatedInstruction) (string, error) {
 	return "", fmt.Errorf("unsupported block terminator %q", instruction.disassembly)
 }
 
-func generateCompactCFGSource(name string, blocks []annotatedBlock, limit int, verboseSkips bool) ([]byte, int, map[string]int, error) {
+type packedCompactInstruction struct {
+	op                                    uint16
+	destination, left, right, accumulator uint8
+	shift                                 uint8
+	immediate                             uint16
+}
+
+type packedCompactBlock struct {
+	start                 uint64
+	instructions          []packedCompactInstruction
+	terminator, condition uint8
+	register, width, bit  uint8
+	target, alternate     uint64
+}
+
+var compactLiteralField = regexp.MustCompile(`([A-Za-z][A-Za-z0-9]*): ([^,}]+)`)
+
+func compactLiteralNumber(value string) (uint64, error) {
+	if strings.HasPrefix(value, "uint8(") && strings.HasSuffix(value, ")") {
+		value = strings.TrimSuffix(strings.TrimPrefix(value, "uint8("), ")")
+	}
+	if condition, ok := runtimeCompactConditionNumbers[value]; ok {
+		return uint64(condition), nil
+	}
+	return number(value)
+}
+
+func packedInstruction(literal string) (packedCompactInstruction, error) {
+	var result packedCompactInstruction
+	seen := make(map[string]bool)
+	for _, match := range compactLiteralField.FindAllStringSubmatch(literal, -1) {
+		name, value := match[1], match[2]
+		if seen[name] {
+			return result, fmt.Errorf("duplicate compact instruction field %q", name)
+		}
+		seen[name] = true
+		if name == "op" {
+			opcode, ok := runtimeCompactOpcodeNumbers[value]
+			if !ok {
+				return result, fmt.Errorf("unknown compact opcode %q", value)
+			}
+			result.op = opcode
+			continue
+		}
+		numeric, err := compactLiteralNumber(value)
+		if err != nil {
+			return result, fmt.Errorf("invalid compact instruction field %s=%q", name, value)
+		}
+		switch name {
+		case "destination", "left", "right", "accumulator", "shift":
+			if numeric > 0xff {
+				return result, fmt.Errorf("compact instruction field %s is too large", name)
+			}
+			pointer := map[string]*uint8{
+				"destination": &result.destination, "left": &result.left, "right": &result.right,
+				"accumulator": &result.accumulator, "shift": &result.shift,
+			}[name]
+			*pointer = uint8(numeric)
+		case "immediate":
+			if numeric > 0xffff {
+				return result, fmt.Errorf("compact instruction immediate is too large")
+			}
+			result.immediate = uint16(numeric)
+		default:
+			return result, fmt.Errorf("unknown compact instruction field %q", name)
+		}
+	}
+	if !seen["op"] {
+		return result, fmt.Errorf("compact instruction has no opcode")
+	}
+	return result, nil
+}
+
+func packedBlock(start uint64, instructions []string, terminator string) (packedCompactBlock, error) {
+	result := packedCompactBlock{start: start, instructions: make([]packedCompactInstruction, len(instructions))}
+	for index, literal := range instructions {
+		instruction, err := packedInstruction(literal)
+		if err != nil {
+			return result, fmt.Errorf("compact block %#x instruction %d: %w", start, index, err)
+		}
+		result.instructions[index] = instruction
+	}
+	seenTerminator := false
+	for _, match := range compactLiteralField.FindAllStringSubmatch(terminator, -1) {
+		name, value := match[1], match[2]
+		if name == "terminator" {
+			numeric, ok := runtimeCompactTerminatorNumbers[value]
+			if !ok || numeric > 0xff {
+				return result, fmt.Errorf("unknown compact terminator %q", value)
+			}
+			result.terminator, seenTerminator = uint8(numeric), true
+			continue
+		}
+		numeric, err := compactLiteralNumber(value)
+		if err != nil {
+			return result, fmt.Errorf("invalid compact block field %s=%q", name, value)
+		}
+		switch name {
+		case "condition", "register", "width", "bit":
+			if numeric > 0xff {
+				return result, fmt.Errorf("compact block field %s is too large", name)
+			}
+			pointer := map[string]*uint8{
+				"condition": &result.condition, "register": &result.register,
+				"width": &result.width, "bit": &result.bit,
+			}[name]
+			*pointer = uint8(numeric)
+		case "target":
+			result.target = numeric
+		case "alternate":
+			result.alternate = numeric
+		default:
+			return result, fmt.Errorf("unknown compact block field %q", name)
+		}
+	}
+	if !seenTerminator {
+		return result, fmt.Errorf("compact block %#x has no terminator", start)
+	}
+	return result, nil
+}
+
+func generateCompactCFG(name string, blocks []annotatedBlock, limit int, verboseSkips bool) ([]byte, []packedCompactBlock, int, map[string]int, error) {
 	var literals []string
+	var packed []packedCompactBlock
 	skipped := 0
 	reasons := make(map[string]int)
 	for _, block := range blocks {
-		if limit > 0 && len(literals) >= limit {
+		if limit > 0 && len(packed) >= limit {
 			break
 		}
 		if len(block.instructions) == 0 {
@@ -2253,13 +2377,28 @@ func generateCompactCFGSource(name string, blocks []annotatedBlock, limit int, v
 			}
 			continue
 		}
-		literals = append(literals, fmt.Sprintf("%#x: {start: %#x, instructions: []compactInstruction{\n\t\t%s\n\t}, %s},", block.start, block.start, strings.Join(instructions, "\n\t\t"), terminator))
+		encodedBlock, err := packedBlock(block.start, instructions, terminator)
+		if err != nil {
+			return nil, nil, skipped, reasons, err
+		}
+		packed = append(packed, encodedBlock)
+		if name != "" {
+			literals = append(literals, fmt.Sprintf("%#x: {start: %#x, instructions: []compactInstruction{\n\t\t%s\n\t}, %s},", block.start, block.start, strings.Join(instructions, "\n\t\t"), terminator))
+		}
 	}
-	if len(literals) == 0 {
-		return nil, skipped, reasons, fmt.Errorf("no generated blocks use the compact instruction set")
+	if len(packed) == 0 {
+		return nil, nil, skipped, reasons, fmt.Errorf("no generated blocks use the compact instruction set")
+	}
+	if name == "" {
+		return nil, packed, skipped, reasons, nil
 	}
 	source := fmt.Sprintf("// Code generated by tools/compact-kernel; DO NOT EDIT.\npackage recovery\n\nvar %s = map[uint64]compactBlock{\n\t%s\n}\n", name, strings.Join(literals, "\n\t"))
 	formatted, err := format.Source([]byte(source))
+	return formatted, packed, skipped, reasons, err
+}
+
+func generateCompactCFGSource(name string, blocks []annotatedBlock, limit int, verboseSkips bool) ([]byte, int, map[string]int, error) {
+	formatted, _, skipped, reasons, err := generateCompactCFG(name, blocks, limit, verboseSkips)
 	return formatted, skipped, reasons, err
 }
 
@@ -2438,6 +2577,57 @@ func compactProfileStarts(path string) (map[uint64]bool, error) {
 		return nil, fmt.Errorf("seed compact profile has trailing data")
 	}
 	return starts, nil
+}
+
+func marshalCompactBlocks(sectionID byte, blocks []packedCompactBlock) ([]byte, error) {
+	if sectionID == 0 || len(blocks) == 0 || len(blocks) > int(^uint32(0)) {
+		return nil, fmt.Errorf("invalid compact output geometry")
+	}
+	var payload bytes.Buffer
+	payload.WriteString(compactSeedProfileMagic)
+	_ = binary.Write(&payload, binary.LittleEndian, compactSeedProfileVersion)
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(1))
+	payload.WriteByte(sectionID)
+	payload.Write(make([]byte, 7))
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(len(blocks)))
+	_ = binary.Write(&payload, binary.LittleEndian, uint32(0))
+	previous := uint64(0)
+	for index, block := range blocks {
+		if block.start == 0 || index != 0 && block.start <= previous || len(block.instructions) > int(^uint32(0)) ||
+			int(block.terminator) >= len(runtimeCompactTerminatorNumbers) || int(block.condition) >= len(runtimeCompactConditionNumbers) {
+			return nil, fmt.Errorf("invalid compact output block %#x", block.start)
+		}
+		previous = block.start
+		_ = binary.Write(&payload, binary.LittleEndian, block.start)
+		payload.Write([]byte{block.terminator, block.condition, block.register, block.width, block.bit, 0, 0, 0})
+		_ = binary.Write(&payload, binary.LittleEndian, block.target)
+		_ = binary.Write(&payload, binary.LittleEndian, block.alternate)
+		_ = binary.Write(&payload, binary.LittleEndian, uint32(len(block.instructions)))
+		_ = binary.Write(&payload, binary.LittleEndian, uint32(0))
+		for _, instruction := range block.instructions {
+			if instruction.op >= runtimeCompactOpcodeCount {
+				return nil, fmt.Errorf("compact output block %#x has invalid opcode %d", block.start, instruction.op)
+			}
+			_ = binary.Write(&payload, binary.LittleEndian, instruction.op)
+			payload.Write([]byte{instruction.destination, instruction.left, instruction.right, instruction.accumulator, instruction.shift, 0})
+			_ = binary.Write(&payload, binary.LittleEndian, instruction.immediate)
+		}
+	}
+	digest := sha256.Sum256(payload.Bytes())
+	payload.Write(digest[:])
+	var compressed bytes.Buffer
+	stream, err := gzip.NewWriterLevel(&compressed, gzip.BestCompression)
+	if err != nil {
+		return nil, err
+	}
+	stream.Header.OS = 255
+	if _, err := stream.Write(payload.Bytes()); err != nil {
+		return nil, err
+	}
+	if err := stream.Close(); err != nil {
+		return nil, err
+	}
+	return compressed.Bytes(), nil
 }
 
 func ioReadFull(reader io.Reader, value []byte) error {
@@ -2696,6 +2886,8 @@ func main() {
 	machoPath := flag.String("macho", "", "extract CFG blocks directly from an arm64e Mach-O")
 	seedProfilePath := flag.String("seed-profile", "", "compact profile whose verified starts split and are excluded from Mach-O output")
 	flag.Var(seedStartsFlag, "seed-start", "additional verified block start to split and exclude (repeatable)")
+	compactOutput := flag.Bool("compact-output", false, "write a compressed compact-profile section instead of Go source")
+	sectionID := flag.Int("section-id", 1, "compact-output section identifier (1..255)")
 	inputPath := flag.String("input", "", "generated Go kernel source")
 	outputPath := flag.String("output", "", "generated compact profile Go file")
 	name := flag.String("name", "", "Go variable name for the compact kernel")
@@ -2705,12 +2897,17 @@ func main() {
 	prunedOutput := flag.String("pruned-output", "", "write CFG source without blocks replaced by a complete compact profile")
 	pruneOnlyPrefix := flag.String("prune-only-prefix", "", "remove generated CFG switch and block functions with this prefix")
 	flag.Parse()
-	if (*inputPath == "") == (*machoPath == "") || *outputPath == "" || *pruneOnlyPrefix == "" && !identifier.MatchString(*name) {
+	if (*inputPath == "") == (*machoPath == "") || *outputPath == "" ||
+		!*compactOutput && *pruneOnlyPrefix == "" && !identifier.MatchString(*name) {
 		fmt.Fprintln(os.Stderr, "exactly one of --input or --macho, plus --output and a valid --name, is required")
 		os.Exit(2)
 	}
 	if (*seedProfilePath != "" || len(seedStartsFlag) != 0) && *machoPath == "" {
 		fmt.Fprintln(os.Stderr, "--seed-profile and --seed-start require --macho")
+		os.Exit(2)
+	}
+	if *compactOutput && (*machoPath == "" || *sectionID < 1 || *sectionID > 255) {
+		fmt.Fprintln(os.Stderr, "--compact-output requires --macho and a section ID from 1 through 255")
 		os.Exit(2)
 	}
 	if *machoPath != "" {
@@ -2736,13 +2933,17 @@ func main() {
 			os.Exit(1)
 		}
 		blocks := excludeAnnotatedBlocks(allBlocks, seedStarts)
-		formatted, skipped, reasons, err := generateCompactCFGSource(*name, blocks, *limit, *verboseSkips)
+		outputName := *name
+		if *compactOutput {
+			outputName = ""
+		}
+		formatted, packed, skipped, reasons, err := generateCompactCFG(outputName, blocks, *limit, *verboseSkips)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
 		fmt.Fprintf(os.Stderr, "discovered %d Mach-O blocks; excluded %d verified starts; generated %d compact blocks; skipped %d unsafe or unsupported blocks\n",
-			len(allBlocks), len(allBlocks)-len(blocks), strings.Count(string(formatted), "start:"), skipped)
+			len(allBlocks), len(allBlocks)-len(blocks), len(packed), skipped)
 		type reasonCount struct {
 			reason string
 			count  int
@@ -2762,6 +2963,15 @@ func main() {
 		}
 		for _, item := range ordered {
 			fmt.Fprintf(os.Stderr, "%6d %s\n", item.count, item.reason)
+		}
+		if *compactOutput {
+			formatted, err = marshalCompactBlocks(byte(*sectionID), packed)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
+			digest := sha256.Sum256(formatted)
+			fmt.Fprintf(os.Stderr, "compact profile bytes=%d sha256=%x\n", len(formatted), digest)
 		}
 		if err := os.WriteFile(*outputPath, formatted, 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
