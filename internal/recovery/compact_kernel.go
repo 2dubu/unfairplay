@@ -276,6 +276,10 @@ const (
 	compactSubUXTH32
 	compactUDiv64
 	compactLoadHalfXIndexShift32
+	compactSubLSR32
+	compactLogicalMask64
+	compactTestRegister64
+	compactMNeg32
 	compactOpcodeCount
 )
 
@@ -1034,6 +1038,8 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 				return fmt.Errorf("compact kernel %#x: %w", pc, err)
 			}
 			s.x[d] = uint64(uint16(value))
+		case compactMNeg32:
+			s.x[d] = uint64(uint32(0) - uint32(s.x[left])*uint32(s.x[right]))
 		case compactMNeg64:
 			s.x[d] = uint64(0) - s.x[left]*s.x[right]
 		case compactMSub64:
@@ -1401,6 +1407,28 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 		case compactXorImm32:
 			immediate := uint32(instruction.immediate) | uint32(instruction.right)<<16 | uint32(instruction.accumulator)<<24
 			s.x[d] = uint64(uint32(s.x[left]) ^ immediate)
+		case compactTestRegister64:
+			s.test64(s.x[left] & s.x[right])
+		case compactLogicalMask64:
+			width := instruction.shift
+			if width < 2 || width > 64 || width&(width-1) != 0 || instruction.immediate == 0 || instruction.immediate >= uint16(width) || instruction.right >= width || instruction.accumulator > 2 {
+				return fmt.Errorf("invalid logical-mask encoding")
+			}
+			mask := (uint64(1) << instruction.immediate) - 1
+			for step := int(width); step < 64; step *= 2 {
+				mask |= mask << step
+			}
+			mask = bits.RotateLeft64(mask, -int(instruction.right))
+			switch instruction.accumulator {
+			case 0:
+				s.x[d] = s.x[left] & mask
+			case 1:
+				s.x[d] = s.x[left] | mask
+			case 2:
+				s.x[d] = s.x[left] ^ mask
+			}
+		case compactSubLSR32:
+			s.x[d] = uint64(uint32(s.x[left]) - (uint32(s.x[right]) >> instruction.shift))
 		case compactSubLSL32:
 			s.x[d] = uint64(uint32(s.x[left]) - uint32(shiftLeft(uint64(uint32(s.x[right])), int(instruction.shift), 32)))
 		case compactMovImm32Wide:

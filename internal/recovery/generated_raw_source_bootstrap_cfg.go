@@ -23,7 +23,7 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		if block, ok := compact26A428BootstrapBlocks[pc]; ok {
+		if block, ok := recoveryBlock(pc, compact26A428BootstrapBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact bootstrap CFG %#x: %w", pc, err)
@@ -36,5 +36,5 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 		}
 		return pc, blockCount, fmt.Errorf("bootstrap CFG reached unknown block %#x", pc)
 	}
-	return pc, maxBlocks, fmt.Errorf("bootstrap CFG exceeded %d blocks", maxBlocks)
+	return pc, maxBlocks, fmt.Errorf("bootstrap CFG exceeded %d blocks; pc=%#x", maxBlocks, pc)
 }

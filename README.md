@@ -34,6 +34,10 @@ Recover the model and validate it:
   --output App.recovery
 ```
 
+Some legacy `26A428`/`26A434` enrollments also need
+`--reference-binary /path/to/fairplayd.arm64e`. Only the exact supported hash
+is accepted. `--selection-max-blocks` can raise the bounded execution limit.
+
 Decrypt another IPA from the same enrollment:
 
 ```sh

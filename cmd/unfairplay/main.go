@@ -119,8 +119,10 @@ func newCollectCommand() *cobra.Command {
 }
 
 type recoverOptions struct {
-	Capture string
-	Output  string
+	Reference          string
+	SelectionMaxBlocks int
+	Capture            string
+	Output             string
 }
 
 func newRecoverCommand() *cobra.Command {
@@ -132,6 +134,8 @@ func newRecoverCommand() *cobra.Command {
 			return recoverEnrollment(command.Context(), options)
 		},
 	}
+	command.Flags().StringVar(&options.Reference, "reference-binary", "", "Hash-matched arm64e fairplayd for extended recovery")
+	command.Flags().IntVar(&options.SelectionMaxBlocks, "selection-max-blocks", 2_000_000, "Selection execution limit (1..20000000)")
 	command.Flags().StringVar(&options.Capture, "capture", "", "Private capture directory")
 	command.Flags().StringVar(&options.Output, "output", "", "New private recovery directory")
 	_ = command.MarkFlagRequired("capture")
@@ -188,6 +192,7 @@ func recoverEnrollment(ctx context.Context, options recoverOptions) error {
 		mappings = append([]string{"/" + manifest.App.Executable + "=" + canonical.PrivateExecutablePath()}, mappings...)
 		recovered, err = recovery.Recover(recovery.Options{
 			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), ExecutablePath: executablePath,
+			ReferencePath: options.Reference, SelectionMaxBlocks: options.SelectionMaxBlocks,
 		})
 		if err == nil {
 			selectedProfile = inputProfile.name

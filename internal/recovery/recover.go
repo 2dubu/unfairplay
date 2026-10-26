@@ -9,9 +9,11 @@ import (
 // Options describes the private runtime inputs used to derive one
 // selector-bound enrollment model. FileMappings use SUFFIX=FILE syntax.
 type Options struct {
-	FileMappings   []string
-	HardwarePath   string
-	ExecutablePath string
+	FileMappings       []string
+	HardwarePath       string
+	ExecutablePath     string
+	ReferencePath      string
+	SelectionMaxBlocks int
 }
 
 // Result is the output of one bounded enrollment recovery.
@@ -55,6 +57,14 @@ func Recover(options Options) (Result, error) {
 		return Result{}, fmt.Errorf("load embedded recovery model: %w", err)
 	}
 	defer clearPrivateRecoveryState(value)
+	limit, err := selectionBlockLimit(options.SelectionMaxBlocks)
+	if err != nil {
+		return Result{}, err
+	}
+	value.selectionMaxBlocks = limit
+	if err := addReferencePages(value, options.ReferencePath); err != nil {
+		return Result{}, err
+	}
 	if err := configureRawSourceRuntime(value, "enrollment-sinf", options.FileMappings,
 		options.HardwarePath, options.ExecutablePath, 0); err != nil {
 		return Result{}, err
@@ -70,11 +80,30 @@ func Recover(options Options) (Result, error) {
 	return Result{EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations}, nil
 }
 
+const defaultSelectionMaxBlocks = 2_000_000
+const maximumSelectionMaxBlocks = 20_000_000
+
+func selectionBlockLimit(requested int) (int, error) {
+	if requested == 0 {
+		return defaultSelectionMaxBlocks, nil
+	}
+	if requested < 1 || requested > maximumSelectionMaxBlocks {
+		return 0, fmt.Errorf("selection block limit must be between 1 and %d", maximumSelectionMaxBlocks)
+	}
+	return requested, nil
+}
+
 func clearPrivateRecoveryState(value *model) {
 	if lastRawSourceState != nil {
 		for _, page := range lastRawSourceState.writable {
 			clear(page)
 		}
+		for _, page := range lastRawSourceState.mapped {
+			clear(page)
+		}
+		clear(lastRawSourceState.writable)
+		clear(lastRawSourceState.mapped)
+		clear(lastRawSourceState.initialized)
 		lastRawSourceState = nil
 	}
 	if activeRawSourceRuntime != nil {

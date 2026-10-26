@@ -419,7 +419,7 @@ func runRawSource(value *model, kernel string, loop bool, exactIterations int) (
 		if err != nil {
 			return "", iterations, err
 		}
-		if _, _, err := runRawSourceSelectionCFG(worker, activeRawSourceRuntime, 2_000_000); err != nil {
+		if _, _, err := runRawSourceSelectionCFG(worker, activeRawSourceRuntime, value.selectionMaxBlocks); err != nil {
 			return "", iterations, err
 		}
 		return worker.digest(), iterations, nil
@@ -438,7 +438,7 @@ func runRawSource(value *model, kernel string, loop bool, exactIterations int) (
 		if err != nil {
 			return "", iterations, err
 		}
-		if _, _, err := runRawSourceSelectionCFG(worker, activeRawSourceRuntime, 2_000_000); err != nil {
+		if _, _, err := runRawSourceSelectionCFG(worker, activeRawSourceRuntime, value.selectionMaxBlocks); err != nil {
 			return "", iterations, err
 		}
 		if _, _, err := runRawSourceSINFEntryCFG(worker, activeRawSourceRuntime, 2_000_000); err != nil {

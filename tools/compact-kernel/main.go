@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"go/format"
+	"math/bits"
 	"os"
 	"regexp"
 	"sort"
@@ -13,6 +14,7 @@ import (
 )
 
 var (
+	subLSR32                     = regexp.MustCompile(`^sub w(\d+), w(\d+), w(\d+), lsr #(\d+)$`)
 	commentPattern               = regexp.MustCompile(`^\s*// (0x[0-9a-f]+):\s+(.+)$`)
 	movImmediate                 = regexp.MustCompile(`^mov ([wx])(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	movNegOne32                  = regexp.MustCompile(`^mov w(\d+), #-1$`)
@@ -56,7 +58,7 @@ var (
 	loadBase32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+)\]$`)
 	loadBaseImm64                = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), #(0x[0-9a-f]+|[0-9]+)\]$`)
 	loadBase64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+)\]$`)
-	loadSXTW64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	loadSXTW64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), sxtw(?: #(\d+))?\]$`)
 	loadUXTW32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), uxtw(?: #(\d+))?\]$`)
 	loadUXTW8                    = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), w(\d+), uxtw\]$`)
 	loadBaseImm8                 = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
@@ -64,7 +66,7 @@ var (
 	loadXIndex8                  = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+), x(\d+)\]$`)
 	loadPostIndex8               = regexp.MustCompile(`^ldrb w(\d+), \[x(\d+)\], #(0x[0-9a-f]+|[0-9]+)$`)
 	loadXIndex                   = regexp.MustCompile(`^ldr ([wx])(\d+), \[x(\d+), x(\d+)\]$`)
-	loadSXTW32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	loadSXTW32                   = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), w(\d+), sxtw(?: #(\d+))?\]$`)
 	loadUXTW64                   = regexp.MustCompile(`^ldr x(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
 	storeSP                      = regexp.MustCompile(`^str w(\d+), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
 	storeSPZero32                = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
@@ -80,7 +82,7 @@ var (
 	storeBaseImm8                = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[x(\d+)(?:, #(0x[0-9a-f]+|[0-9]+))?\]$`)
 	storeSPImm8                  = regexp.MustCompile(`^strb (w(?:\d+)|wzr), \[sp, #(0x[0-9a-f]+|[0-9]+)\]$`)
 	storeUXTW32                  = regexp.MustCompile(`^str w(\d+), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
-	storeSXTW32                  = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[x(\d+), w(\d+), sxtw #(\d+)\]$`)
+	storeSXTW32                  = regexp.MustCompile(`^str (w(?:\d+)|wzr), \[x(\d+), w(\d+), sxtw(?: #(\d+))?\]$`)
 	storeXIndex                  = regexp.MustCompile(`^str ([wx])((?:\d+)|zr), \[x(\d+), x(\d+)\]$`)
 	loadXIndexShift32            = regexp.MustCompile(`^ldr w(\d+), \[x(\d+), x(\d+), lsl #(\d+)\]$`)
 	storeXIndexShift32           = regexp.MustCompile(`^str w(\d+), \[x(\d+), x(\d+), lsl #(\d+)\]$`)
@@ -151,6 +153,7 @@ var (
 	signExtendWord               = regexp.MustCompile(`^sxtw x(\d+), w(\d+)$`)
 	signExtendHalf               = regexp.MustCompile(`^sxth w(\d+), w(\d+)$`)
 	negate                       = regexp.MustCompile(`^neg ([wx])(\d+), [wx](\d+)$`)
+	testRegister64               = regexp.MustCompile(`^tst x(\d+), x(\d+)$`)
 	testRegister                 = regexp.MustCompile(`^tst w(\d+), w(\d+)$`)
 	testImmediate                = regexp.MustCompile(`^tst w(\d+), #(0x[0-9a-f]+|[0-9]+)$`)
 	conditionSet                 = regexp.MustCompile(`^cset w(\d+), ([a-z]+)$`)
@@ -172,7 +175,7 @@ var (
 	moveFromStackPointer         = regexp.MustCompile(`^mov x(\d+), sp$`)
 	storeSignedHalf              = regexp.MustCompile(`^sturh w(\d+), \[x(\d+), #(-?(?:0x[0-9a-f]+|[0-9]+))\]$`)
 	unsignedMultiplyAddLong      = regexp.MustCompile(`^umaddl x(\d+), w(\d+), w(\d+), x(\d+)$`)
-	multiplyNegate64             = regexp.MustCompile(`^mneg x(\d+), x(\d+), x(\d+)$`)
+	multiplyNegate64             = regexp.MustCompile(`^mneg ([xw])(\d+), [xw](\d+), [xw](\d+)$`)
 	multiplySub64                = regexp.MustCompile(`^msub x(\d+), x(\d+), x(\d+), x(\d+)$`)
 	signedBitfieldInsert64       = regexp.MustCompile(`^sbfiz x(\d+), x(\d+), #(\d+|0x[0-9a-f]+), #(\d+|0x[0-9a-f]+)$`)
 	storeUXTW64                  = regexp.MustCompile(`^str (x(?:\d+)|xzr), \[x(\d+), w(\d+), uxtw #(\d+)\]$`)
@@ -369,6 +372,10 @@ func immediate48Fields(value uint64) []string {
 }
 
 func compactInstruction(disassembly string) (string, bool, error) {
+	if match := testRegister64.FindStringSubmatch(disassembly); match != nil {
+		return fields("compactTestRegister64", "left", match[1], "right", match[2]), false, nil
+	}
+
 	if noopInstruction.MatchString(disassembly) || pointerAuthZero.MatchString(disassembly) {
 		return fields("compactNoop"), false, nil
 	}
@@ -757,6 +764,13 @@ func compactInstruction(disassembly string) (string, bool, error) {
 	if match := addLSR64.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactAddLSR64", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
+	if match := subLSR32.FindStringSubmatch(disassembly); match != nil {
+		shift, err := number(match[4])
+		if err != nil || shift > 31 {
+			return "", false, fmt.Errorf("invalid SUB shift %q", disassembly)
+		}
+		return fields("compactSubLSR32", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
+	}
 	if match := binary32.FindStringSubmatch(disassembly); match != nil {
 		opcodes := map[string]string{
 			"eor": "compactXor32", "and": "compactAnd32", "add": "compactAdd32",
@@ -911,7 +925,7 @@ func compactInstruction(disassembly string) (string, bool, error) {
 				return fields("compactAndNotImm16Shift64", "destination", match[1], "left", match[2], "shift", fmt.Sprint(shift), "immediate", fmt.Sprintf("%#x", uint16(inverted>>shift))), false, nil
 			}
 		}
-		return "", false, fmt.Errorf("unsupported 64-bit AND immediate %q", match[3])
+		return compactLogicalMaskFields("and", match[1], match[2], immediate)
 	}
 	if match := logicalImmediate64.FindStringSubmatch(disassembly); match != nil {
 		immediate, err := number(match[4])
@@ -938,7 +952,7 @@ func compactInstruction(disassembly string) (string, bool, error) {
 					}
 				}
 			}
-			return "", false, fmt.Errorf("unsupported 64-bit logical immediate %q", disassembly)
+			return compactLogicalMaskFields(match[1], match[2], match[3], immediate)
 		}
 		op := "compactOrImm64"
 		if match[1] == "eor" {
@@ -1033,6 +1047,9 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		return fields("compactLoadBase64", "destination", match[1], "left", match[2]), false, nil
 	}
 	if match := loadSXTW64.FindStringSubmatch(disassembly); match != nil {
+		if match[4] == "" {
+			match[4] = "0"
+		}
 		return fields("compactLoadSXTW64", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
 	if match := loadUXTW32.FindStringSubmatch(disassembly); match != nil {
@@ -1148,6 +1165,9 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		return fields("compactLoadSPHalf32", "destination", match[1], "immediate", fmt.Sprintf("%#x", immediate)), false, nil
 	}
 	if match := loadSXTW32.FindStringSubmatch(disassembly); match != nil {
+		if match[4] == "" {
+			match[4] = "0"
+		}
 		return fields("compactLoadSXTW32", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
 	if match := loadUXTW64.FindStringSubmatch(disassembly); match != nil {
@@ -1242,6 +1262,9 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		return fields("compactStoreUXTW32", "destination", match[1], "left", match[2], "right", match[3], "shift", match[4]), false, nil
 	}
 	if match := storeSXTW32.FindStringSubmatch(disassembly); match != nil {
+		if match[4] == "" {
+			match[4] = "0"
+		}
 		source, ok := registerNumber(match[1])
 		if !ok {
 			return "", false, fmt.Errorf("invalid signed-index store %q", disassembly)
@@ -1661,7 +1684,11 @@ func compactInstruction(disassembly string) (string, bool, error) {
 		return fields("compactMSub32", "destination", match[1], "left", match[2], "right", match[3], "accumulator", match[4]), false, nil
 	}
 	if match := multiplyNegate64.FindStringSubmatch(disassembly); match != nil {
-		return fields("compactMNeg64", "destination", match[1], "left", match[2], "right", match[3]), false, nil
+		opcode := "compactMNeg64"
+		if match[1] == "w" {
+			opcode = "compactMNeg32"
+		}
+		return fields(opcode, "destination", match[2], "left", match[3], "right", match[4]), false, nil
 	}
 	if match := multiplySub64.FindStringSubmatch(disassembly); match != nil {
 		return fields("compactMSub64", "destination", match[1], "left", match[2], "right", match[3], "accumulator", match[4]), false, nil
@@ -1978,7 +2005,46 @@ func parseAnnotatedBlocks(source, prefix string) ([]annotatedBlock, error) {
 	if len(blocks) == 0 {
 		return nil, fmt.Errorf("input contains no functions with prefix %q", prefix)
 	}
-	return blocks, nil
+	var split []annotatedBlock
+	for _, block := range blocks {
+		split = append(split, splitAnnotatedCallBlocks(block)...)
+	}
+	return split, nil
+}
+
+// Generated source can place instructions after BL/BLRAA in the same logical
+// function. A call is a CFG terminator whose return address is the next
+// instruction, so preserve both halves as separate compact blocks.
+func splitAnnotatedCallBlocks(block annotatedBlock) []annotatedBlock {
+	start := 0
+	var result []annotatedBlock
+	for index, instruction := range block.instructions {
+		if index == len(block.instructions)-1 {
+			break
+		}
+		if !branchLink.MatchString(instruction.disassembly) &&
+			!callRegister.MatchString(instruction.disassembly) &&
+			!callRegisterZero.MatchString(instruction.disassembly) {
+			continue
+		}
+		part := block
+		part.start = block.instructions[start].pc
+		part.instructions = append([]annotatedInstruction(nil), block.instructions[start:index+1]...)
+		part.returnTarget = 0
+		part.stopTarget = 0
+		result = append(result, part)
+		start = index + 1
+	}
+	if start == 0 {
+		return []annotatedBlock{block}
+	}
+	if start < len(block.instructions) {
+		part := block
+		part.start = block.instructions[start].pc
+		part.instructions = append([]annotatedInstruction(nil), block.instructions[start:]...)
+		result = append(result, part)
+	}
+	return result
 }
 
 func compactTerminator(instruction annotatedInstruction) (string, error) {
@@ -2284,4 +2350,27 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func compactLogicalMaskFields(operation, destination, left string, value uint64) (string, bool, error) {
+	kind, ok := map[string]int{"and": 0, "orr": 1, "eor": 2}[operation]
+	if !ok {
+		return "", false, fmt.Errorf("invalid logical operation")
+	}
+	for width := 2; width <= 64; width *= 2 {
+		for ones := 1; ones < width; ones++ {
+			mask := (uint64(1) << ones) - 1
+			for step := width; step < 64; step *= 2 {
+				mask |= mask << step
+			}
+			for rotation := 0; rotation < width; rotation++ {
+				if bits.RotateLeft64(mask, -rotation) == value {
+					return fields("compactLogicalMask64", "destination", destination, "left", left,
+						"right", fmt.Sprint(rotation), "accumulator", fmt.Sprint(kind),
+						"shift", fmt.Sprint(width), "immediate", fmt.Sprint(ones)), false, nil
+				}
+			}
+		}
+	}
+	return "", false, fmt.Errorf("invalid ARM64 logical bitmask %#x", value)
 }

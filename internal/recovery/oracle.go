@@ -19,13 +19,15 @@ const (
 )
 
 type model struct {
-	binaryHash [32]byte
-	block      uint64
-	registers  [31]uint64
-	sp         uint64
-	n, z, c, v bool
-	pages      map[uint64][]byte
-	domains    map[domainKey][256]uint64
+	allowDestinationPages bool
+	selectionMaxBlocks    int
+	binaryHash            [32]byte
+	block                 uint64
+	registers             [31]uint64
+	sp                    uint64
+	n, z, c, v            bool
+	pages                 map[uint64][]byte
+	domains               map[domainKey][256]uint64
 }
 
 func (m *model) patch(address uint64, value []byte) error {
@@ -173,23 +175,57 @@ func loadModelReader(input io.Reader) (*model, error) {
 }
 
 type state struct {
-	model    *model
-	x        [31]uint64
-	vectors  [32][16]byte
-	sp       uint64
-	n, z     bool
-	c, v     bool
-	writable map[uint64][]byte
-	touched  []uint64
-	dirty    map[uint64]bool
-	accessed map[uint64]bool
+	model            *model
+	x                [31]uint64
+	vectors          [32][16]byte
+	sp               uint64
+	n, z             bool
+	c, v             bool
+	writable         map[uint64][]byte
+	touched          []uint64
+	dirty            map[uint64]bool
+	accessed         map[uint64]bool
+	initialized      map[uint64][]bool
+	mapped           map[uint64][]byte
+	destinationPages map[uint64]bool
 }
 
 func newState(value *model) *state {
 	return &state{
 		model: value, writable: make(map[uint64][]byte),
-		dirty: make(map[uint64]bool), accessed: make(map[uint64]bool),
+		dirty: make(map[uint64]bool), accessed: make(map[uint64]bool), initialized: make(map[uint64][]bool),
+		mapped: make(map[uint64][]byte), destinationPages: capturedDestinationPages(value),
 	}
+}
+
+// capturedDestinationPages identifies snapshot holes that are bounded by the
+// original captured heap. A page can only be read after every requested byte
+// has first been written by the evaluated program.
+func capturedDestinationPages(value *model) map[uint64]bool {
+	result := make(map[uint64]bool)
+	if !value.allowDestinationPages {
+		return result
+	}
+	const low = uint64(0x710000000000)
+	const high = uint64(0x710000100000)
+	var anchors []uint64
+	for address := range value.pages {
+		if address >= low && address < high {
+			anchors = append(anchors, address)
+		}
+	}
+	sort.Slice(anchors, func(left, right int) bool { return anchors[left] < anchors[right] })
+	for index, address := range anchors {
+		if address >= low+pageSize && value.pages[address-pageSize] == nil {
+			result[address-pageSize] = true
+		}
+		if index > 0 && address-anchors[index-1] <= 33*pageSize {
+			for page := anchors[index-1] + pageSize; page < address; page += pageSize {
+				result[page] = true
+			}
+		}
+	}
+	return result
 }
 
 func (s *state) reset() {
@@ -197,6 +233,13 @@ func (s *state) reset() {
 		copy(s.writable[address], s.model.pages[address])
 		delete(s.dirty, address)
 	}
+	for address, page := range s.mapped {
+		clear(page)
+		clear(s.writable[address])
+		delete(s.writable, address)
+	}
+	clear(s.mapped)
+	clear(s.initialized)
 	s.touched = s.touched[:0]
 	clear(s.accessed)
 	s.x = s.model.registers
@@ -462,15 +505,23 @@ func (s *state) digest() string {
 		}
 	}
 	_, _ = hash.Write(flags)
-	addresses := make([]uint64, 0, len(s.model.pages))
+	addresses := make([]uint64, 0, len(s.model.pages)+len(s.mapped))
 	for address := range s.model.pages {
 		addresses = append(addresses, address)
+	}
+	for address := range s.mapped {
+		if s.model.pages[address] == nil {
+			addresses = append(addresses, address)
+		}
 	}
 	sort.Slice(addresses, func(left, right int) bool { return addresses[left] < addresses[right] })
 	for _, address := range addresses {
 		binary.LittleEndian.PutUint64(word[:], address)
 		_, _ = hash.Write(word[:])
 		page := s.model.pages[address]
+		if page == nil {
+			page = s.mapped[address]
+		}
 		if writable := s.writable[address]; writable != nil {
 			page = writable
 		}
@@ -483,6 +534,14 @@ func (s *state) page(address uint64, write bool) ([]byte, error) {
 	base := address &^ (pageSize - 1)
 	s.accessed[base] = true
 	page := s.model.pages[base]
+	if page == nil {
+		page = s.mapped[base]
+	}
+	if page == nil && write && s.destinationPages[base] && len(s.initialized) < 32 {
+		page = make([]byte, pageSize)
+		s.mapped[base] = page
+		s.initialized[base] = make([]bool, pageSize)
+	}
 	if page == nil {
 		return nil, fmt.Errorf("oracle memory address %#x is outside the model", address)
 	}
@@ -514,6 +573,13 @@ func (s *state) load(address uint64, size int) (uint64, error) {
 			return 0, err
 		}
 		offset := address & (pageSize - 1)
+		if known := s.initialized[address&^(pageSize-1)]; known != nil {
+			for index := offset; index < offset+uint64(size); index++ {
+				if !known[index] {
+					return 0, fmt.Errorf("read of uncaptured, unwritten memory %#x", address)
+				}
+			}
+		}
 		switch size {
 		case 1:
 			return uint64(page[offset]), nil
@@ -545,6 +611,11 @@ func (s *state) store(address uint64, value []byte) error {
 		offset := address & (pageSize - 1)
 		count := min(len(value), int(pageSize-offset))
 		copy(page[offset:offset+uint64(count)], value[:count])
+		if known := s.initialized[address&^(pageSize-1)]; known != nil {
+			for index := offset; index < offset+uint64(count); index++ {
+				known[index] = true
+			}
+		}
 		address += uint64(count)
 		value = value[count:]
 	}
@@ -560,8 +631,8 @@ func (s *state) mapZero(address, size uint64) error {
 		return fmt.Errorf("zero mapping overflows")
 	}
 	for page := address; page < end; page += pageSize {
-		if s.model.pages[page] == nil {
-			s.model.pages[page] = make([]byte, pageSize)
+		if s.model.pages[page] == nil && s.mapped[page] == nil {
+			s.mapped[page] = make([]byte, pageSize)
 		}
 	}
 	return nil

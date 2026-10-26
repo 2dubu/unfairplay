@@ -18,7 +18,7 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 		}
 		if pc >= 0xf000000000000000 || pc == 0x720000000000 {
 			if runtime == nil {
-				return pc, blockCount, fmt.Errorf("bootstrap runtime is unavailable")
+				return pc, blockCount, fmt.Errorf("sinf-entry runtime is unavailable")
 			}
 			next, err := runtime.handle(s, pc)
 			if err != nil {
@@ -27,7 +27,7 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		if block, ok := compact26A428SINFEntryBlock(pc); ok {
+		if block, ok := recoverySINFEntryBlock(pc); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
 				return pc, blockCount, fmt.Errorf("compact SINF-entry CFG %#x: %w", pc, err)
@@ -38,7 +38,7 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
-		return pc, blockCount, fmt.Errorf("bootstrap CFG reached unknown block %#x", pc)
+		return pc, blockCount, fmt.Errorf("sinf-entry CFG reached unknown block %#x", pc)
 	}
-	return pc, maxBlocks, fmt.Errorf("bootstrap CFG exceeded %d blocks", maxBlocks)
+	return pc, maxBlocks, fmt.Errorf("sinf-entry CFG exceeded %d blocks; pc=%#x", maxBlocks, pc)
 }
