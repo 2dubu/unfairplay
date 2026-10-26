@@ -160,6 +160,45 @@ func TestSupplementalProfileContainsIssueTwoSplit(t *testing.T) {
 	}
 }
 
+func TestVerifiedFallbackContainsMigratedAccountPath(t *testing.T) {
+	tests := []struct {
+		address      uint64
+		instructions int
+		terminator   compactBlockTerminator
+		register     uint8
+	}{
+		{0x1008fe5d4, 12, compactBlockRegister, 8},
+		{0x10093fe44, 51, compactBlockCallRegister, 8},
+		{0x10093ff14, 6, compactBlockRegister, 8},
+		{0x1009f0994, 14, compactBlockRegister, 8},
+	}
+	for _, test := range tests {
+		block, ok := compact26A428VerifiedFallbackBlocks[test.address]
+		if !ok || block.start != test.address || len(block.instructions) != test.instructions ||
+			block.terminator != test.terminator || block.register != test.register {
+			t.Fatalf("verified fallback block %#x is incorrect: %+v", test.address, block)
+		}
+	}
+	if _, ok := compact26A428VerifiedFallbackBlocks[0x1000103a8]; ok {
+		t.Fatal("unverified continuation was added to the fallback map")
+	}
+}
+
+func TestRecoveryBlockPrecedence(t *testing.T) {
+	primary := map[uint64]compactBlock{1: {start: 11}}
+	supplemental := map[uint64]compactBlock{1: {start: 12}, 2: {start: 22}}
+	fallback := map[uint64]compactBlock{1: {start: 13}, 2: {start: 23}, 3: {start: 33}}
+	for address, want := range map[uint64]uint64{1: 11, 2: 22, 3: 33} {
+		block, ok := recoveryBlock(address, primary, supplemental, fallback)
+		if !ok || block.start != want {
+			t.Fatalf("recovery block %#x = %+v, %v; want start %#x", address, block, ok, want)
+		}
+	}
+	if _, ok := recoveryBlock(4, primary, supplemental, fallback); ok {
+		t.Fatal("unknown recovery block did not fail closed")
+	}
+}
+
 func TestSelectionBlockLimit(t *testing.T) {
 	for _, test := range []struct {
 		requested, want int
@@ -185,7 +224,7 @@ func TestEmbeddedExecutionProfileGeometry(t *testing.T) {
 		profile.selectionFrameCall != 0x1002fbb24 || len(profile.onceTokens) != 4 {
 		t.Fatalf("unexpected embedded execution profile: %+v", profile)
 	}
-	if len(profile.accountEntryBlocks) != 1086 || len(profile.bootstrapBlocks) != 953 || len(profile.selectionBlocks) != 1656 || len(profile.supplementalBlocks) != 1371 {
+	if len(profile.accountEntryBlocks) != 1086 || len(profile.bootstrapBlocks) != 953 || len(profile.selectionBlocks) != 1656 || len(profile.supplementalBlocks) != 1371 || len(profile.verifiedFallbackBlocks) != 4 {
 		t.Fatal("embedded execution profile has incomplete CFG maps")
 	}
 	model := &model{binaryHash: rawSourceBinaryHash}

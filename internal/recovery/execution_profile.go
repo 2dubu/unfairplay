@@ -13,23 +13,24 @@ type executionProfile struct {
 	selectionFrameCall                  uint64
 	selectionStopHits                   int
 
-	accountEntryBlocks map[uint64]compactBlock
-	bootstrapBlocks    map[uint64]compactBlock
-	selectionBlocks    map[uint64]compactBlock
-	supplementalBlocks map[uint64]compactBlock
-	sinfEntryBlock     func(uint64) (compactBlock, bool)
-	applyFrame         func(*state) (uint64, error)
-	runBootstrap       func(*state, fault) error
-	runDigestPrologue  func(*state, fault) error
-	runDigest          func(*state, fault) error
-	runOptional        func(*state, fault) error
-	runEven            func(*state, fault) error
-	runOdd             func(*state, fault) error
-	runTail            func(*state, fault) error
-	runWriter          func(*state, fault) error
-	runOuter           func(*state, fault) error
-	runCycle           func(*state, fault) error
-	runCycleFinal      func(*state, fault) error
+	accountEntryBlocks     map[uint64]compactBlock
+	bootstrapBlocks        map[uint64]compactBlock
+	selectionBlocks        map[uint64]compactBlock
+	supplementalBlocks     map[uint64]compactBlock
+	verifiedFallbackBlocks map[uint64]compactBlock
+	sinfEntryBlock         func(uint64) (compactBlock, bool)
+	applyFrame             func(*state) (uint64, error)
+	runBootstrap           func(*state, fault) error
+	runDigestPrologue      func(*state, fault) error
+	runDigest              func(*state, fault) error
+	runOptional            func(*state, fault) error
+	runEven                func(*state, fault) error
+	runOdd                 func(*state, fault) error
+	runTail                func(*state, fault) error
+	runWriter              func(*state, fault) error
+	runOuter               func(*state, fault) error
+	runCycle               func(*state, fault) error
+	runCycleFinal          func(*state, fault) error
 
 	onceTokens       []uint64
 	sourceAddress    uint64
@@ -51,26 +52,27 @@ func embedded26A428ExecutionProfile() *executionProfile {
 		bootstrapStart: 0x10057ae74, bootstrapStop: 0x1005b7438,
 		selectionStart: 0x1006b10a0, selectionStop: 0x10008a644, selectionStopHits: 2,
 		sinfEntryStart: 0x10008a644, sinfEntryStop: 0x100234cdc,
-		selectionFrameCall: 0x1002fbb24,
-		accountEntryBlocks: compact26A428AccountEntryBlocks,
-		bootstrapBlocks:    compact26A428BootstrapBlocks,
-		selectionBlocks:    compact26A428SelectionBlocks,
-		supplementalBlocks: compact26A428SupplementalBlocks,
-		sinfEntryBlock:     compact26A428SINFEntryBlock,
-		applyFrame:         applyRecoveredEnrollmentFrame,
-		runBootstrap:       runRawSourceBootstrapKernel,
-		runDigestPrologue:  runRawSourceDigestPrologue,
-		runDigest:          runRawSourceDigestKernel,
-		runOptional:        runRawSourceOptionalKernel,
-		runEven:            runRawSourceEvenKernel,
-		runOdd:             runRawSourceOddKernel,
-		runTail:            runRawSourceTailKernel,
-		runWriter:          runRawSourceWriterKernel,
-		runOuter:           runRawSourceOuterIteration,
-		runCycle:           func(s *state, _ fault) error { return runCompactKernel(s, compact26A428Cycle) },
-		runCycleFinal:      runRawSourceCycleFinal,
-		onceTokens:         []uint64{0x1010746B0, 0x101075B48, 0x101081348, 0x101081358},
-		sourceAddress:      0x7000000FB304, frameAddress: 0x7000000FB724, sinfFrameOffset: 0x70,
+		selectionFrameCall:     0x1002fbb24,
+		accountEntryBlocks:     compact26A428AccountEntryBlocks,
+		bootstrapBlocks:        compact26A428BootstrapBlocks,
+		selectionBlocks:        compact26A428SelectionBlocks,
+		supplementalBlocks:     compact26A428SupplementalBlocks,
+		verifiedFallbackBlocks: compact26A428VerifiedFallbackBlocks,
+		sinfEntryBlock:         compact26A428SINFEntryBlock,
+		applyFrame:             applyRecoveredEnrollmentFrame,
+		runBootstrap:           runRawSourceBootstrapKernel,
+		runDigestPrologue:      runRawSourceDigestPrologue,
+		runDigest:              runRawSourceDigestKernel,
+		runOptional:            runRawSourceOptionalKernel,
+		runEven:                runRawSourceEvenKernel,
+		runOdd:                 runRawSourceOddKernel,
+		runTail:                runRawSourceTailKernel,
+		runWriter:              runRawSourceWriterKernel,
+		runOuter:               runRawSourceOuterIteration,
+		runCycle:               func(s *state, _ fault) error { return runCompactKernel(s, compact26A428Cycle) },
+		runCycleFinal:          runRawSourceCycleFinal,
+		onceTokens:             []uint64{0x1010746B0, 0x101075B48, 0x101081348, 0x101081358},
+		sourceAddress:          0x7000000FB304, frameAddress: 0x7000000FB724, sinfFrameOffset: 0x70,
 		outerStart: 0x1005B7438, outerCycle: 0x1007822CC, cycleFinal: 0x10046119C, optionalStart: 0x1005BA520,
 		currentSINFMask:  generatedCurrentSINFKeyMask,
 		currentSINFWhite: generatedCurrentSINFWhitening,
