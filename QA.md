@@ -47,6 +47,22 @@ decryption across other accounts and app layouts. The command fails on any
 changed hash, image count, page count, or incomplete decryption. Use it before
 creating a release tag.
 
+## macOS IPA conversion control
+
+The private conversion control proves that a version-2 enrollment model derives
+the same account credential and output SINF as the independent macOSFairFree
+implementation:
+
+```sh
+UNFAIRPLAY_MACOS_CREDENTIAL_MODEL=/private/path/fairplay-enrollment.bin \
+UNFAIRPLAY_MACOS_CREDENTIAL_IPA=/private/path/App.ipa \
+go test ./internal/fairplay \
+  -run TestExternalMacOSCredentialFromEnrollmentModel -count=1 -v
+```
+
+Use an IPA containing exactly one current 448-byte private SINF for this
+control. Do not commit the model, IPA, SINF, credential, or converted output.
+
 ## Exact-build fallback profile
 
 Regenerate the fail-closed 26A428/26A434 fallback only from the hash-matching

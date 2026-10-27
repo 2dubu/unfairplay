@@ -11,10 +11,19 @@ import (
 
 func TestCommandsAreRegistered(t *testing.T) {
 	root := newRootCommand()
-	for _, name := range []string{"setup", "collect", "recover", "decrypt", "verify", "doctor", "profile"} {
+	for _, name := range []string{"setup", "collect", "recover", "decrypt", "convert-ipa-macos", "verify", "doctor", "profile"} {
 		command, _, err := root.Find([]string{name})
 		if err != nil || command == root || command.Name() != name {
 			t.Fatalf("command %s is not registered: %v", name, err)
+		}
+	}
+}
+
+func TestConvertIPAMacOSFlags(t *testing.T) {
+	command := newConvertIPAMacOSCommand()
+	for _, name := range []string{"input", "output", "model", "credential", "force"} {
+		if command.Flags().Lookup(name) == nil {
+			t.Fatalf("convert-ipa-macos has no --%s flag", name)
 		}
 	}
 }

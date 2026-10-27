@@ -51,6 +51,17 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
+Convert a supported encrypted IPA for macOS FairPlay:
+
+```sh
+./unfairplay convert-ipa-macos --input App.ipa
+```
+
+This uses the saved version-2 enrollment model. You can instead pass a matching
+private 16-byte `--credential`. It changes personalized SINF records, not Mach-O
+code. Apple-declared SINF copies are added for encrypted frameworks and
+extensions. Some iOS apps still refuse to run on macOS for unrelated reasons.
+
 ## Advanced commands
 
 `collect` and `recover` expose the two setup stages for diagnostics and
@@ -150,5 +161,5 @@ Tags such as `v0.2.0-rc.1` create prereleases.
 
 ## License
 
-MIT. The DarkPhoenix-derived Go code keeps its Apache-2.0 notice in
-`LICENSE-DARKPHOENIX.txt`.
+MIT. Third-party notices are in `NOTICE`, `LICENSE-DARKPHOENIX.txt`, and
+`LICENSE-MACOSFAIRFREE.txt`.

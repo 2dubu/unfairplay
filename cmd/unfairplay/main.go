@@ -32,7 +32,7 @@ func newRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version,
 	}
-	root.AddCommand(newSetupCommand(), newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newVerifyCommand(), newDoctorCommand(), newProfileCommand())
+	root.AddCommand(newSetupCommand(), newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newConvertIPAMacOSCommand(), newVerifyCommand(), newDoctorCommand(), newProfileCommand())
 	return root
 }
 
@@ -321,6 +321,54 @@ func newDecryptCommand() *cobra.Command {
 	flags.StringVar(&options.Report, "report", "", "Private decryption report path")
 	flags.StringVar(&options.Model, "model", "", "Private enrollment model file or directory (defaults to saved models)")
 	flags.BoolVar(&options.Force, "force", false, "Replace existing output and report")
+	_ = command.MarkFlagRequired("input")
+	return command
+}
+
+type convertIPAMacOSOptions struct {
+	Input, Output, Credential, Model string
+	Force                            bool
+}
+
+func newConvertIPAMacOSCommand() *cobra.Command {
+	var options convertIPAMacOSOptions
+	command := &cobra.Command{
+		Use:   "convert-ipa-macos",
+		Short: "Convert a personalized encrypted IPA for macOS FairPlay",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			if !strings.EqualFold(filepath.Ext(options.Input), ".ipa") {
+				return errors.New("input must be an IPA")
+			}
+			if options.Credential != "" && options.Model != "" {
+				return errors.New("pass either --credential or --model, not both")
+			}
+			if options.Credential == "" {
+				modelPath, err := selectedModelPath(options.Model)
+				if err != nil {
+					return err
+				}
+				options.Model = modelPath
+			}
+			stem := strings.TrimSuffix(options.Input, filepath.Ext(options.Input))
+			if options.Output == "" {
+				options.Output = stem + ".macos.ipa"
+			}
+			result, err := fairplay.PrepareMacOSIPA(fairplay.MacOSPrepareOptions{
+				InputPath: options.Input, OutputPath: options.Output,
+				CredentialPath: options.Credential, ModelPath: options.Model, Force: options.Force,
+			})
+			if err != nil {
+				return err
+			}
+			return printJSON(result)
+		},
+	}
+	flags := command.Flags()
+	flags.StringVar(&options.Input, "input", "", "Personalized encrypted IPA")
+	flags.StringVar(&options.Output, "output", "", "Converted encrypted IPA path")
+	flags.StringVar(&options.Model, "model", "", "Private version-2 enrollment model or directory (defaults to saved models)")
+	flags.StringVar(&options.Credential, "credential", "", "Private 16-byte account credential instead of a model")
+	flags.BoolVar(&options.Force, "force", false, "Replace existing output")
 	_ = command.MarkFlagRequired("input")
 	return command
 }
