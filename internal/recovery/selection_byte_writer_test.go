@@ -32,8 +32,8 @@ func TestSelectionByteWriterPassMatchesSteps(t *testing.T) {
 		base.x[9] = 0
 		base.x[11] = uint64(length - 1)
 		base.x[12] = uint64(exitSelector)
-		base.x[13] = uint64(random.Uint32())
-		base.x[14] = uint64(random.Uint32())
+		base.x[13] = 0x36
+		base.x[14] = 0x6ff
 		base.x[15] = uint64(loopSelector)
 		base.x[16] = output
 		base.x[20] = input
@@ -70,6 +70,16 @@ func TestSelectionByteWriterPassMatchesSteps(t *testing.T) {
 		}
 		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
 			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
+
+func TestSelectionByteWriterEncodingIdentity(t *testing.T) {
+	for input := uint32(0); input < 256; input++ {
+		mixed := uint32(0x6ff) ^ (uint32(0x36) & (input << 1))
+		old := byte(input + mixed + 0x1c)
+		if got := byte(input) ^ 0x1b; got != old {
+			t.Fatalf("input %#x encoded to %#x, want %#x", input, got, old)
 		}
 	}
 }

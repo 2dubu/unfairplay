@@ -46,15 +46,16 @@ func runSelectionByteWriterPass(s *state) (uint64, error) {
 	if length > 1 && continueTarget != selectionByteWriter {
 		return 0, fmt.Errorf("unsupported selection byte-writer continuation %#x", continueTarget)
 	}
+	if byte(s.x[13]) != 0x36 || byte(s.x[14]) != 0xff {
+		return 0, fmt.Errorf("unsupported selection byte-writer encoding")
+	}
 	for index := 0; index < length; index++ {
 		s.traceBlock(selectionByteWriter)
 		value, err := s.load(s.x[20]+uint64(uint32(s.x[9])), 1)
 		if err != nil {
 			return 0, fmt.Errorf("selection byte-writer input: %w", err)
 		}
-		input := uint32(byte(value))
-		mixed := uint32(s.x[14]) ^ (uint32(s.x[13]) & (input << 1))
-		output := byte(input + mixed + 0x1c)
+		output := byte(value) ^ 0x1b
 		if err := s.storeValue(s.x[16], uint64(output), 1); err != nil {
 			return 0, fmt.Errorf("selection byte-writer output: %w", err)
 		}
