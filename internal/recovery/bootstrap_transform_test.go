@@ -1045,6 +1045,81 @@ func TestBootstrapTableAccumulatorPassMatchesSteps(t *testing.T) {
 	}
 }
 
+func TestBootstrapSparseFillPassMatchesIterations(t *testing.T) {
+	const (
+		output     = uint64(0x710000100000)
+		dispatch   = uint64(0x710000200000)
+		exitTarget = uint64(0x123456789)
+		limit      = uint32(0x58cf47f3)
+		bias       = uint32(0x7b932eb7)
+	)
+	random := rand.New(rand.NewSource(int64(bootstrapSparseFillSeed)))
+	for trial := 0; trial < 512; trial++ {
+		length := 1 + random.Intn(256)
+		position := limit - uint32(length) + 2
+		counter := position - bias
+		index := ((uint32(0)^0x2662)*0x3d ^ 0xa2c3baf5) + counter
+		stack := addOffset(output-0xd8, -int64(int32(index))*4)
+		dispatchSlot := stack + 0xa8
+		pages := map[uint64][]byte{
+			output:                               make([]byte, pageSize),
+			dispatch:                             make([]byte, pageSize),
+			dispatchSlot &^ (pageSize - 1):       make([]byte, pageSize),
+			(dispatchSlot + 7) &^ (pageSize - 1): make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		model := &model{pages: clonePages(pages)}
+		base := newState(model)
+		for register := range base.x {
+			base.x[register] = random.Uint64()
+		}
+		base.sp = stack
+		base.x[1] = 0
+		base.x[2] = 1
+		base.x[3] = uint64(counter)
+		base.x[16] = 0
+		if err := base.storeValue(dispatchSlot, dispatch, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch, bootstrapSparseFillSeed, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch+8, exitTarget, 8); err != nil {
+			t.Fatal(err)
+		}
+
+		repeated := newState(model)
+		semantic := newState(model)
+		for _, item := range []*state{repeated, semantic} {
+			item.sp, item.x = base.sp, base.x
+			item.writable = clonePages(base.writable)
+			item.dirty = map[uint64]bool{}
+			for page := range item.writable {
+				item.dirty[page] = true
+			}
+		}
+		var repeatedNext uint64
+		for index := 0; index < length; index++ {
+			var err error
+			repeatedNext, err = runBootstrapSparseFillIteration(repeated)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		semanticNext, err := runBootstrapSparseFillPass(semantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
+			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
+
 func TestBootstrapPackedBitPassMatchesSteps(t *testing.T) {
 	const (
 		descriptor = uint64(0x710000100000)

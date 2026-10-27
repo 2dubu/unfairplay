@@ -1484,10 +1484,53 @@ func runBootstrapTableAccumulatorStep(s *state) (uint64, error) {
 
 func runBootstrapSparseFillPass(s *state) (uint64, error) {
 	const maximumWords = 4096
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap sparse-fill state is unavailable")
+	}
+	dispatchTable, err := s.load(s.sp+0xa8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap sparse-fill dispatch table: %w", err)
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		next, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[16])^bit*uint32(s.x[2]))
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap sparse-fill target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == bootstrapSparseFillSeed && targets[1] == bootstrapSparseFillSeed {
+		return 0, fmt.Errorf("bootstrap sparse-fill has no exit target")
+	}
+
 	for word := 0; word < maximumWords; word++ {
-		next, err := runBootstrapSparseFillIteration(s)
-		if err != nil || next != bootstrapSparseFillSeed {
-			return next, err
+		s.traceBlock(bootstrapSparseFillSeed)
+		s.x[8] = uint64((uint32(s.x[16]) ^ 0x2662) * 0x3d)
+		s.x[17] = uint64((uint32(s.x[8]) ^ 0xa2c3baf5) + uint32(s.x[3]))
+		s.x[4] = s.sp + 0xd8
+		s.x[5] = 0x224ea33b
+		if err := storeBootstrapWord(s, s.x[4], uint32(s.x[17]), uint32(s.x[5])); err != nil {
+			return 0, fmt.Errorf("bootstrap sparse-fill output: %w", err)
+		}
+		s.x[17] = uint64(uint32(s.x[3]) + 1)
+		s.x[4] = 0x7b932eb7
+		s.x[5] = 0x58cf47f3
+		s.x[3] = uint64(uint32(s.x[3]) + uint32(s.x[4]))
+		s.compare32(uint32(s.x[3]), uint32(s.x[5]))
+		if s.condition("le") {
+			s.compare32(uint32(s.x[3]), uint32(s.x[1]))
+		} else {
+			s.setNZCV(4)
+		}
+		dispatchBit := uint32(boolValue(s.condition("le")))
+
+		s.traceBlock(bootstrapSparseFillDispatch)
+		next := targets[dispatchBit]
+		s.x[3] = s.x[17]
+		s.x[4] = next
+		s.x[17] = 0x6d1a
+		if next != bootstrapSparseFillSeed {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("bootstrap sparse-fill pass exceeded %d words", maximumWords)
