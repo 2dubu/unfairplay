@@ -443,6 +443,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountPointerByteTarget:
 		next, err := runAccountPointerByteTarget(s)
 		return next, true, err
+	case accountByteWriteDispatchA:
+		next, err := runAccountByteWriteDispatchA(s)
+		return next, true, err
+	case accountByteWriteDispatchB:
+		next, err := runAccountByteWriteDispatchB(s)
+		return next, true, err
+	case accountGreaterEqualRoute:
+		next, err := runAccountGreaterEqualRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
