@@ -50,7 +50,7 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 		next, err := runSharedEnrollmentRightPath(s)
 		return next, true, err
 	case sharedEnrollmentWordCompare:
-		next, err := runSharedEnrollmentWordCompare(s)
+		next, err := runSharedEnrollmentWordCompareLoop(s)
 		return next, true, err
 	case sharedEnrollmentLoopSelect:
 		next, err := runSharedEnrollmentLoopSelect(s)
@@ -104,6 +104,26 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	default:
 		return pc, false, nil
 	}
+}
+
+// runSharedEnrollmentWordCompareLoop checks the 43-word enrollment table
+// against its selected reference word. The native dispatcher expresses each
+// comparison and counter increment as three separate handlers.
+func runSharedEnrollmentWordCompareLoop(s *state) (uint64, error) {
+	if s == nil || uint32(s.x[10]) >= 0x2c {
+		return 0, fmt.Errorf("unsupported shared enrollment compare counter %d", uint32(s.x[10]))
+	}
+	for iteration := 0; iteration < 0x2c; iteration++ {
+		next, err := runSharedEnrollmentWordCompare(s)
+		if err != nil || next != sharedEnrollmentLoopSelect {
+			return next, err
+		}
+		next, err = runSharedEnrollmentLoopSelect(s)
+		if err != nil || next != sharedEnrollmentWordCompare {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("shared enrollment compare loop exceeded 44 words")
 }
 
 // runSharedEnrollmentTransform executes the natural byte-state loop shared by
