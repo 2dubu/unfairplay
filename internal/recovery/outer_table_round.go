@@ -6,11 +6,8 @@ package recovery
 // while updating state word 2.
 type outerTableRoundState struct {
 	Words                [5]uint32
-	PendingS0, PendingS1 uint32
-	PendingS2, PendingS3 uint32
-	PendingS4            uint32
-	Mix16, Mix17         uint32
-	Lane19Mix, LateMix   uint32
+	PendingS1, PendingS2 uint32
+	PendingS3            uint32
 	Source, Codec        [3]uint32
 }
 
@@ -36,12 +33,13 @@ func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *ou
 		s2, state.Source[0], state.Source[1], state.Source[2],
 		state.Codec[0], state.Codec[1], state.Codec[2],
 	)
-	table[indexes[6]] ^= outerTableLane6Mask(s1, state.PendingS4, s0)
-	s4 = state.PendingS4
+	pendingS4 := outerTableLane5PendingS4(s4, s0, state.PendingS1, s3)
+	table[indexes[6]] ^= outerTableLane6Mask(s1, pendingS4, s0)
+	s4 = pendingS4
 	table[indexes[7]] ^= outerTableLane7Mask(s0, s1, s3, s4, table[indexes[7]])
 	s0 = outerTableLane7NextS0(s0, s1, s3, s4)
 	table[indexes[8]] ^= outerTableLane8Mask(table[28], table[72], table[76], table[123])
-	s1 = outerTableLane8NextS1(state.Mix17, s2, state.Mix16, s4)
+	s1 = outerTableLane8NextS1(s1, s2, s3, s4)
 	table[indexes[9]] ^= outerTableLane9Mask(s2, s0, s4)
 	table[indexes[10]] ^= outerTableLane10Mask(s2, s3, s4)
 	table[indexes[11]] ^= outerTableLane11Mask(s2, s0, s3, s1)
@@ -53,10 +51,13 @@ func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *ou
 	table[indexes[16]] ^= outerTableLane16Mask(s1, s2, s3)
 	table[indexes[17]] ^= outerTableLane17Mask(s0, s1, s3)
 	table[indexes[18]] ^= outerTableLane18Mask(s1, s3, s0, s2, table[indexes[18]])
-	table[indexes[19]] ^= outerTableLane19Mask(state.Lane19Mix, s1, s4, tap(2), tap(44), tap(86))
-	s0 = outerTableLane19NextS0(state.Lane19Mix)
-	table[indexes[20]] ^= outerTableLane20Mask(state.PendingS0, s1, state.LateMix, s3)
-	s0 = state.PendingS0
+	lane19Mix := outerTableLane18Mix(s0, s2, s1, s3)
+	table[indexes[19]] ^= outerTableLane19Mask(lane19Mix, s1, s4, tap(2), tap(44), tap(86))
+	s0 = outerTableLane19NextS0(lane19Mix)
+	lateMix := outerTableLane19LateMix(lane19Mix, tap(2), tap(44), tap(86))
+	pendingS0 := lateMix ^ 0x71563c28
+	table[indexes[20]] ^= outerTableLane20Mask(pendingS0, s1, lateMix, s3)
+	s0 = pendingS0
 
 	state.Words = [5]uint32{s0, s1, s2, s3, s4}
 	next, ok := nextOuterTableBase(base)
