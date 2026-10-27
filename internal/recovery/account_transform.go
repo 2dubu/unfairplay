@@ -128,6 +128,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountLimitDispatch:
 		next, err := runAccountLimitDispatch(s)
 		return next, true, err
+	case accountStateDispatchStart:
+		next, err := runAccountStateDispatch(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
