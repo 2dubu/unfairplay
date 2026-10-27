@@ -326,6 +326,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountStackLoadRoute:
 		next, err := runAccountStackLoadRoute(s)
 		return next, true, err
+	case accountReverseByteRouteA:
+		next, err := runAccountReverseByteRoute(s, accountReverseByteRouteA, 0x426e)
+		return next, true, err
+	case accountReverseByteRouteB:
+		next, err := runAccountReverseByteRoute(s, accountReverseByteRouteB, 0x744)
+		return next, true, err
+	case accountByteCompareRoute:
+		next, err := runAccountByteCompareRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
