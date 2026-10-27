@@ -236,6 +236,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountLengthRoute:
 		next, err := runAccountLengthRoute(s)
 		return next, true, err
+	case accountStateCompareRoute:
+		next, err := runAccountStateCompareRoute(s)
+		return next, true, err
+	case accountStateGuardRoute:
+		next, err := runAccountStateGuardRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
