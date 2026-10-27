@@ -67,28 +67,38 @@ type RecoveryTraceMemorySite struct {
 	ValueHex  string              `json:"value_hex,omitempty"`
 }
 
+type RecoveryTraceMemoryEvent struct {
+	PC       uint64 `json:"pc"`
+	Address  uint64 `json:"address"`
+	Bytes    int    `json:"bytes"`
+	Write    bool   `json:"write"`
+	Scope    string `json:"scope"`
+	ValueHex string `json:"value_hex,omitempty"`
+}
+
 type RecoveryStageTrace struct {
-	Name              string                    `json:"name"`
-	Invocation        int                       `json:"invocation"`
-	TotalInvocations  int                       `json:"total_invocations"`
-	EntryStateSHA256  string                    `json:"entry_state_sha256"`
-	ExitStateSHA256   string                    `json:"exit_state_sha256"`
-	PathSHA256        string                    `json:"path_sha256"`
-	Blocks            int                       `json:"blocks"`
-	UniqueBlocks      int                       `json:"unique_blocks"`
-	TopBlocks         []RecoveryTraceBlock      `json:"top_blocks"`
-	ReadSites         []RecoveryTraceMemorySite `json:"read_sites,omitempty"`
-	WriteSites        []RecoveryTraceMemorySite `json:"write_sites,omitempty"`
-	LiveInSpans       []RecoveryTraceSpan       `json:"live_in_spans"`
-	WriteSpans        []RecoveryTraceSpan       `json:"write_spans"`
-	RegisterChanges   []RecoveryTraceRegister   `json:"register_changes"`
-	EntryStackPointer uint64                    `json:"entry_stack_pointer"`
-	ExitStackPointer  uint64                    `json:"exit_stack_pointer"`
-	Error             string                    `json:"error,omitempty"`
-	EntryRegisters    []uint64                  `json:"entry_registers,omitempty"`
-	ExitRegisters     []uint64                  `json:"exit_registers,omitempty"`
-	EntryFlags        *RecoveryTraceFlags       `json:"entry_flags,omitempty"`
-	ExitFlags         *RecoveryTraceFlags       `json:"exit_flags,omitempty"`
+	Name              string                     `json:"name"`
+	Invocation        int                        `json:"invocation"`
+	TotalInvocations  int                        `json:"total_invocations"`
+	EntryStateSHA256  string                     `json:"entry_state_sha256"`
+	ExitStateSHA256   string                     `json:"exit_state_sha256"`
+	PathSHA256        string                     `json:"path_sha256"`
+	Blocks            int                        `json:"blocks"`
+	UniqueBlocks      int                        `json:"unique_blocks"`
+	TopBlocks         []RecoveryTraceBlock       `json:"top_blocks"`
+	ReadSites         []RecoveryTraceMemorySite  `json:"read_sites,omitempty"`
+	WriteSites        []RecoveryTraceMemorySite  `json:"write_sites,omitempty"`
+	MemoryEvents      []RecoveryTraceMemoryEvent `json:"memory_events,omitempty"`
+	LiveInSpans       []RecoveryTraceSpan        `json:"live_in_spans"`
+	WriteSpans        []RecoveryTraceSpan        `json:"write_spans"`
+	RegisterChanges   []RecoveryTraceRegister    `json:"register_changes"`
+	EntryStackPointer uint64                     `json:"entry_stack_pointer"`
+	ExitStackPointer  uint64                     `json:"exit_stack_pointer"`
+	Error             string                     `json:"error,omitempty"`
+	EntryRegisters    []uint64                   `json:"entry_registers,omitempty"`
+	ExitRegisters     []uint64                   `json:"exit_registers,omitempty"`
+	EntryFlags        *RecoveryTraceFlags        `json:"entry_flags,omitempty"`
+	ExitFlags         *RecoveryTraceFlags        `json:"exit_flags,omitempty"`
 }
 
 type recoveryStageCapture struct {
@@ -109,6 +119,7 @@ type recoveryStageCapture struct {
 	writeRegisters map[recoveryTraceWriteKey][31]uint64
 	writeFlags     map[recoveryTraceWriteKey]RecoveryTraceFlags
 	writeValues    map[recoveryTraceWriteKey]uint64
+	memoryEvents   []RecoveryTraceMemoryEvent
 	path           hash.Hash
 	blockCount     int
 	invocation     int
@@ -407,6 +418,7 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 		return writeSites[left].Bytes < writeSites[right].Bytes
 	})
 	trace.WriteSites = writeSites
+	trace.MemoryEvents = append(trace.MemoryEvents, capture.memoryEvents...)
 	r.results = append(r.results, trace)
 	for _, page := range capture.before {
 		clear(page)
@@ -419,6 +431,17 @@ func (s *state) traceReadValue(address uint64, size int, value uint64) {
 	}
 	key := recoveryTraceMemoryKey{pc: s.tracePC, address: address, bytes: size}
 	for _, capture := range s.tracer.active {
+		if capture.name == "outer.iteration" {
+			for index := len(capture.memoryEvents) - 1; index >= 0; index-- {
+				event := &capture.memoryEvents[index]
+				if !event.Write && event.PC == s.tracePC && event.Address == address && event.Bytes == size && event.ValueHex == "" {
+					var encoded [8]byte
+					binary.LittleEndian.PutUint64(encoded[:], value)
+					event.ValueHex = hex.EncodeToString(encoded[:size])
+					break
+				}
+			}
+		}
 		if _, exists := capture.readValues[key]; !exists {
 			capture.readValues[key] = value
 		}
@@ -434,6 +457,15 @@ func (s *state) traceWriteValue(address uint64, value []byte) {
 	key := recoveryTraceWriteKey{pc: s.tracePC, address: address, bytes: len(value)}
 	decoded := binary.LittleEndian.Uint64(encoded[:])
 	for _, capture := range s.tracer.active {
+		if capture.name == "outer.iteration" {
+			for index := len(capture.memoryEvents) - 1; index >= 0; index-- {
+				event := &capture.memoryEvents[index]
+				if event.Write && event.PC == s.tracePC && event.Address == address && event.Bytes == len(value) && event.ValueHex == "" {
+					event.ValueHex = hex.EncodeToString(value)
+					break
+				}
+			}
+		}
 		if _, exists := capture.writeValues[key]; !exists {
 			capture.writeValues[key] = decoded
 		}
@@ -453,6 +485,12 @@ func (s *state) traceAccess(address uint64, size int, write bool) {
 		return
 	}
 	for _, capture := range s.tracer.active {
+		if s.tracer.includeValues && s.tracePC != 0 && capture.name == "outer.iteration" {
+			scope := s.tracer.active[len(s.tracer.active)-1].name
+			capture.memoryEvents = append(capture.memoryEvents, RecoveryTraceMemoryEvent{
+				PC: s.tracePC, Address: address, Bytes: size, Write: write, Scope: scope,
+			})
+		}
 		if write {
 			traceMarkWrite(capture, address, size)
 			if s.tracer.includeValues && s.tracePC != 0 {
