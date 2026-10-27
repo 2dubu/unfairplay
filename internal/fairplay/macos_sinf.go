@@ -308,7 +308,8 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	}
 	clear(roundTrip)
 
-	modeAt, err := macOSSINFRightsValue(rights, "mode")
+	namedRights := rights[:len(expectedRights)*8]
+	modeAt, err := macOSSINFRightsValue(namedRights, "mode")
 	if err != nil {
 		return nil, report, err
 	}
@@ -340,7 +341,7 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	}
 	private = append(private, normalizedClear[len(normalizedClear)-8:]...)
 	defer clear(private)
-	tranAt, err := macOSSINFRightsValue(rights, "tran")
+	tranAt, err := macOSSINFRightsValue(namedRights, "tran")
 	if err != nil {
 		return nil, report, err
 	}

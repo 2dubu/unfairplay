@@ -488,3 +488,66 @@ func TestNormalizeShortMacOSSINF(t *testing.T) {
 		t.Fatal("visible/private rights mismatch accepted")
 	}
 }
+
+func TestNormalizeShortMacOSSINFIgnoresOpaqueSuffixNames(t *testing.T) {
+	for _, suffix := range []string{"modeABCD", "tranABCD"} {
+		t.Run(suffix[:4], func(t *testing.T) {
+			credential := macOSTestCredential()
+			original := macOSTestCurrentSINFLayout(t, credential, 7, true)
+			fields, err := parseSINFFields(original)
+			if err != nil {
+				t.Fatal(err)
+			}
+			values := make(map[string][]byte)
+			for _, typ := range []string{"righ", "name", "iviv", "priv"} {
+				values[typ], err = macOSSINFField(original, fields, typ)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			cleartext, err := macOSSINFCrypt(values["priv"][:432], credential, values["name"], values["iviv"], false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cleartext = append(cleartext, values["priv"][432:]...)
+			defer clear(cleartext)
+			privateFields, err := validateMacOSSINFPrivate(cleartext, values["righ"])
+			if err != nil {
+				t.Fatal(err)
+			}
+			privateRights, err := macOSSINFField(cleartext, privateFields, "righ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			copy(values["righ"][72:], suffix)
+			copy(privateRights[72:], suffix)
+			encrypted, err := macOSSINFCrypt(cleartext[:432], credential, values["name"], values["iviv"], true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			copy(values["priv"], encrypted)
+			converted, report, err := normalizeMacOSSINF(original, credential)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.OriginalMode != 7 || report.ConvertedMode != 0 {
+				t.Fatalf("conversion report = %+v", report)
+			}
+			convertedFields, err := parseSINFFields(converted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			rights, err := macOSSINFField(converted, convertedFields, "righ")
+			if err != nil {
+				t.Fatal(err)
+			}
+			crdt, err := macOSSINFField(converted, convertedFields, "crdt")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if binary.BigEndian.Uint32(rights[68:72]) != 0 || !bytes.Equal(rights[72:], make([]byte, 8)) || binary.BigEndian.Uint32(crdt) != 4 {
+				t.Fatal("suffix affected mode, transaction date, or suffix normalization")
+			}
+		})
+	}
+}
