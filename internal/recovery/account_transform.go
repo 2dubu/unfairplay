@@ -500,6 +500,18 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountConditionalEpilogue:
 		next, err := runAccountConditionalEpilogue(s)
 		return next, true, err
+	case accountCompareDispatchA:
+		next, err := runAccountCompareDispatchA(s)
+		return next, true, err
+	case accountFrameDispatch:
+		next, err := runAccountFrameDispatch(s)
+		return next, true, err
+	case accountFrameOffset:
+		next, err := runAccountFrameOffset(s)
+		return next, true, err
+	case accountCompareDispatchB:
+		next, err := runAccountCompareDispatchB(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
