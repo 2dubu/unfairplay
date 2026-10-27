@@ -148,7 +148,7 @@ func TestBootstrapAccumulatorStepsMatchLiftedBlocks(t *testing.T) {
 		direct  func(*state) (uint64, error)
 	}{
 		{"a", bootstrapAccumulatorPassA, runBootstrapAccumulatorStepA},
-		{"b", bootstrapAccumulatorPassB, runBootstrapAccumulatorStepB},
+		{"b", bootstrapAccumulatorPassB, runBootstrapAccumulatorStepBCircuit},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -224,6 +224,64 @@ func TestBootstrapAccumulatorStepsMatchLiftedBlocks(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBootstrapAccumulatorStepBSemanticMatchesCircuit(t *testing.T) {
+	random := rand.New(rand.NewSource(int64(bootstrapAccumulatorPassB)))
+	for trial := 0; trial < 512; trial++ {
+		pages := map[uint64][]byte{
+			0x100000: make([]byte, pageSize),
+			0x200000: make([]byte, pageSize),
+			0x300000: make([]byte, pageSize),
+			0x400000: make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		binary.LittleEndian.PutUint64(pages[0x200000][:8], 0x100000000+uint64(trial))
+		registers := [31]uint64{}
+		for index := range registers {
+			registers[index] = random.Uint64()
+		}
+		registers[2], registers[30] = 0x224ea33b, 0x224ea33b
+		registers[7], registers[21] = 0xc0c02ce911b20ca0, 0x818059d223641940
+		registers[3], registers[23] = 0x33fcaf9b, 0xc0c02ce9
+		registers[24], registers[25] = 0x19c0683c464360c5, 0xe63f97c3b9bc9f3b
+		registers[26], registers[9] = 0x4042601c6f58ed3f, 0xbfbd9fe390a712c1
+		registers[16], registers[0] = 0x598208200b552ec1, 0xa67df7dff4aad13f
+		registers[15] = uint64(random.Uint32())
+		registers[8], registers[19], registers[4] = 0, 0, 0
+		registers[28], registers[14] = 0x300000, 0x400000
+		registers[11], registers[12] = 0, 0
+		registers[5], registers[6], registers[13] = 0, 0xffffffff, 0xffffffff
+
+		circuit := newState(&model{pages: clonePages(pages)})
+		semantic := newState(&model{pages: clonePages(pages)})
+		circuit.x, semantic.x = registers, registers
+		circuit.sp, semantic.sp = 0x100100, 0x100100
+		if err := circuit.storeValue(circuit.sp+0xa8, 0x200000, 8); err != nil {
+			t.Fatal(err)
+		}
+		semantic.writable = clonePages(circuit.writable)
+		semantic.dirty = map[uint64]bool{0x100000: true}
+		circuitNext, circuitErr := runBootstrapAccumulatorStepBCircuit(circuit)
+		semanticNext, semanticErr := runBootstrapAccumulatorStepB(semantic)
+		if circuitErr != nil || semanticErr != nil {
+			t.Fatalf("trial %d errors: circuit=%v semantic=%v", trial, circuitErr, semanticErr)
+		}
+		if circuitNext != semanticNext || circuit.x != semantic.x {
+			t.Fatalf("trial %d scalar state differs: next circuit=%#x semantic=%#x\ncircuit=%#v\nsemantic=%#v",
+				trial, circuitNext, semanticNext, circuit.x, semantic.x)
+		}
+		if circuit.n != semantic.n || circuit.z != semantic.z || circuit.c != semantic.c || circuit.v != semantic.v {
+			t.Fatalf("trial %d flags differ", trial)
+		}
+		if !reflect.DeepEqual(circuit.writable, semantic.writable) {
+			t.Fatalf("trial %d memory writes differ", trial)
+		}
 	}
 }
 

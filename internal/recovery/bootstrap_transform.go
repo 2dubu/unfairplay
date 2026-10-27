@@ -554,15 +554,17 @@ func runBootstrapAccumulatorStepB(s *state) (uint64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("bootstrap accumulator B right table: %w", err)
 	}
-	mixed := (right ^ s.x[24]) + s.x[25]
-	chain := (right ^ s.x[26]) + s.x[9]
-	mixed ^= chain
+	if s.x[24] != 0x19c0683c464360c5 || s.x[25] != 0xe63f97c3b9bc9f3b ||
+		s.x[26] != 0x4042601c6f58ed3f || s.x[9] != 0xbfbd9fe390a712c1 ||
+		s.x[16] != 0x598208200b552ec1 || s.x[0] != 0xa67df7dff4aad13f ||
+		s.x[2] != 0x224ea33b || s.x[7] != 0xc0c02ce911b20ca0 ||
+		s.x[21] != 0x818059d223641940 || s.x[3] != 0x33fcaf9b || s.x[15] > 0xffffffff {
+		return 0, fmt.Errorf("unsupported bootstrap accumulator encoding")
+	}
+	decodedRight := uint32(right) ^ uint32(s.x[2])
 	s.x[23] = 0xc0c02ce9
-	combined := ((right ^ s.x[16]) + s.x[0]) ^ mixed
-	combined += s.x[2]
-	combined = combined*s.x[15] + carry
-	combined -= s.x[21] & (combined << 1)
-	result := combined + s.x[7]
+	combined := uint64(decodedRight)*uint64(uint32(s.x[15])) + carry
+	result := combined ^ s.x[7]
 	output := uint32(result) ^ uint32(s.x[3])
 	storeIndex := uint32(s.x[8]) + uint32(s.x[4])
 	if err := storeBootstrapWord(s, s.x[28], storeIndex, output); err != nil {
