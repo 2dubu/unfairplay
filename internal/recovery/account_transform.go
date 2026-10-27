@@ -482,6 +482,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountCCmpTargetRoute:
 		next, err := runAccountCCmpTargetRoute(s)
 		return next, true, err
+	case accountSignedPairDispatch:
+		next, err := runAccountSignedPairDispatch(s)
+		return next, true, err
+	case accountComputedByteDispatch:
+		next, err := runAccountComputedByteDispatch(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
