@@ -290,6 +290,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountRuntimeSetup:
 		next, err := runAccountRuntimeSetup(s)
 		return next, true, err
+	case accountTableOffsetRoute:
+		next, err := runAccountTableOffsetRoute(s)
+		return next, true, err
+	case accountByteLoopRoute:
+		next, err := runAccountByteLoopRoute(s)
+		return next, true, err
+	case accountBitByteLoopRoute:
+		next, err := runAccountBitByteLoopRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
