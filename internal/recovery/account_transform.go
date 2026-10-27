@@ -407,6 +407,18 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountByteCCmpRoute:
 		next, err := runAccountByteCCmpRoute(s)
 		return next, true, err
+	case accountTripleCompareRoute:
+		next, err := runAccountTripleCompareRoute(s)
+		return next, true, err
+	case accountDirectReturn:
+		next, err := runAccountDirectReturn(s)
+		return next, true, err
+	case accountZeroByteRoute:
+		next, err := runAccountZeroByteRoute(s)
+		return next, true, err
+	case accountLimitTargetRoute:
+		next, err := runAccountLimitTargetRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
