@@ -727,6 +727,78 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapPointerTailA && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapPointerTailA(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapGuardReturnA && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapGuardReturnA(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapStoredDispatch && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapStoredDispatch(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapPackedSelector && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapPackedSelector(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapGuardReturnB && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapGuardReturnB(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapSignedSelector && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapSignedSelector(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapStackPivot && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapStackPivot(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapStackPairSelect && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapStackPairSelect(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapZeroStore && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapZeroStore(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if runtime == nil || runtime.stopPC == 0 {
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {
