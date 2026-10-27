@@ -7,7 +7,144 @@ const (
 	bootstrapByteSelector    = uint64(0x1009f1804)
 	bootstrapStackSelector   = uint64(0x1008a9500)
 	bootstrapScaledSelector  = uint64(0x1008efca8)
+	bootstrapSignSelector    = uint64(0x1005d0ca8)
+	bootstrapPointerSelector = uint64(0x1008c3b90)
+	bootstrapStateSelector   = uint64(0x1008fd674)
+	bootstrapCarrySelector   = uint64(0x1009114c4)
 )
+
+func runBootstrapSignSelector(s *state) (uint64, error) {
+	s.traceBlock(bootstrapSignSelector)
+	if err := storeBootstrapPair(s, s.sp+0x20, s.x[4], s.x[3]); err != nil {
+		return 0, fmt.Errorf("bootstrap sign-selector saved pair: %w", err)
+	}
+	s.x[10] = uint64(uint32(s.x[8]) ^ 0x7e5cdf3a)
+	s.x[12] = 0xfcb9be74
+	s.x[13] = 0xd7ffbdfe
+	s.x[11] = uint64(uint32(s.x[9]) + 0xc821b502)
+	s.x[11] = uint64(uint32(s.x[11]) & 0x37de7579)
+	s.x[14] = uint64(uint32(s.x[8]) + 0x084e95f3)
+	s.x[15] = uint64(uint32(s.x[8]) >> 31)
+	s.x[16] = uint64(uint32(s.x[11]) + 0xffff8c63)
+	s.x[15] = uint64(uint32(s.x[16]) * uint32(s.x[15]))
+	s.x[15] = uint64(uint32(s.x[15]) ^ uint32(s.x[9]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[15]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap sign-selector target: %w", err)
+	}
+	s.x[1] = next
+	s.x[15] = 0x21c2777d
+	s.x[17] = 0x88c4
+	return next, nil
+}
+
+func runBootstrapPointerSelector(s *state) (uint64, error) {
+	s.traceBlock(bootstrapPointerSelector)
+	value, err := s.load(s.sp+0x30, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pointer-selector first pointer: %w", err)
+	}
+	s.x[9] = value
+	value, err = s.load(s.x[9]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pointer-selector first value: %w", err)
+	}
+	s.x[5] = value
+	value, err = s.load(s.sp+0x98, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pointer-selector second pointer: %w", err)
+	}
+	s.x[9] = value
+	value, err = s.load(s.x[9]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pointer-selector second value: %w", err)
+	}
+	s.x[22] = value
+	s.x[20] = 0x779bc723
+	s.x[9] = uint64(uint32(s.x[3]) + 0xffffad41)
+	s.x[11] = 0x5bf2972d
+	s.x[14] = uint64(uint32(s.x[9]) + uint32(s.x[11]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[3]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pointer-selector target: %w", err)
+	}
+	s.x[11] = next
+	s.x[17] = 0xaa52
+	return next, nil
+}
+
+func runBootstrapStateSelector(s *state) (uint64, error) {
+	s.traceBlock(bootstrapStateSelector)
+	s.x[9] = uint64(uint32(s.x[12]) & uint32(s.x[8]<<1))
+	if err := s.storeValue(s.sp+0xc, uint64(uint32(s.x[9])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap state-selector first state: %w", err)
+	}
+	s.x[9] = uint64(uint32(s.x[10]) + uint32(s.x[13]))
+	if err := s.storeValue(s.sp+8, uint64(uint32(s.x[9])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap state-selector second state: %w", err)
+	}
+	value, err := s.load(s.x[0], 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap state-selector input: %w", err)
+	}
+	s.x[9] = value
+	if err := storeBootstrapPair(s, s.sp+0x10, s.x[9], s.x[5]); err != nil {
+		return 0, fmt.Errorf("bootstrap state-selector saved pair: %w", err)
+	}
+	s.x[19] = uint64(uint32(s.x[11]) + 0xd45)
+	s.x[9] = uint64(uint32(s.x[11]) + 0xe68f467e)
+	s.x[9] = uint64(uint32(s.x[9]) & 0x19706efd)
+	value, err = s.load(s.sp+0x78, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap state-selector gate: %w", err)
+	}
+	s.x[10] = uint64(uint32(value))
+	s.compare32(uint32(s.x[10]), 0)
+	gate := uint32(boolValue(s.condition("gt")))
+	s.x[10] = uint64(gate)
+	s.x[12] = uint64(uint32(s.x[9]) ^ 0xf676)
+	s.x[10] = uint64(gate * uint32(s.x[12]))
+	s.x[10] = uint64(uint32(s.x[10]) ^ uint32(s.x[11]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[10]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap state-selector target: %w", err)
+	}
+	s.x[10] = next
+	s.x[28] = 0x15089516
+	s.x[17] = 0x8766
+	return next, nil
+}
+
+func runBootstrapCarrySelector(s *state) (uint64, error) {
+	s.traceBlock(bootstrapCarrySelector)
+	s.x[9] = uint64(uint32(s.x[15]) ^ 0x68b3)
+	s.x[10] = uint64(uint32(s.x[9]) + uint32(s.x[9]<<1))
+	s.x[9] = uint64(uint32(s.x[15]) ^ 0x1d7b)
+	s.x[11] = 0x842a429e
+	s.x[12] = uint64(uint32(s.x[16]) + uint32(s.x[9]))
+	s.x[11] = s.addWithCarry(uint64(uint32(s.x[12])), uint64(uint32(s.x[11])), false, 32)
+	s.x[13] = 0x7bd5bd62
+	s.x[12] = uint64(uint32(s.x[13]) - uint32(s.x[12]))
+	if s.condition("pl") {
+		s.x[12] = uint64(uint32(s.x[11]))
+	}
+	s.x[11] = 0xbd35
+	s.x[10] = uint64(uint32(s.x[10]) ^ uint32(s.x[11]))
+	if err := s.storeValue(s.sp+0x78, uint64(uint32(s.x[12])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap carry-selector state: %w", err)
+	}
+	s.compare32(uint32(s.x[12]), uint32(s.x[10]))
+	gate := uint32(boolValue(s.condition("le")))
+	s.x[10] = uint64(gate | gate<<5)
+	s.x[10] = uint64(uint32(s.x[10]) | uint32(s.x[15]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[10]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap carry-selector target: %w", err)
+	}
+	s.x[10] = next
+	s.x[17] = 0x6864
+	return next, nil
+}
 
 func runBootstrapStackSelector(s *state) (uint64, error) {
 	s.traceBlock(bootstrapStackSelector)
