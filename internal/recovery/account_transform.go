@@ -8,6 +8,8 @@ const (
 	accountEntryByteRemapPass     = uint64(0x100131cd8)
 	accountEntryTableWriterPass   = uint64(0x10007e214)
 	accountEntryWordMixerPass     = uint64(0x10007ba1c)
+	accountEntryByteCopyPass      = uint64(0x1001f39b8)
+	accountEntryFourWordPass      = uint64(0x1002376d4)
 )
 
 func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -27,9 +29,136 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountEntryWordMixerPass:
 		next, err := runAccountEntryWordMixer(s)
 		return next, true, err
+	case accountEntryByteCopyPass:
+		next, err := runAccountEntryByteCopy(s)
+		return next, true, err
+	case accountEntryFourWordPass:
+		next, err := runAccountEntryFourWordPass(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runAccountEntryByteCopy(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runAccountEntryByteCopyStep(s)
+		if err != nil || next != accountEntryByteCopyPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("account-entry byte copy exceeded %d bytes", maximumBytes)
+}
+
+func runAccountEntryByteCopyStep(s *state) (uint64, error) {
+	s.traceBlock(accountEntryByteCopyPass)
+	s.compare32(uint32(s.x[15]), uint32(s.x[14]))
+	gate := uint32(boolValue(s.condition("lo")))
+	s.x[10] = uint64(uint32(s.x[12]) + 0xb66ead0e)
+	s.x[16] = 0x4990ff67
+	s.x[10] = uint64(uint32(s.x[10]) & uint32(s.x[16]))
+	s.x[16] = uint64(uint32(s.x[13]))
+	value, err := s.load(s.x[9]+s.x[16], 1)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte copy input: %w", err)
+	}
+	s.x[17] = uint64(byte(value))
+	s.x[16] = s.x[8] + s.x[16]
+	if err := s.storeValue(s.x[16], uint64(byte(s.x[17])), 1); err != nil {
+		return 0, fmt.Errorf("account-entry byte copy output: %w", err)
+	}
+	s.x[16] = uint64(uint32(s.x[13]) + 0xffffb09b)
+	s.x[16] = uint64(uint32(s.x[16]) + uint32(s.x[10]))
+	s.x[17] = 0xe21ab501
+	s.x[0] = 0x1de54aff
+	s.compare32(uint32(s.x[16]), uint32(s.x[0]))
+	selector := gate ^ uint32(boolValue(s.condition("hi")))
+	s.x[13] = uint64(uint32(s.x[13]) + uint32(s.x[17]))
+	s.compare32(uint32(s.x[13]), uint32(s.x[15]))
+	secondBound := uint32(boolValue(s.condition("lo")))
+	s.compare32(selector, 0)
+	dispatchBit := secondBound
+	if s.condition("ne") {
+		dispatchBit = gate
+	}
+	dispatchIndex := dispatchBit*0x172c ^ uint32(s.x[12])
+	next, err := loadBootstrapPointer(s, s.x[20], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte copy dispatch: %w", err)
+	}
+	s.x[11] = next
+	s.x[13] = s.x[16]
+	s.x[17] = 0x63d5
+	return next, nil
+}
+
+func runAccountEntryFourWordPass(s *state) (uint64, error) {
+	const maximumWords = 4096
+	for index := 0; index < maximumWords; index++ {
+		next, err := runAccountEntryFourWordStep(s)
+		if err != nil || next != accountEntryFourWordPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("account-entry four-word pass exceeded %d words", maximumWords)
+}
+
+func runAccountEntryFourWordStep(s *state) (uint64, error) {
+	s.traceBlock(accountEntryFourWordPass)
+	s.x[9] = 0xffff5fad
+	s.x[16] = uint64(uint32(s.x[13]) + uint32(s.x[9]))
+	s.x[9] = 0x410
+	s.x[0] = uint64(uint32(s.x[16]) | uint32(s.x[9]))
+	s.x[16] = s.x[1] << 2
+	offsets := [...]uint64{
+		0xffffffff8cdedda8,
+		0xffffffff8cdedd94,
+		0xffffffff8cdedd7c,
+	}
+	first, err := s.load(s.x[8]+s.x[16]+offsets[0], 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry four-word input 0: %w", err)
+	}
+	s.x[17] = uint64(uint32(first))
+	second, err := s.load(s.x[8]+s.x[16]+offsets[1], 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry four-word input 1: %w", err)
+	}
+	s.x[2] = uint64(uint32(second))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[2]))
+	third, err := s.load(s.x[8]+s.x[16]+offsets[2], 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry four-word input 2: %w", err)
+	}
+	s.x[2] = uint64(uint32(third))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[2]))
+	s.x[2] = s.x[1] + s.x[0]
+	s.x[9] = 0xffffffff8cde7fb0
+	s.x[2] = s.x[9] + (s.x[2] << 2)
+	fourth, err := s.load(s.x[8]+s.x[2], 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry four-word input 3: %w", err)
+	}
+	s.x[2] = uint64(uint32(fourth))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[2]))
+	s.x[17] = uint64(uint32(s.x[12]) ^ uint32(rotateRight(s.x[17], 31, 32)))
+	s.x[16] += s.x[14]
+	if err := s.storeValue(s.x[8]+s.x[16], uint64(uint32(s.x[17])), 4); err != nil {
+		return 0, fmt.Errorf("account-entry four-word output: %w", err)
+	}
+	s.x[1]++
+	s.x[9] = 0x1cc848e3
+	s.compare64(s.x[1], s.x[9])
+	dispatchIndex := uint32(boolValue(s.condition("eq")))*0x7615 ^ uint32(s.x[13])
+	next, err := loadBootstrapPointer(s, s.x[20], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry four-word dispatch: %w", err)
+	}
+	s.x[2] = next
+	s.x[16] = 0x1cc84893
+	s.x[17] = 0xe949
+	return next, nil
 }
 
 func runAccountEntryWordMixer(s *state) (uint64, error) {
