@@ -11,6 +11,8 @@ func TestRecoveryStageTraceSeparatesLiveInputsAndWrites(t *testing.T) {
 	worker.x[1] = 7
 	worker.sp = base + 0x800
 	err := withRecoveryStage(worker, "test-stage", func() error {
+		worker.traceLiftedBlock(0x1000)
+		worker.traceLiftedBlock(0x1000)
 		worker.traceBlock(0x1000)
 		worker.traceBlock(0x1000)
 		worker.traceBlock(0x2000)
@@ -37,6 +39,10 @@ func TestRecoveryStageTraceSeparatesLiveInputsAndWrites(t *testing.T) {
 	if trace.Name != "test-stage" || trace.Blocks != 3 || trace.UniqueBlocks != 2 || len(trace.TopBlocks) != 2 ||
 		trace.TopBlocks[0].Address != 0x1000 || trace.TopBlocks[0].Count != 2 {
 		t.Fatalf("unexpected block trace: %+v", trace)
+	}
+	if trace.LiftedBlockCalls != 2 || trace.UniqueLiftedBlocks != 1 || len(trace.TopLiftedBlocks) != 1 ||
+		trace.TopLiftedBlocks[0].Address != 0x1000 || trace.TopLiftedBlocks[0].Count != 2 {
+		t.Fatalf("unexpected lifted block trace: %+v", trace)
 	}
 	if len(trace.LiveInSpans) != 1 || trace.LiveInSpans[0].Address != base+0x10 || trace.LiveInSpans[0].Bytes != 1 {
 		t.Fatalf("unexpected live inputs: %+v", trace.LiveInSpans)

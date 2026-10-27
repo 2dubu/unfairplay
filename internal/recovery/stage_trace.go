@@ -79,29 +79,32 @@ type RecoveryTraceMemoryEvent struct {
 }
 
 type RecoveryStageTrace struct {
-	Name              string                     `json:"name"`
-	Invocation        int                        `json:"invocation"`
-	TotalInvocations  int                        `json:"total_invocations"`
-	EntryStateSHA256  string                     `json:"entry_state_sha256"`
-	ExitStateSHA256   string                     `json:"exit_state_sha256"`
-	PathSHA256        string                     `json:"path_sha256"`
-	BlockPath         []uint64                   `json:"block_path,omitempty"`
-	Blocks            int                        `json:"blocks"`
-	UniqueBlocks      int                        `json:"unique_blocks"`
-	TopBlocks         []RecoveryTraceBlock       `json:"top_blocks"`
-	ReadSites         []RecoveryTraceMemorySite  `json:"read_sites,omitempty"`
-	WriteSites        []RecoveryTraceMemorySite  `json:"write_sites,omitempty"`
-	MemoryEvents      []RecoveryTraceMemoryEvent `json:"memory_events,omitempty"`
-	LiveInSpans       []RecoveryTraceSpan        `json:"live_in_spans"`
-	WriteSpans        []RecoveryTraceSpan        `json:"write_spans"`
-	RegisterChanges   []RecoveryTraceRegister    `json:"register_changes"`
-	EntryStackPointer uint64                     `json:"entry_stack_pointer"`
-	ExitStackPointer  uint64                     `json:"exit_stack_pointer"`
-	Error             string                     `json:"error,omitempty"`
-	EntryRegisters    []uint64                   `json:"entry_registers,omitempty"`
-	ExitRegisters     []uint64                   `json:"exit_registers,omitempty"`
-	EntryFlags        *RecoveryTraceFlags        `json:"entry_flags,omitempty"`
-	ExitFlags         *RecoveryTraceFlags        `json:"exit_flags,omitempty"`
+	Name               string                     `json:"name"`
+	Invocation         int                        `json:"invocation"`
+	TotalInvocations   int                        `json:"total_invocations"`
+	EntryStateSHA256   string                     `json:"entry_state_sha256"`
+	ExitStateSHA256    string                     `json:"exit_state_sha256"`
+	PathSHA256         string                     `json:"path_sha256"`
+	BlockPath          []uint64                   `json:"block_path,omitempty"`
+	Blocks             int                        `json:"blocks"`
+	UniqueBlocks       int                        `json:"unique_blocks"`
+	TopBlocks          []RecoveryTraceBlock       `json:"top_blocks"`
+	LiftedBlockCalls   int                        `json:"lifted_block_calls"`
+	UniqueLiftedBlocks int                        `json:"unique_lifted_blocks"`
+	TopLiftedBlocks    []RecoveryTraceBlock       `json:"top_lifted_blocks"`
+	ReadSites          []RecoveryTraceMemorySite  `json:"read_sites,omitempty"`
+	WriteSites         []RecoveryTraceMemorySite  `json:"write_sites,omitempty"`
+	MemoryEvents       []RecoveryTraceMemoryEvent `json:"memory_events,omitempty"`
+	LiveInSpans        []RecoveryTraceSpan        `json:"live_in_spans"`
+	WriteSpans         []RecoveryTraceSpan        `json:"write_spans"`
+	RegisterChanges    []RecoveryTraceRegister    `json:"register_changes"`
+	EntryStackPointer  uint64                     `json:"entry_stack_pointer"`
+	ExitStackPointer   uint64                     `json:"exit_stack_pointer"`
+	Error              string                     `json:"error,omitempty"`
+	EntryRegisters     []uint64                   `json:"entry_registers,omitempty"`
+	ExitRegisters      []uint64                   `json:"exit_registers,omitempty"`
+	EntryFlags         *RecoveryTraceFlags        `json:"entry_flags,omitempty"`
+	ExitFlags          *RecoveryTraceFlags        `json:"exit_flags,omitempty"`
 }
 
 type recoveryStageCapture struct {
@@ -116,6 +119,7 @@ type recoveryStageCapture struct {
 	write          map[uint64][]byte
 	written        map[uint64][]byte
 	blocks         map[uint64]int
+	liftedBlocks   map[uint64]int
 	readSites      map[recoveryTraceMemoryKey]int
 	readValues     map[recoveryTraceMemoryKey]uint64
 	writeSites     map[recoveryTraceWriteKey]int
@@ -317,7 +321,7 @@ func (r *recoveryTraceRecorder) begin(s *state, name string) *recoveryStageCaptu
 		name: name, invocation: invocation, entryState: s.digest(), entryX: s.x, entrySP: s.sp,
 		entryFlags: RecoveryTraceFlags{Negative: s.n, Zero: s.z, Carry: s.c, Overflow: s.v},
 		before:     currentTracePages(s), read: make(map[uint64][]byte), liveIn: make(map[uint64][]byte), write: make(map[uint64][]byte),
-		written: make(map[uint64][]byte), blocks: make(map[uint64]int), path: sha256.New(),
+		written: make(map[uint64][]byte), blocks: make(map[uint64]int), liftedBlocks: make(map[uint64]int), path: sha256.New(),
 		readSites: make(map[recoveryTraceMemoryKey]int), readValues: make(map[recoveryTraceMemoryKey]uint64),
 		writeSites:     make(map[recoveryTraceWriteKey]int),
 		writeRegisters: make(map[recoveryTraceWriteKey][31]uint64), writeFlags: make(map[recoveryTraceWriteKey]RecoveryTraceFlags),
@@ -371,6 +375,18 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 		return blocks[left].Address < blocks[right].Address
 	})
 	trace.TopBlocks = blocks[:min(len(blocks), 32)]
+	for address, count := range capture.liftedBlocks {
+		trace.LiftedBlockCalls += count
+		trace.TopLiftedBlocks = append(trace.TopLiftedBlocks, RecoveryTraceBlock{Address: address, Count: count})
+	}
+	trace.UniqueLiftedBlocks = len(trace.TopLiftedBlocks)
+	sort.Slice(trace.TopLiftedBlocks, func(left, right int) bool {
+		if trace.TopLiftedBlocks[left].Count != trace.TopLiftedBlocks[right].Count {
+			return trace.TopLiftedBlocks[left].Count > trace.TopLiftedBlocks[right].Count
+		}
+		return trace.TopLiftedBlocks[left].Address < trace.TopLiftedBlocks[right].Address
+	})
+	trace.TopLiftedBlocks = trace.TopLiftedBlocks[:min(len(trace.TopLiftedBlocks), 32)]
 	buildMemorySites := func(source map[recoveryTraceMemoryKey]int) []RecoveryTraceMemorySite {
 		sites := make([]RecoveryTraceMemorySite, 0, len(source))
 		for key, count := range source {
@@ -528,6 +544,15 @@ func (s *state) traceBlock(address uint64) {
 			capture.blockPath = append(capture.blockPath, address)
 		}
 		_, _ = capture.path.Write(encoded[:])
+	}
+}
+
+func (s *state) traceLiftedBlock(address uint64) {
+	if s.tracer == nil {
+		return
+	}
+	for _, capture := range s.tracer.active {
+		capture.liftedBlocks[address]++
 	}
 }
 

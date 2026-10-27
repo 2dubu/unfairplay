@@ -56,6 +56,7 @@ func compactConditionMatches(s *state, condition compactCondition) (bool, error)
 }
 
 func runCompactBlock(s *state, runtime *rawSourceRuntime, block compactBlock) (next uint64, stopped bool, err error) {
+	s.traceLiftedBlock(block.start)
 	terminalPC := block.start + uint64(len(block.instructions))*4
 	if runtime != nil && runtime.stopPC >= block.start && runtime.stopPC <= terminalPC && (runtime.stopPC-block.start)%4 == 0 {
 		instructionCount := int((runtime.stopPC - block.start) / 4)
