@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestOuterPreRoundWord1MatchesCircuit(t *testing.T) {
+func TestOuterPreRoundMatchesCircuit(t *testing.T) {
 	random := rand.New(rand.NewSource(0x26a428))
 	for sample := 0; sample < 100000; sample++ {
 		var table [outerTableWords]uint32
@@ -23,13 +23,15 @@ func TestOuterPreRoundWord1MatchesCircuit(t *testing.T) {
 			state.Codec[index] = byte(random.Uint32())
 		}
 		base := uint32(random.Intn(int(outerTableWords)))
-		wantState := state
-		if !applyOuterPreRound(&table, base, &wantState) {
+		wantState, gotState := state, state
+		if !applyOuterPreRoundCircuit(&table, base, &wantState) {
 			t.Fatal("circuit rejected input")
 		}
-		got, ok := outerPreRoundWord1(&table, base, &state)
-		if !ok || got != wantState.Words[1] {
-			t.Fatalf("sample %d = %08x/%t, want %08x", sample, got, ok, wantState.Words[1])
+		if !applyOuterPreRound(&table, base, &gotState) {
+			t.Fatal("reduced implementation rejected input")
+		}
+		if gotState.Words != wantState.Words {
+			t.Fatalf("sample %d = %08x, want %08x", sample, gotState.Words, wantState.Words)
 		}
 	}
 }

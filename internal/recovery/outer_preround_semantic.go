@@ -2,43 +2,399 @@ package recovery
 
 import "math/bits"
 
-var outerPreRoundWord1Terms = [...]outerFrontTerm{
-	{0x1003f369, 0x0000000}, {0x44200408, 0x0000001}, {0x0049a400, 0x0000002},
-	{0x10201490, 0x0000004}, {0xf7fffb9f, 0x0000008}, {0x00061892, 0x0000010},
-	{0x04060010, 0x0000011}, {0xffffffff, 0x0000020}, {0x00340244, 0x0000040},
-	{0x00708040, 0x0000042}, {0xc481407a, 0x0000080}, {0x08000010, 0x0000084},
-	{0xddb15cc4, 0x0000100}, {0xffffffff, 0x0000200}, {0x21001039, 0x0000400},
-	{0x00000002, 0x0000402}, {0x20200045, 0x0000440}, {0x00200042, 0x0000442},
-	{0x0008aa00, 0x0000800}, {0x10200000, 0x0000804}, {0xc0000040, 0x0000880},
-	{0x08000000, 0x0000884}, {0x2ff6ffcb, 0x0001000}, {0x224ea33b, 0x0002000},
-	{0xffffffff, 0x0002100}, {0xddb15cc4, 0x0004000}, {0x2ad1a081, 0x0008000},
-	{0x00202000, 0x0008001}, {0x000000a0, 0x0008010}, {0x00000020, 0x0008011},
-	{0xffffffff, 0x0010000}, {0x10800800, 0x0020000}, {0x00008800, 0x0020002},
-	{0x08004000, 0x0020040}, {0x0000c000, 0x0020042}, {0x00000018, 0x0020400},
-	{0x00000002, 0x0020402}, {0x00000002, 0x0020442}, {0x02020100, 0x0040000},
-	{0x02020180, 0x0040004}, {0xc2830040, 0x0040080}, {0x02020000, 0x0040084},
-	{0x20040000, 0x0040800}, {0xc0000040, 0x0040880}, {0x224ea33b, 0x0080000},
-	{0xffffffff, 0x0084000}, {0x01084100, 0x0100000}, {0x00004002, 0x0100010},
-	{0x00400000, 0x0108000}, {0xffffffff, 0x0200000}, {0x00003fc0, 0x0400000},
-	{0x0007f800, 0x0800000}, {0xff000000, 0x1000000}, {0xc000003f, 0x2000000},
-	{0x01fe0000, 0x4000000}, {0x000007f8, 0x8000000},
+// Each term set is the canonical algebraic-normal form of one native
+// in-place state update. The product selects input lanes to AND; the
+// mask selects output bits. This removes the original MBA encoding.
+var outerPreRoundStep1Terms = [...]outerFrontTerm{
+	{0x77cdb19d, 0x0}, {0xfdffb7bf, 0x1}, {0xffffdf37, 0x2},
+	{0xffffffff, 0x4}, {0xdfd6ffff, 0x8}, {0x80014531, 0x10},
+	{0x01001039, 0x20}, {0xa21a4200, 0x40}, {0x10800800, 0x80},
+	{0x49041000, 0x100}, {0x0040a400, 0x200}, {0x00840004, 0x400},
+	{0x00140244, 0x800}, {0x8040c000, 0x50}, {0x00000018, 0xa0},
+	{0x09000100, 0x110}, {0x0b080000, 0x140}, {0x00000002, 0x220},
+	{0x00008800, 0x280}, {0x00000030, 0x410}, {0x00020200, 0x440},
+	{0x00040000, 0x500}, {0x00000045, 0x820}, {0x08004000, 0x880},
+	{0x00508040, 0xa00}, {0x09000000, 0x150}, {0x00000002, 0x2a0},
+	{0x00008000, 0x450}, {0x00000042, 0xa20}, {0x0000c000, 0xa80},
+	{0x00000002, 0xaa0},
 }
 
-func outerPreRoundWord1(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
-	if table == nil || state == nil || base >= outerTableWords || state.HardwareIndex >= 6 {
-		return 0, false
+var outerPreRoundStep3Terms = [...]outerFrontTerm{
+	{0x8d3ecb10, 0x0}, {0xffffffff, 0x1}, {0x00010000, 0x2},
+	{0x84200800, 0x4}, {0x008687d4, 0x8}, {0x00102020, 0x10},
+	{0x80000000, 0x6}, {0x00080000, 0xa}, {0x04200100, 0xc},
+	{0x00100000, 0x12}, {0x09004000, 0x14}, {0x00000010, 0x18},
+	{0x08004000, 0x16}, {0x01004000, 0x1c}, {0x00004000, 0x1e},
+}
+
+var outerPreRoundStep5Terms = [...]outerFrontTerm{
+	{0x2651b1ae, 0x0}, {0xffffffff, 0x1}, {0xffffffff, 0x2},
+	{0x21001039, 0x4}, {0xffffffff, 0x8}, {0x10800800, 0x10},
+	{0x0049a400, 0x20}, {0xffffffff, 0x40}, {0x00340244, 0x80},
+	{0x00000018, 0x14}, {0x00000002, 0x24}, {0x00008800, 0x30},
+	{0x20200045, 0x84}, {0x08004000, 0x90}, {0x00708040, 0xa0},
+	{0x00000002, 0x34}, {0x00200042, 0xa4}, {0x0000c000, 0xb0},
+	{0x00000002, 0xb4},
+}
+
+var outerPreRoundStep7Terms = [...]outerFrontTerm{
+	{0x525c4637, 0x0}, {0xffffffff, 0x1}, {0x224ea33b, 0x2},
+	{0x28001aef, 0x4}, {0xddb15cc4, 0x8}, {0xffffffff, 0x6},
+	{0xffffffff, 0xc},
+}
+
+var outerPreRoundStep13Terms = [...]outerFrontTerm{
+	{0x1fcfff3f, 0x0}, {0x88600008, 0x1}, {0xffffffff, 0x2},
+	{0x00300080, 0x4}, {0x28500048, 0x8}, {0xa0000000, 0x10},
+	{0x04600000, 0x5}, {0xe87000c8, 0x9}, {0x04500000, 0xc},
+	{0x8c000008, 0x11}, {0xe03000c0, 0x14}, {0x2c000008, 0x18},
+	{0x04700080, 0xd}, {0x8c600008, 0x15}, {0xac000008, 0x19},
+	{0x2c500048, 0x1c}, {0xec7000c8, 0x1d},
+}
+
+var outerPreRoundStep16Terms = [...]outerFrontTerm{
+	{0x8b5c921c, 0x0}, {0x9e1cf003, 0x1}, {0xffffffff, 0x2},
+	{0x11ab9cc9, 0x4}, {0x41010c94, 0x8}, {0x00114249, 0x10},
+	{0x41010c84, 0x20}, {0x200a0000, 0x40}, {0x00000010, 0x80},
+	{0x124400c2, 0x100}, {0xc9228004, 0x200}, {0x41010484, 0x400},
+	{0xf1ddfbb7, 0x5}, {0x236907a1, 0x9}, {0x4517ecd6, 0xc},
+	{0x01210480, 0x21}, {0x45114cc4, 0x24}, {0x00000200, 0x50},
+	{0x22480321, 0x81}, {0x0006a012, 0x84}, {0x41010c94, 0xa0},
+	{0x00000150, 0x110}, {0x00000002, 0x140}, {0x81000009, 0x210},
+	{0x00820000, 0x240}, {0x08000004, 0x300}, {0x21690781, 0x401},
+	{0x4517a4c6, 0x404}, {0xaf6b07e1, 0xd}, {0x8d2104c0, 0x25},
+	{0x224a0321, 0x85}, {0x236907a1, 0xa1}, {0x4517ecd6, 0xa4},
+	{0x00000110, 0x150}, {0x00000010, 0x310}, {0x00800000, 0x340},
+	{0xad6b07c1, 0x405}, {0xaf6b07e1, 0xa5}, {0x00000010, 0x350},
+}
+
+var outerPreRoundStep17Terms = [...]outerFrontTerm{
+	{0xdd3114c4, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
+	{0x224ea33b, 0x4}, {0xfd7fb7cf, 0x8}, {0xffffffff, 0x6},
+}
+
+var outerPreRoundStep18Terms = [...]outerFrontTerm{
+	{0x6766e433, 0x0}, {0xffffffff, 0x1}, {0x44200408, 0x2},
+	{0x2ad1a081, 0x4}, {0x01084100, 0x8}, {0x00061892, 0x10},
+	{0x00202000, 0x6}, {0x00400000, 0xc}, {0x04060010, 0x12},
+	{0x000000a0, 0x14}, {0x00004002, 0x18}, {0x00000020, 0x16},
+}
+
+var outerPreRoundStep20Terms = [...]outerFrontTerm{
+	{0xdc5948eb, 0x0}, {0x00088482, 0x1}, {0x60088ec2, 0x2},
+	{0xbff777ff, 0x4}, {0xbfffffff, 0x8}, {0x40000c80, 0x10},
+	{0x0c3d457e, 0x20}, {0xfb667fd7, 0x40}, {0x00000240, 0x80},
+	{0x0c314444, 0x100}, {0xddb15cc4, 0x200}, {0x20080000, 0x400},
+	{0x000c013a, 0x800}, {0x224ea33b, 0x1000}, {0x000000c2, 0x2000},
+	{0x40008000, 0x4000}, {0x0c3d054e, 0x8000}, {0x60088e42, 0x5},
+	{0x20080680, 0x11}, {0x40008cc2, 0x14}, {0x9339b483, 0x21},
+	{0xf3fbbeef, 0x22}, {0x50ba980d, 0x24}, {0x41010c84, 0x30},
+	{0x00110249, 0xa0}, {0x91311480, 0x101}, {0xd1b11cc4, 0x102},
+	{0x50b01804, 0x104}, {0x41010c84, 0x110}, {0x00110040, 0x180},
+	{0x200a0000, 0x420}, {0x00000200, 0x480}, {0x0208a003, 0x801},
+	{0x224aa22b, 0x802}, {0x000a8009, 0x804}, {0x00000209, 0x880},
+	{0x0c3d457e, 0x900}, {0x200a0000, 0xc00}, {0xffffffff, 0x1200},
+	{0x124000c2, 0x2020}, {0x00000040, 0x2080}, {0x100000c0, 0x2100},
+	{0x00000002, 0x2400}, {0x02400002, 0x2800}, {0xc1228004, 0x4020},
+	{0xc1200004, 0x4100}, {0x00028000, 0x4800}, {0x9139b483, 0x8001},
+	{0xf17bb6cf, 0x8002}, {0x503a900d, 0x8004}, {0x41010484, 0x8010},
+	{0x00110249, 0x8080}, {0x200a0000, 0x8400}, {0x104000c2, 0xa000},
+	{0xc1228004, 0xc000}, {0x200806c0, 0x15}, {0x70f8be67, 0x25},
+	{0x236906a1, 0x31}, {0x4113acc6, 0x34}, {0x50b01c44, 0x105},
+	{0x01210480, 0x111}, {0x41110cc4, 0x114}, {0x00000200, 0x4a0},
+	{0x2048a223, 0x805}, {0x22480221, 0x811}, {0x0002a002, 0x814},
+	{0x9339b483, 0x901}, {0xf3fbbeef, 0x902}, {0x50ba980d, 0x904},
+	{0x41010c84, 0x910}, {0x00110249, 0x980}, {0x00000200, 0xc80},
+	{0x200a0000, 0xd00}, {0x00000040, 0x20a0}, {0x00000040, 0x2180},
+	{0x00000002, 0x2420}, {0x124000c2, 0x2900}, {0x00000002, 0x2c00},
+	{0x81000009, 0x40a0}, {0x81000000, 0x4180}, {0x00820000, 0x4420},
+	{0x00800000, 0x4500}, {0x00000009, 0x4880}, {0xc1228004, 0x4900},
+	{0x00020000, 0x4c00}, {0x00000004, 0x6020}, {0x00000004, 0x6100},
+	{0x7078b647, 0x8005}, {0x21690681, 0x8011}, {0x4113a4c6, 0x8014},
+	{0x00000200, 0x8480}, {0x00000040, 0xa080}, {0x00000002, 0xa400},
+	{0x81000009, 0xc080}, {0x00020000, 0xc400}, {0x00000004, 0xe000},
+	{0xa36b06e1, 0x35}, {0x812104c0, 0x115}, {0x224a0221, 0x815},
+	{0x70f8be67, 0x905}, {0x236906a1, 0x911}, {0x4113acc6, 0x914},
+	{0x00000200, 0xd80}, {0x00000040, 0x2980}, {0x00000002, 0x2d00},
+	{0x81000009, 0x4980}, {0x00820000, 0x4d00}, {0x00800000, 0x6420},
+	{0x00800000, 0x6500}, {0x00000004, 0x6900}, {0xa16b06c1, 0x8015},
+	{0xa36b06e1, 0x915}, {0x00800000, 0x6d00},
+}
+
+var outerPreRoundStep21Terms = [...]outerFrontTerm{
+	{0xc40a3659, 0x0}, {0xffffffff, 0x1}, {0x11890200, 0x2},
+	{0x0810428c, 0x4}, {0x00000560, 0x8}, {0xa2448440, 0x10},
+	{0x00200a00, 0x6}, {0x01000000, 0xa}, {0x00104000, 0xc},
+	{0x12c00000, 0x12}, {0x00040000, 0x14}, {0x00000442, 0x18},
+	{0x00200000, 0xe}, {0x00000800, 0x16}, {0x00000002, 0x1a},
+}
+
+var outerPreRoundStep22Terms = [...]outerFrontTerm{
+	{0x316108c2, 0x0}, {0xffffffff, 0x1}, {0xc8d01000, 0x2},
+	{0x02082118, 0x4}, {0x012208a1, 0x8}, {0x04004400, 0x10},
+	{0xc0102100, 0x6}, {0x08001000, 0xa}, {0x00048200, 0xc},
+	{0x00000004, 0x12}, {0x02084500, 0x14}, {0x00004020, 0x18},
+	{0x00048000, 0xe}, {0x00000100, 0x16}, {0x0000c200, 0x1c},
+	{0x00008000, 0x1e},
+}
+
+var outerPreRoundStep23Terms = [...]outerFrontTerm{
+	{0xa49bf5a3, 0x0}, {0xffffffff, 0x1}, {0x224ea33b, 0x2},
+	{0x20741d9d, 0x4}, {0xddb15cc4, 0x8}, {0xffffffff, 0x6},
+	{0xffffffff, 0xc},
+}
+
+var outerPreRoundStep24Terms = [...]outerFrontTerm{
+	{0x0db05cc0, 0x0}, {0xffffffff, 0x1}, {0x2ff6ffcb, 0x2},
+	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0xc},
+}
+
+var outerPreRoundStep25Terms = [...]outerFrontTerm{
+	{0xc90242b0, 0x0}, {0xffffffff, 0x1}, {0xb4757417, 0x2},
+	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0x6},
+	{0xffffffff, 0xa},
+}
+
+var outerPreRoundStep28Terms = [...]outerFrontTerm{
+	{0xcd579428, 0x0}, {0xbffdfffe, 0x1}, {0xfffffffd, 0x2},
+	{0xf3ffffff, 0x4}, {0xffffffff, 0x8}, {0xb4757415, 0x10},
+	{0x2ff4ffca, 0x20}, {0xffffffff, 0x40}, {0xddb15cc4, 0x80},
+	{0x9db15cc4, 0x100}, {0xffffffff, 0x200}, {0x224ca33a, 0x400},
+	{0xffffffff, 0x800}, {0x224ea339, 0x1000}, {0xfffffffd, 0x90},
+	{0xbffdfffe, 0x500}, {0xfffffffd, 0x1010},
+}
+
+var outerPreRoundStep29Terms = [...]outerFrontTerm{
+	{0xcd0054c0, 0x0}, {0xffffffff, 0x1}, {0xed4af7e9, 0x2},
+	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0xc},
+}
+
+var outerPreRoundStep30Terms = [...]outerFrontTerm{
+	{0xd5b15884, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
+	{0x224ea33b, 0x4}, {0xf7fffb9f, 0x8}, {0xffffffff, 0x6},
+}
+
+var outerPreRoundStep32Terms = [...]outerFrontTerm{
+	{0xbca990cb, 0x0}, {0xffffffff, 0x1}, {0x862021e0, 0x2},
+	{0x10460240, 0x4}, {0x60000c0a, 0x8}, {0x20184004, 0x10},
+	{0x00000050, 0x6}, {0x40002400, 0xa}, {0x00040000, 0xc},
+	{0x00006000, 0x12}, {0x00500004, 0x14}, {0x21000000, 0x18},
+	{0x00002000, 0x1a},
+}
+
+var outerPreRoundStep33Terms = [...]outerFrontTerm{
+	{0x51b15c84, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
+	{0x224ea33b, 0x4}, {0x73b9dfae, 0x8}, {0xffffffff, 0x6},
+}
+
+var outerPreRoundStep34Terms = [...]outerFrontTerm{
+	{0x48dfad7f, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
+	{0x224ea33b, 0x4}, {0x6c24fc61, 0x8}, {0xffffffff, 0xa},
+	{0xffffffff, 0xc},
+}
+
+var outerPreRoundStep35Terms = [...]outerFrontTerm{
+	{0x0150083f, 0x0}, {0xffffffff, 0x1}, {0x0008aa00, 0x2},
+	{0x02020100, 0x4}, {0x10201490, 0x8}, {0xc481407a, 0x10},
+	{0x20040000, 0x6}, {0x10200000, 0xa}, {0x02020180, 0xc},
+	{0xc0000040, 0x12}, {0xc2830040, 0x14}, {0x08000010, 0x18},
+	{0xc0000040, 0x16}, {0x08000000, 0x1a}, {0x02020000, 0x1c},
+}
+
+var outerPreRoundStep36Terms = [...]outerFrontTerm{
+	{0x58f45057, 0x0}, {0xffffffff, 0x1}, {0x00010891, 0x2},
+	{0x00280200, 0x4}, {0x04400c00, 0x8}, {0x18905348, 0x10},
+	{0x00040802, 0xa}, {0x00600000, 0xc}, {0x08004050, 0x12},
+	{0x40000204, 0x14}, {0x00801000, 0x18}, {0x40000000, 0x16},
+	{0x00040000, 0x1a}, {0x40000000, 0x1c}, {0x40000000, 0x1e},
+}
+
+var outerPreRoundStep37Terms = [...]outerFrontTerm{
+	{0x7ae11e0b, 0x0}, {0xffffffff, 0x1}, {0x45ce9fb5, 0x2},
+	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0x6},
+	{0xffffffff, 0xa},
+}
+
+var outerPreRoundStep38Terms = [...]outerFrontTerm{
+	{0x5fe0076e, 0x0}, {0xffffffff, 0x1}, {0x80110288, 0x2},
+	{0x2906a041, 0x4}, {0x10200010, 0x8}, {0x00400300, 0x10},
+	{0x8006a080, 0x6}, {0x80010080, 0xa}, {0x00080000, 0xc},
+	{0x00005a00, 0x12}, {0x20048000, 0x14}, {0x80000080, 0xe},
+	{0x00049800, 0x16}, {0x00001000, 0x1a}, {0x00001000, 0x1e},
+}
+
+// outerPreRoundSignedByte maps one byte to the signed bit contribution
+// used by the four byte-heavy state updates.
+func outerPreRoundSignedByte(value byte, signMask byte, shift uint, constant uint32) uint32 {
+	signed := uint32(value) - (uint32(value&signMask) << 1)
+	return constant + signed<<shift
+}
+
+// applyOuterPreRound performs the live state writes in program order.
+// Five overwritten writes are omitted because no later read observes them.
+func applyOuterPreRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) bool {
+	if table == nil || state == nil || base >= outerTableWords || state.HardwareIndex >= uint8(len(state.Hardware)) {
+		return false
 	}
-	offsets := [...]uint32{10, 105, 117, 123, 136, 143, 147, 159, 165, 18, 22, 33, 4, 40, 46, 52, 60, 63, 75, 88, 94}
-	var inputs [28]uint32
-	for index, offset := range offsets {
-		inputs[index] = table[(base+offset)%outerTableWords]
+	tap := func(offset uint32) uint32 { return table[(base+offset)%outerTableWords] }
+	hardware := func(offset int) byte { return state.Hardware[(int(state.HardwareIndex)+offset)%len(state.Hardware)] }
+	w0, w1, w2, w3, w4 := state.Words[0], state.Words[1], state.Words[2], state.Words[3], state.Words[4]
+	inputs1 := [...]uint32{
+		w1, w2, w3, w4,
+		tap(20), tap(22), tap(62), tap(63),
+		tap(104), tap(105), tap(146), tap(147),
 	}
-	inputs[21] = state.Words[4]
-	inputs[22] = bits.RotateLeft32(uint32(state.Hardware[(int(state.HardwareIndex)+3)%6]), 6)
-	inputs[23] = bits.RotateLeft32(uint32(state.Hardware[(int(state.HardwareIndex)+4)%6]), 11)
-	inputs[24] = bits.RotateLeft32(uint32(state.Hardware[(int(state.HardwareIndex)+5)%6]), 24)
-	inputs[25] = bits.RotateLeft32(uint32(state.Codec[15]), 30)
-	inputs[26] = bits.RotateLeft32(uint32(state.Codec[4]), 17)
-	inputs[27] = bits.RotateLeft32(uint32(state.Codec[6]), 3)
-	return outerFrontPolynomial(inputs[:], outerPreRoundWord1Terms[:]), true
+	c1 := outerFrontPolynomial(inputs1[:], outerPreRoundStep1Terms[:])
+	c2 := 0x16812fc0 ^ w2
+	inputs3 := [...]uint32{
+		w0, tap(19), tap(61), tap(103),
+		tap(144),
+	}
+	c3 := outerFrontPolynomial(inputs3[:], outerPreRoundStep3Terms[:])
+	inputs5 := [...]uint32{
+		w4, tap(18), tap(22), tap(60),
+		tap(63), tap(105), tap(143), tap(147),
+	}
+	c5 := outerFrontPolynomial(inputs5[:], outerPreRoundStep5Terms[:])
+	c6 := 0x80f13aff ^ w1 ^ tap(17) ^ tap(100) ^ tap(142)
+	inputs7 := [...]uint32{
+		c2, tap(57), tap(99), tap(141),
+	}
+	c7 := outerFrontPolynomial(inputs7[:], outerPreRoundStep7Terms[:])
+	c8 := 0x7d32827c ^ c1 ^ tap(14) ^ tap(56) ^ tap(98)
+	h2a := outerPreRoundSignedByte(hardware(2), 0xca, 7, 0x28ebe500)
+	c14a := outerPreRoundSignedByte(state.Codec[14], 0x55, 8, 0xbe665500)
+	h3a := outerPreRoundSignedByte(hardware(3), 0xfc, 14, 0x923f0000)
+	c12a := outerPreRoundSignedByte(state.Codec[12], 0x64, 16, 0x7e640000)
+	h4a := outerPreRoundSignedByte(hardware(4), 0x42, 0, 0xc6d23a42)
+	c10a := outerPreRoundSignedByte(state.Codec[10], 0xca, 21, 0x79400000)
+	h4a = bits.RotateLeft32(h4a, -7)
+	gate9 := h2a ^ c14a ^ h3a ^ c12a ^ 0x72df73f3
+	c9 := c3 ^ c10a ^ (h4a & 0xf6842404) ^ ((h4a ^ 0x7a725b8b) & gate9) ^ 0xf5cde7f7
+	h3b := outerPreRoundSignedByte(hardware(3), 0xe6, 6, 0x506af980)
+	c6b := outerPreRoundSignedByte(state.Codec[6], 0xe2, 3, 0x7b862710)
+	h4b := outerPreRoundSignedByte(hardware(4), 0x2f, 11, 0xea297800)
+	c4b := outerPreRoundSignedByte(state.Codec[4], 0x69, 17, 0x3ad20000)
+	h5b := outerPreRoundSignedByte(hardware(5), 0x55, 24, 0x55000000)
+	c15b := outerPreRoundSignedByte(state.Codec[15], 0xc0, 0, 0xe82ecdc0)
+	c10 := c5 ^ h3b ^ c6b ^ h4b ^ c4b ^ h5b ^ bits.RotateLeft32(c15b, -2) ^ 0x941c15e0
+	h4c := outerPreRoundSignedByte(hardware(4), 0xbd, 1, 0xfc91777a)
+	c11c := outerPreRoundSignedByte(state.Codec[11], 0xb3, 9, 0x02656600)
+	h5c := outerPreRoundSignedByte(hardware(5), 0xba, 9, 0xa72b7400)
+	c9c := outerPreRoundSignedByte(state.Codec[9], 0xfa, 19, 0xa7d00000)
+	h0c := outerPreRoundSignedByte(hardware(0), 0x8e, 0, 0x9344768e)
+	c7c := outerPreRoundSignedByte(state.Codec[7], 0xa4, 0, 0x502e68a4)
+	mix11 := (h4c ^ 0x4ae771ed) & (c11c ^ 0xbd9a99ff)
+	mix11 ^= (c11c & 0x0001f800) ^ h5c ^ 0xe4f4b084
+	mix11 &= c9c ^ 0x582fffff
+	c11 := mix11 ^ c6 ^ (c9c & 0x0a500000) ^ bits.RotateLeft32(h0c, -3) ^ bits.RotateLeft32(c7c, -1) ^ 0x0d871890
+	h5d := outerPreRoundSignedByte(hardware(5), 0x94, 4, 0xef483940)
+	c16d := outerPreRoundSignedByte(state.Codec[16], 0xac, 11, 0xecf56000)
+	h0d := outerPreRoundSignedByte(hardware(0), 0xcf, 12, 0x01fcf000)
+	c14d := outerPreRoundSignedByte(state.Codec[14], 0x25, 20, 0xf2500000)
+	h1d := outerPreRoundSignedByte(hardware(1), 0x49, 20, 0x44900000)
+	c12d := outerPreRoundSignedByte(state.Codec[12], 0x93, 0, 0x7f0b9493)
+	gate12 := h5d ^ h0d ^ 0x348f8e00 ^ c16d
+	c12 := c7 ^ (c14d & 0xc9300000) ^ ((c14d ^ 0x0daffff0) & gate12) ^ h1d ^ bits.RotateLeft32(c12d, -6) ^ 0xffb20912
+	inputs13 := [...]uint32{
+		bits.RotateLeft32(c10, -2), c8, bits.RotateLeft32(c8, 2), bits.RotateLeft32(c9, 3),
+		bits.RotateLeft32(c9, -15),
+	}
+	c13 := outerFrontPolynomial(inputs13[:], outerPreRoundStep13Terms[:])
+	c14 := 0x8865aa8f ^ c10
+	inputs16 := [...]uint32{
+		c10, c11, c12, c9,
+		tap(12), tap(13), tap(53), tap(55),
+		tap(95), tap(137), tap(138),
+	}
+	c16 := outerFrontPolynomial(inputs16[:], outerPreRoundStep16Terms[:])
+	inputs17 := [...]uint32{
+		c9, tap(13), tap(55), tap(138),
+	}
+	c17 := outerFrontPolynomial(inputs17[:], outerPreRoundStep17Terms[:])
+	inputs18 := [...]uint32{
+		c14, tap(10), tap(52), tap(94),
+		tap(136),
+	}
+	c18 := outerFrontPolynomial(inputs18[:], outerPreRoundStep18Terms[:])
+	inputs20 := [...]uint32{
+		c10, c11, c12, c14,
+		c17, c9, tap(9), tap(12),
+		tap(13), tap(51), tap(53), tap(55),
+		tap(93), tap(95), tap(137), tap(138),
+	}
+	c20 := outerFrontPolynomial(inputs20[:], outerPreRoundStep20Terms[:])
+	inputs21 := [...]uint32{
+		c13, tap(8), tap(50), tap(91),
+		tap(133),
+	}
+	c21 := outerFrontPolynomial(inputs21[:], outerPreRoundStep21Terms[:])
+	inputs22 := [...]uint32{
+		c17, tap(7), tap(48), tap(90),
+		tap(132),
+	}
+	c22 := outerFrontPolynomial(inputs22[:], outerPreRoundStep22Terms[:])
+	inputs23 := [...]uint32{
+		c16, tap(47), tap(89), tap(131),
+	}
+	c23 := outerFrontPolynomial(inputs23[:], outerPreRoundStep23Terms[:])
+	inputs24 := [...]uint32{
+		c18, tap(4), tap(46), tap(88),
+	}
+	c24 := outerFrontPolynomial(inputs24[:], outerPreRoundStep24Terms[:])
+	inputs25 := [...]uint32{
+		c20, tap(3), tap(45), tap(128),
+	}
+	c25 := outerFrontPolynomial(inputs25[:], outerPreRoundStep25Terms[:])
+	c26 := 0xfbd326d7 ^ c21 ^ tap(2) ^ tap(85) ^ tap(127)
+	inputs28 := [...]uint32{
+		c18, c20, c21, c22,
+		tap(3), tap(4), tap(42), tap(45),
+		tap(46), tap(84), tap(88), tap(126),
+		tap(128),
+	}
+	c28 := outerFrontPolynomial(inputs28[:], outerPreRoundStep28Terms[:])
+	inputs29 := [...]uint32{
+		c23, tap(166), tap(41), tap(83),
+	}
+	c29 := outerFrontPolynomial(inputs29[:], outerPreRoundStep29Terms[:])
+	inputs30 := [...]uint32{
+		c24, tap(165), tap(40), tap(123),
+	}
+	c30 := outerFrontPolynomial(inputs30[:], outerPreRoundStep30Terms[:])
+	c31 := 0x6f4bdc75 ^ c25 ^ tap(164) ^ tap(80) ^ tap(122)
+	inputs32 := [...]uint32{
+		c26, tap(162), tap(37), tap(79),
+		tap(121),
+	}
+	c32 := outerFrontPolynomial(inputs32[:], outerPreRoundStep32Terms[:])
+	inputs33 := [...]uint32{
+		c28, tap(36), tap(78), tap(161),
+	}
+	c33 := outerFrontPolynomial(inputs33[:], outerPreRoundStep33Terms[:])
+	inputs34 := [...]uint32{
+		c29, tap(35), tap(118), tap(160),
+	}
+	c34 := outerFrontPolynomial(inputs34[:], outerPreRoundStep34Terms[:])
+	inputs35 := [...]uint32{
+		c30, tap(33), tap(75), tap(117),
+		tap(159),
+	}
+	c35 := outerFrontPolynomial(inputs35[:], outerPreRoundStep35Terms[:])
+	inputs36 := [...]uint32{
+		c31, tap(32), tap(74), tap(116),
+		tap(157),
+	}
+	c36 := outerFrontPolynomial(inputs36[:], outerPreRoundStep36Terms[:])
+	inputs37 := [...]uint32{
+		c32, tap(31), tap(73), tap(156),
+	}
+	c37 := outerFrontPolynomial(inputs37[:], outerPreRoundStep37Terms[:])
+	inputs38 := [...]uint32{
+		c33, tap(30), tap(71), tap(113),
+		tap(155),
+	}
+	c38 := outerFrontPolynomial(inputs38[:], outerPreRoundStep38Terms[:])
+	state.Words = [5]uint32{c38, c35, c34, c37, c36}
+	return true
 }

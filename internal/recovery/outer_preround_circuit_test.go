@@ -1,7 +1,7 @@
 // Code generated from the proved outer pre-round bit-vector circuit; DO NOT EDIT.
 package recovery
 
-func applyOuterPreRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) bool {
+func applyOuterPreRoundCircuit(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) bool {
 	if table == nil || state == nil || base >= outerTableWords {
 		return false
 	}
