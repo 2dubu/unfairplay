@@ -140,10 +140,90 @@ func runSelectionByteWriter(s *state) (uint64, error) {
 
 func runSelectionPackedWordPass(s *state) (uint64, error) {
 	const maximumWords = 2048
+	if s == nil {
+		return 0, fmt.Errorf("selection packed-word state is unavailable")
+	}
+	output, err := s.load(s.sp+0xd98, 8)
+	if err != nil {
+		return 0, fmt.Errorf("selection packed-word output table: %w", err)
+	}
+	selectorValue, err := s.load(s.sp+0xdc0, 4)
+	if err != nil {
+		return 0, fmt.Errorf("selection packed-word selector: %w", err)
+	}
+	selector := uint32(selectorValue)
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("selection packed-word dispatch table: %w", err)
+	}
+	exitTarget, err := loadBootstrapPointer(s, dispatchTable, selector)
+	if err != nil {
+		return 0, fmt.Errorf("selection packed-word exit: %w", err)
+	}
+	continueTarget, err := loadBootstrapPointer(s, dispatchTable, selector^uint32(s.x[30]))
+	if err != nil {
+		return 0, fmt.Errorf("selection packed-word continuation: %w", err)
+	}
+	if continueTarget != selectionPackedWordSeed {
+		return 0, fmt.Errorf("unsupported selection packed-word continuation %#x", continueTarget)
+	}
+
 	for index := 0; index < maximumWords; index++ {
-		next, err := runSelectionPackedWordIteration(s)
-		if err != nil || next != selectionPackedWordSeed {
-			return next, err
+		s.traceBlock(selectionPackedWordSeed)
+		indices := [...]uint32{0x9b4e23ca, 0x9b4e23cb, 0x9b4e23cc, uint32(s.x[15])}
+		var values [4]uint32
+		for valueIndex, offset := range indices {
+			value, err := s.load(s.x[8]+uint64(uint32(s.x[16])+offset), 1)
+			if err != nil {
+				return 0, fmt.Errorf("selection packed-word input %d: %w", valueIndex, err)
+			}
+			values[valueIndex] = uint32(byte(value))
+			if valueIndex != len(values)-1 {
+				values[valueIndex] ^= uint32(s.x[10])
+			}
+		}
+		s.x[17] = uint64(values[0])
+		s.x[1] = uint64(values[0] | values[1]<<8)
+		s.x[9] = uint64(values[2]<<16 | values[3]<<24 | uint32(s.x[1]))
+		s.x[9] = uint64(uint32(s.x[9]) ^ uint32(s.x[0]))
+		s.x[12] = uint64(uint32(s.x[9]) & uint32(s.x[3]))
+		s.x[17] = uint64(uint32(s.x[17]) & uint32(s.x[6]))
+		s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[17]))
+		s.x[9] = uint64(uint32(s.x[9]) - uint32(s.x[12]<<1))
+		s.x[9] = uint64(uint32(s.x[9]) + uint32(s.x[7]))
+
+		s.traceBlock(selectionPackedWordStep)
+		s.x[12] = uint64(uint32(s.x[16]) ^ uint32(s.x[19]))
+		s.x[17] = uint64(uint32(s.x[16]) ^ uint32(s.x[21]))
+		s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[22]))
+		s.x[1] = uint64(uint32(s.x[16]) ^ uint32(s.x[23]))
+		s.x[14] = uint64(uint32(s.x[16]) ^ uint32(s.x[25]))
+		s.x[12] = uint64(uint32(s.x[12]) + uint32(s.x[20]))
+		s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[16]))
+		s.x[1] = uint64(uint32(s.x[1]) + uint32(s.x[24]))
+		s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[1]))
+		s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[17]))
+		s.x[14] = uint64(uint32(s.x[14]) + uint32(s.x[26]))
+		s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[14]))
+		s.x[12] = uint64(uint32(s.x[27]) ^ uint32(s.x[12]>>2))
+		s.x[14] = output
+		if err := s.storeValue(output+uint64(uint32(s.x[12]))*4, uint64(uint32(s.x[9])), 4); err != nil {
+			return 0, fmt.Errorf("selection packed-word output: %w", err)
+		}
+		s.x[9] = uint64(uint32(s.x[16]) + uint32(s.x[28]))
+		s.x[16] = uint64(uint32(s.x[16]) + 4)
+		s.compare32(uint32(s.x[9]), 0x40)
+		more := s.condition("lo")
+		s.x[12] = uint64(selector)
+		s.x[12] = dispatchTable
+		next := exitTarget
+		if more {
+			next = continueTarget
+		}
+		s.x[9] = next
+		s.x[17] = 0xbb58
+		if next != selectionPackedWordSeed {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("selection packed-word pass exceeded %d words", maximumWords)

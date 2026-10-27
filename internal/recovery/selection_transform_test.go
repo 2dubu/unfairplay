@@ -87,3 +87,91 @@ func TestSelectionPackedWordIterationMatchesLiftedBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestSelectionPackedWordPassMatchesIterations(t *testing.T) {
+	random := rand.New(rand.NewSource(int64(selectionPackedWordSeed) ^ 0x400))
+	const input, output, stack, dispatch = uint64(0x100000), uint64(0x200000), uint64(0x300000), uint64(0x400000)
+	const exitTarget = uint64(0x123456789)
+	for trial := 0; trial < 512; trial++ {
+		length := 1 + random.Intn(16)
+		selector := uint32(0)
+		pages := map[uint64][]byte{
+			input:    make([]byte, pageSize),
+			output:   make([]byte, pageSize),
+			stack:    make([]byte, pageSize),
+			dispatch: make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		model := &model{pages: clonePages(pages)}
+		base := newState(model)
+		for register := range base.x {
+			base.x[register] = random.Uint64()
+		}
+		base.sp = stack
+		base.x[0] = 0
+		base.x[3] = 0
+		base.x[6] = 0
+		base.x[7] = 0
+		inputBase := uint64(input)
+		base.x[8] = inputBase - uint64(0x9b4e23ca)
+		base.x[10] = 0
+		base.x[15] = 0x9b4e23cd
+		base.x[16] = 0
+		base.x[19] = 0
+		base.x[20] = 0
+		base.x[21] = 0
+		base.x[22] = 0
+		base.x[23] = 0
+		base.x[24] = 0
+		base.x[25] = 0
+		base.x[26] = 0
+		base.x[27] = 0
+		base.x[28] = uint64(64 - 4*(length-1))
+		base.x[30] = 1
+		if err := base.storeValue(stack+0xd98, output, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(stack+0xdc0, uint64(selector), 4); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(stack+0xdf0, dispatch, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch, exitTarget, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch+8, selectionPackedWordSeed, 8); err != nil {
+			t.Fatal(err)
+		}
+
+		repeated := newState(model)
+		semantic := newState(model)
+		for _, item := range []*state{repeated, semantic} {
+			item.sp, item.x = base.sp, base.x
+			item.writable = clonePages(base.writable)
+			item.dirty = map[uint64]bool{}
+			for page := range item.writable {
+				item.dirty[page] = true
+			}
+		}
+		var repeatedNext uint64
+		for index := 0; index < length; index++ {
+			var err error
+			repeatedNext, err = runSelectionPackedWordIteration(repeated)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		semanticNext, err := runSelectionPackedWordPass(semantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
+			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
