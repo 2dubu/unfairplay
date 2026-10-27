@@ -70,6 +70,8 @@ The private conversion control proves that a version-2 enrollment model derives
 the same account credential and output SINF as the independent macOSFairFree
 implementation:
 
+For an IPA containing exactly one current SINF, run:
+
 ```sh
 UNFAIRPLAY_MACOS_CREDENTIAL_MODEL=/private/path/fairplay-enrollment.bin \
 UNFAIRPLAY_MACOS_CREDENTIAL_IPA=/private/path/App.ipa \
@@ -77,8 +79,22 @@ go test ./internal/fairplay \
   -run TestExternalMacOSCredentialFromEnrollmentModel -count=1 -v
 ```
 
-Use an IPA containing exactly one current 448-byte private SINF for this
-control. Do not commit the model, IPA, SINF, credential, or converted output.
+For a multi-SINF IPA, extract each distinct source SINF privately and run the
+same control directly against it. Byte-identical replicas do not need a
+separate run:
+
+```sh
+UNFAIRPLAY_MACOS_CREDENTIAL_MODEL=/private/path/fairplay-enrollment.bin \
+UNFAIRPLAY_MACOS_CREDENTIAL_SINF=/private/path/App.sinf \
+go test ./internal/fairplay \
+  -run TestExternalMacOSCredentialFromEnrollmentModel -count=1 -v
+```
+
+Run the control for both supported current layouts when fixtures are available:
+88-byte rights with a 448-byte private record, and 80-byte rights with a
+440-byte private record whose first 432 bytes are encrypted and whose final
+eight bytes are zero. Do not commit the model, IPA, SINF, credential, or
+converted output.
 
 ## Exact-build fallback profile
 
