@@ -34,6 +34,14 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 			continue
 		}
 		if runtime == nil || runtime.stopPC == 0 {
+			if pc == accountBytePackPass {
+				next, err := runAccountBytePack(s)
+				if err != nil {
+					return pc, blockCount, err
+				}
+				pc = next
+				continue
+			}
 			if pc == accountSecondFoldRound {
 				next, err := runAccountSecondFold(s)
 				if err != nil {
