@@ -18,6 +18,8 @@ const (
 	bootstrapForwardShuffleStep   = uint64(0x1005df800)
 	bootstrapForwardShuffleExit   = uint64(0x1005df840)
 	bootstrapReverseBytePass      = uint64(0x10002d8fc)
+	bootstrapLookupCopySeed       = uint64(0x1008197dc)
+	bootstrapLookupCopyStep       = uint64(0x100819800)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -529,6 +531,84 @@ func runBootstrapReverseByteStep(s *state) (uint64, error) {
 	}
 	s.x[15] = next
 	s.x[17] = 0x864c
+	return next, nil
+}
+
+// runBootstrapLookupCopyPass resolves a source table through two byte lookup
+// layers, then copies one 32-bit word per iteration to the output table.
+func runBootstrapLookupCopyPass(s *state) (uint64, error) {
+	const maximumWords = 4096
+	for word := 0; word < maximumWords; word++ {
+		next, err := runBootstrapLookupCopyIteration(s)
+		if err != nil || next != bootstrapLookupCopySeed {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap lookup-copy pass exceeded %d words", maximumWords)
+}
+
+func runBootstrapLookupCopyIteration(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy state is unavailable")
+	}
+	s.traceBlock(bootstrapLookupCopySeed)
+	leftPointer, err := s.load(s.sp+0xde8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy left pointer: %w", err)
+	}
+	left, err := s.load(leftPointer, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy left value: %w", err)
+	}
+	rightPointer, err := s.load(s.sp+0xde0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy right pointer: %w", err)
+	}
+	right, err := s.load(rightPointer, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy right value: %w", err)
+	}
+	selector := (uint32(right) - uint32(left)) ^ uint32(s.x[14])
+	selector *= uint32(s.x[15])
+	first, err := s.load(s.x[4]+uint64(byte(selector)), 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy first table: %w", err)
+	}
+
+	s.traceBlock(bootstrapLookupCopyStep)
+	secondIndex := uint32(first) ^ uint32(s.x[16])
+	second, err := s.load(s.x[3]+uint64(secondIndex), 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy second table: %w", err)
+	}
+	sourceIndex := (selector ^ uint32(second)) & 0xff
+	sourceIndex += 0x1b9
+	sourceTable, err := s.load(s.x[5]+uint64(sourceIndex)*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy source table: %w", err)
+	}
+	position := s.addWithCarry(s.x[13], s.x[12], false, 64)
+	source := sourceTable + s.x[0]
+	value, err := s.load(source+shiftLeft(position, 2, 64), 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy source word: %w", err)
+	}
+	if err := s.storeValue(s.x[11]+shiftLeft(position, 2, 64), uint64(uint32(value)), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy output word: %w", err)
+	}
+	last := uint32(boolValue(s.condition("eq")))
+	dispatchIndex := last*uint32(s.x[1]) ^ uint32(s.x[9])
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy dispatch table: %w", err)
+	}
+	next, err := loadBootstrapPointer(s, dispatchTable, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy dispatch: %w", err)
+	}
+	s.x[2] = next
+	s.x[12] = position
+	s.x[17] = 0x8085
 	return next, nil
 }
 

@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"encoding/binary"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -44,7 +45,7 @@ func TestBootstrapRecurrenceMatchesLiftedKernel(t *testing.T) {
 		lifted.x[21] = uint64(uint32(int32(random.Intn(65)-32)) - counter)
 		// Keep the computed dispatch index inside the synthetic page while still
 		// exercising both sides of the conditional compare.
-		lifted.x[0] = 0
+		lifted.x[0] = uint64(byte(random.Uint32()))
 		lifted.x[9] = uint64(uint32(random.Intn(65) - 32))
 		lifted.n, lifted.z = random.Intn(2) != 0, random.Intn(2) != 0
 		lifted.c, lifted.v = random.Intn(2) != 0, random.Intn(2) != 0
@@ -343,6 +344,91 @@ func TestBootstrapReverseByteStepMatchesLiftedBlock(t *testing.T) {
 		nextDirect, err := runBootstrapReverseByteStep(direct)
 		if err != nil {
 			t.Fatalf("trial %d direct step: %v", trial, err)
+		}
+		if nextLifted != nextDirect || lifted.x != direct.x {
+			t.Fatalf("trial %d state differs: next lifted=%#x direct=%#x\nlifted=%#v\ndirect=%#v", trial, nextLifted, nextDirect, lifted.x, direct.x)
+		}
+		if lifted.n != direct.n || lifted.z != direct.z || lifted.c != direct.c || lifted.v != direct.v {
+			t.Fatalf("trial %d flags differ", trial)
+		}
+		if !reflect.DeepEqual(lifted.writable, direct.writable) {
+			t.Fatalf("trial %d writes differ", trial)
+		}
+	}
+}
+
+func TestBootstrapLookupCopyIterationMatchesLiftedBlocks(t *testing.T) {
+	random := rand.New(rand.NewSource(int64(bootstrapLookupCopySeed)))
+	for trial := 0; trial < 256; trial++ {
+		pages := map[uint64][]byte{
+			0x100000: make([]byte, pageSize),
+			0x200000: make([]byte, pageSize),
+			0x300000: make([]byte, pageSize),
+			0x400000: make([]byte, pageSize),
+			0x500000: make([]byte, pageSize),
+			0x600000: make([]byte, pageSize),
+			0x601000: make([]byte, pageSize),
+			0x700000: make([]byte, pageSize),
+			0x800000: make([]byte, pageSize),
+			0x900000: make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		sourceOffset := random.Uint64()
+		for index := 0x1b9; index <= 0x2b8; index++ {
+			address := 0x600000 + uint64(index)*8
+			binary.LittleEndian.PutUint64(pages[address&^(pageSize-1)][address&(pageSize-1):], 0x800100-sourceOffset)
+		}
+		lifted := newState(&model{pages: clonePages(pages)})
+		direct := newState(&model{pages: clonePages(pages)})
+		for register := range lifted.x {
+			lifted.x[register] = random.Uint64()
+		}
+		lifted.sp = 0x100000
+		lifted.x[0] = sourceOffset
+		lifted.x[1] = 0
+		lifted.x[3] = 0x300100
+		lifted.x[4] = 0x400100
+		lifted.x[5] = 0x600000
+		lifted.x[9] = uint64(uint32(random.Intn(33) - 16))
+		lifted.x[11] = 0x900100
+		lifted.x[12] = uint64(random.Intn(16))
+		lifted.x[13] = 1
+		lifted.x[16] = uint64(byte(random.Uint32()))
+		if err := lifted.storeValue(lifted.sp+0xde8, 0x200100, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := lifted.storeValue(lifted.sp+0xde0, 0x200108, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := lifted.storeValue(lifted.sp+0xdf0, 0x700800, 8); err != nil {
+			t.Fatal(err)
+		}
+		direct.sp = lifted.sp
+		direct.x = lifted.x
+		direct.n, direct.z, direct.c, direct.v = lifted.n, lifted.z, lifted.c, lifted.v
+		direct.writable = clonePages(lifted.writable)
+		direct.dirty = map[uint64]bool{}
+		for page := range direct.writable {
+			direct.dirty[page] = true
+		}
+
+		seed := compact26A428BootstrapBlocks[bootstrapLookupCopySeed]
+		next, stopped, err := runCompactBlock(lifted, nil, seed)
+		if err != nil || stopped || next != bootstrapLookupCopyStep {
+			t.Fatalf("trial %d lifted seed: next=%#x stopped=%v err=%v", trial, next, stopped, err)
+		}
+		step := compact26A428BootstrapBlocks[bootstrapLookupCopyStep]
+		nextLifted, stopped, err := runCompactBlock(lifted, nil, step)
+		if err != nil || stopped {
+			t.Fatalf("trial %d lifted step: next=%#x stopped=%v err=%v", trial, nextLifted, stopped, err)
+		}
+		nextDirect, err := runBootstrapLookupCopyIteration(direct)
+		if err != nil {
+			t.Fatalf("trial %d direct iteration: %v", trial, err)
 		}
 		if nextLifted != nextDirect || lifted.x != direct.x {
 			t.Fatalf("trial %d state differs: next lifted=%#x direct=%#x\nlifted=%#v\ndirect=%#v", trial, nextLifted, nextDirect, lifted.x, direct.x)
