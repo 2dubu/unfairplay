@@ -101,6 +101,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountWordWriter:
 		next, err := runAccountWordWriter(s)
 		return next, true, err
+	case accountRoundPermuteA:
+		next, err := runAccountRoundPermuteA(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
