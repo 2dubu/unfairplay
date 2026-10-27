@@ -60,6 +60,12 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentByteGenerate:
 		next, err := runSharedEnrollmentByteGenerate(s)
 		return next, true, err
+	case sinfByteProjectionPass:
+		next, err := runSINFByteProjection(s)
+		return next, true, err
+	case sinfReverseWriter:
+		next, err := runSINFReverseWriter(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
