@@ -20,6 +20,8 @@ func nestedStageSampleLimit(name string) int {
 		return 50
 	case "outer.tail.iteration", "outer.writer.iteration":
 		return 140
+	case "outer.digest.iteration":
+		return 64
 	}
 	return maximumNestedStageSamples
 }

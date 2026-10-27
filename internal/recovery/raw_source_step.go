@@ -744,7 +744,9 @@ func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {
 			return profile.runOdd(worker, fault{})
 		})
 	case "digest":
-		err = profile.runDigest(worker, fault{})
+		err = withRecoveryValueTrace(worker, "outer.digest.iteration", func() error {
+			return profile.runDigest(worker, fault{})
+		})
 	case "outer":
 		err = profile.runOuter(worker, fault{})
 		if err == nil && worker.x[12] == profile.outerCycle {
@@ -795,7 +797,9 @@ func runRawSourceKernelLoop(worker *state, kernel string) (int, error) {
 		if err != nil {
 			return 0, err
 		}
-		if err := profile.runDigestPrologue(worker, fault{}); err != nil {
+		if err := withRecoveryValueTrace(worker, "outer.digest.prologue", func() error {
+			return profile.runDigestPrologue(worker, fault{})
+		}); err != nil {
 			return 0, err
 		}
 		kernel = "digest"
