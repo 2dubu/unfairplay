@@ -107,6 +107,27 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountRoundPermuteB:
 		next, err := runAccountRoundPermuteB(s)
 		return next, true, err
+	case accountSmallPairStart:
+		next, err := runAccountSmallPair(s)
+		return next, true, err
+	case accountByteSelect:
+		next, err := runAccountByteSelect(s)
+		return next, true, err
+	case accountRangeDispatch:
+		next, err := runAccountRangeDispatch(s)
+		return next, true, err
+	case accountStoreReturn:
+		next, err := runAccountStoreReturn(s)
+		return next, true, err
+	case accountOrderedSelect:
+		next, err := runAccountOrderedSelect(s)
+		return next, true, err
+	case accountDescriptorMove:
+		next, err := runAccountDescriptorMove(s)
+		return next, true, err
+	case accountLimitDispatch:
+		next, err := runAccountLimitDispatch(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
