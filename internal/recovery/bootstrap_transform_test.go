@@ -493,3 +493,132 @@ func TestBootstrapPointerWalkIterationMatchesLiftedBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestBootstrapPairCopyStepMatchesLiftedBlock(t *testing.T) {
+	random := rand.New(rand.NewSource(int64(bootstrapPairCopyPass)))
+	for trial := 0; trial < 256; trial++ {
+		counter := uint32(2 + random.Intn(1024))
+		selector := uint32(random.Intn(33) - 16)
+		firstIndex := (selector ^ 0xeb62) + counter + 0xffff8181
+		secondIndex := counter - 2
+		const sourceBase = uint64(0x100000000000)
+		const destinationBase = uint64(0x200000000000)
+		pages := map[uint64][]byte{
+			0x300000: make([]byte, pageSize),
+			0x400000: make([]byte, pageSize),
+		}
+		for _, item := range []struct {
+			base  uint64
+			index uint32
+		}{{sourceBase, firstIndex}, {sourceBase, secondIndex}, {destinationBase, firstIndex}, {destinationBase, secondIndex}} {
+			address := addOffset(item.base, int64(int32(item.index))*4)
+			if pages[address&^(pageSize-1)] == nil {
+				pages[address&^(pageSize-1)] = make([]byte, pageSize)
+			}
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		lifted := newState(&model{pages: clonePages(pages)})
+		direct := newState(&model{pages: clonePages(pages)})
+		for register := range lifted.x {
+			lifted.x[register] = random.Uint64()
+		}
+		lifted.x[8] = 0x300100
+		lifted.x[9] = 0x300200
+		lifted.x[10] = 0x400800
+		lifted.x[11] = uint64(selector)
+		lifted.x[13] = uint64(counter)
+		if err := lifted.storeValue(lifted.x[8]+8, sourceBase, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := lifted.storeValue(lifted.x[9]+8, destinationBase, 8); err != nil {
+			t.Fatal(err)
+		}
+		direct.x = lifted.x
+		direct.n, direct.z, direct.c, direct.v = lifted.n, lifted.z, lifted.c, lifted.v
+		direct.writable = clonePages(lifted.writable)
+		direct.dirty = map[uint64]bool{}
+		for page := range direct.writable {
+			direct.dirty[page] = true
+		}
+
+		block := compact26A428BootstrapBlocks[bootstrapPairCopyPass]
+		nextLifted, stopped, err := runCompactBlock(lifted, nil, block)
+		if err != nil || stopped {
+			t.Fatalf("trial %d lifted block: next=%#x stopped=%v err=%v", trial, nextLifted, stopped, err)
+		}
+		nextDirect, err := runBootstrapPairCopyStep(direct)
+		if err != nil {
+			t.Fatalf("trial %d direct step: %v", trial, err)
+		}
+		if nextLifted != nextDirect || lifted.x != direct.x {
+			t.Fatalf("trial %d state differs: next lifted=%#x direct=%#x\nlifted=%#v\ndirect=%#v", trial, nextLifted, nextDirect, lifted.x, direct.x)
+		}
+		if lifted.n != direct.n || lifted.z != direct.z || lifted.c != direct.c || lifted.v != direct.v {
+			t.Fatalf("trial %d flags differ", trial)
+		}
+		if !reflect.DeepEqual(lifted.writable, direct.writable) {
+			t.Fatalf("trial %d writes differ", trial)
+		}
+	}
+}
+
+func TestBootstrapConstantFillIterationMatchesLiftedBlocks(t *testing.T) {
+	random := rand.New(rand.NewSource(int64(bootstrapConstantFillSeed)))
+	for trial := 0; trial < 256; trial++ {
+		counter := uint32(random.Intn(1024))
+		selector := uint32(random.Intn(33) - 16)
+		first := (selector + 0xffffe51b) | 0x4561
+		index := counter + 0xde3d1312 + first
+		const stack = uint64(0x100000000000)
+		output := addOffset(stack+0x2d0, int64(int32(index))*4)
+		pages := map[uint64][]byte{output &^ (pageSize - 1): make([]byte, pageSize)}
+		for page := uint64(0x4fe000); page <= 0x502000; page += pageSize {
+			pages[page] = make([]byte, pageSize)
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		lifted := newState(&model{pages: clonePages(pages)})
+		direct := newState(&model{pages: clonePages(pages)})
+		for register := range lifted.x {
+			lifted.x[register] = random.Uint64()
+		}
+		lifted.sp = stack
+		lifted.x[9] = uint64(selector)
+		lifted.x[15] = uint64(counter)
+		lifted.x[25] = 0x500800
+		direct.sp = lifted.sp
+		direct.x = lifted.x
+		direct.n, direct.z, direct.c, direct.v = lifted.n, lifted.z, lifted.c, lifted.v
+
+		seed := compact26A428BootstrapBlocks[bootstrapConstantFillSeed]
+		next, stopped, err := runCompactBlock(lifted, nil, seed)
+		if err != nil || stopped || next != bootstrapConstantFillDispatch {
+			t.Fatalf("trial %d lifted seed: next=%#x stopped=%v err=%v", trial, next, stopped, err)
+		}
+		dispatch := compact26A428BootstrapBlocks[bootstrapConstantFillDispatch]
+		nextLifted, stopped, err := runCompactBlock(lifted, nil, dispatch)
+		if err != nil || stopped {
+			t.Fatalf("trial %d lifted dispatch: next=%#x stopped=%v err=%v", trial, nextLifted, stopped, err)
+		}
+		nextDirect, err := runBootstrapConstantFillIteration(direct)
+		if err != nil {
+			t.Fatalf("trial %d direct iteration: %v", trial, err)
+		}
+		if nextLifted != nextDirect || lifted.x != direct.x {
+			t.Fatalf("trial %d state differs: next lifted=%#x direct=%#x\nlifted=%#v\ndirect=%#v", trial, nextLifted, nextDirect, lifted.x, direct.x)
+		}
+		if lifted.n != direct.n || lifted.z != direct.z || lifted.c != direct.c || lifted.v != direct.v {
+			t.Fatalf("trial %d flags differ", trial)
+		}
+		if !reflect.DeepEqual(lifted.writable, direct.writable) {
+			t.Fatalf("trial %d writes differ", trial)
+		}
+	}
+}

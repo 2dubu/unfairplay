@@ -22,6 +22,9 @@ const (
 	bootstrapLookupCopyStep       = uint64(0x100819800)
 	bootstrapPointerWalkSeed      = uint64(0x1000a3fa4)
 	bootstrapPointerWalkDispatch  = uint64(0x1000a4000)
+	bootstrapPairCopyPass         = uint64(0x100176524)
+	bootstrapConstantFillSeed     = uint64(0x1008e6fa4)
+	bootstrapConstantFillDispatch = uint64(0x1008e7000)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -892,6 +895,124 @@ func runBootstrapPointerWalkIteration(s *state) (uint64, error) {
 	s.x[14] = next
 	s.x[17] = 0x5724
 	s.traceBlock(bootstrapPointerWalkDispatch)
+	return next, nil
+}
+
+// runBootstrapPairCopyPass copies two 32-bit words per iteration from the
+// source object at [x8+8] to the destination object at [x9+8].
+func runBootstrapPairCopyPass(s *state) (uint64, error) {
+	const maximumPairs = 8192
+	for pair := 0; pair < maximumPairs; pair++ {
+		next, err := runBootstrapPairCopyStep(s)
+		if err != nil || next != bootstrapPairCopyPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap pair-copy pass exceeded %d pairs", maximumPairs)
+}
+
+func runBootstrapPairCopyStep(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap pair-copy state is unavailable")
+	}
+	s.traceBlock(bootstrapPairCopyPass)
+	firstIndex := uint32(s.x[11]) ^ 0xeb62
+	firstIndex += uint32(s.x[13]) + 0xffff8181
+	source, err := s.load(s.x[8]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy source pointer: %w", err)
+	}
+	first, err := loadBootstrapWord(s, source, firstIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy first source: %w", err)
+	}
+	destination, err := s.load(s.x[9]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy destination pointer: %w", err)
+	}
+	if err := storeBootstrapWord(s, destination, firstIndex, uint32(first)); err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy first destination: %w", err)
+	}
+
+	s.x[13] = uint64(uint32(s.x[13]) - 2)
+	s.compare32(uint32(s.x[13])+2, 2)
+	second, err := loadBootstrapWord(s, source, uint32(s.x[13]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy second source: %w", err)
+	}
+	if err := storeBootstrapWord(s, destination, uint32(s.x[13]), uint32(second)); err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy second destination: %w", err)
+	}
+	more := uint32(boolValue(s.condition("ne")))
+	dispatchIndex := ((more << 2) | (more << 5)) ^ uint32(s.x[11])
+	next, err := loadBootstrapPointer(s, s.x[10], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy dispatch: %w", err)
+	}
+	s.x[12] = next
+	s.x[14] = uint64(more << 2)
+	s.x[15] = destination
+	s.x[17] = 0xa668
+	return next, nil
+}
+
+// runBootstrapConstantFillPass writes one encoded constant per iteration to a
+// sparse stack table, then selects the next continuation from two bounds.
+func runBootstrapConstantFillPass(s *state) (uint64, error) {
+	const maximumWords = 8192
+	for word := 0; word < maximumWords; word++ {
+		next, err := runBootstrapConstantFillIteration(s)
+		if err != nil || next != bootstrapConstantFillSeed {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap constant-fill pass exceeded %d words", maximumWords)
+}
+
+func runBootstrapConstantFillIteration(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap constant-fill state is unavailable")
+	}
+	s.traceBlock(bootstrapConstantFillSeed)
+	s.x[11] = 0x77b16a0c
+	s.compare32(uint32(s.x[8]), uint32(s.x[11]))
+	firstBound := uint32(boolValue(s.condition("gt")))
+	s.x[11] = uint64(uint32(s.x[9]) + 0xffffe51b)
+	s.x[16] = 0x4561
+	s.x[11] = uint64(uint32(s.x[11]) | uint32(s.x[16]))
+	s.x[16] = uint64(uint32(s.x[15]) + 0xde3d1312)
+	s.x[16] = uint64(uint32(s.x[16]) + uint32(s.x[11]))
+	s.x[17] = s.sp + 0x2d0
+	s.x[1] = 0x224ea33b
+	if err := storeBootstrapWord(s, s.x[17], uint32(s.x[16]), uint32(s.x[1])); err != nil {
+		return 0, fmt.Errorf("bootstrap constant-fill output: %w", err)
+	}
+	s.x[16] = uint64(firstBound)
+	s.x[17] = uint64(uint32(s.x[15]) + 1)
+	s.x[1] = 0xe68c1e77
+	s.x[2] = 0x884e95f3
+	s.x[15] = uint64(uint32(s.x[15]) + uint32(s.x[1]))
+	s.compare32(uint32(s.x[15]), uint32(s.x[2]))
+
+	s.traceBlock(bootstrapConstantFillDispatch)
+	secondBound := uint32(boolValue(s.condition("lt")))
+	s.x[16] = uint64(uint32(s.x[16]) ^ secondBound)
+	s.compare32(uint32(s.x[15]), uint32(s.x[14]))
+	thirdBound := uint32(boolValue(s.condition("gt")))
+	s.compare32(uint32(s.x[16]), 0)
+	dispatchBit := thirdBound
+	if s.condition("ne") {
+		dispatchBit = secondBound
+	}
+	s.x[16] = 0x1d4
+	dispatchIndex := dispatchBit*uint32(s.x[16]) ^ uint32(s.x[9])
+	next, err := loadBootstrapPointer(s, s.x[25], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap constant-fill dispatch: %w", err)
+	}
+	s.x[1] = next
+	s.x[15] = s.x[17]
+	s.x[17] = 0x88c4
 	return next, nil
 }
 
