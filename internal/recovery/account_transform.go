@@ -350,6 +350,18 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountDispatchSetup:
 		next, err := runAccountDispatchSetup(s)
 		return next, true, err
+	case accountRecordGuardRoute:
+		next, err := runAccountRecordGuardRoute(s)
+		return next, true, err
+	case accountStackGateSetup:
+		next, err := runAccountStackGateSetup(s)
+		return next, true, err
+	case accountWideCompareRoute:
+		next, err := runAccountWideCompareRoute(s)
+		return next, true, err
+	case accountMaskTargetRoute:
+		next, err := runAccountMaskTargetRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
