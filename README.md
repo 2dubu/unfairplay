@@ -51,6 +51,10 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
+The research ARMv7 path also decrypts 32-bit slices. It validates Thumb-2 or
+classic ARM structure and fails closed when a page key produces implausible
+code. ARMv6/Thumb-1-only apps are not yet verified.
+
 ### Convert an IPA for macOS
 
 This requires an encrypted IPA personalized for the same Store enrollment as

@@ -63,6 +63,26 @@ go test ./internal/fairplay \
 Use an IPA containing exactly one current 448-byte private SINF for this
 control. Do not commit the model, IPA, SINF, credential, or converted output.
 
+## ARMv7 decryption control
+
+Use one private IPA that contains encrypted ARMv7 and ARM64 slices. After
+decryption, require every ARMv7 report entry to contain:
+
+```text
+architecture=armv7
+cryptid_after=0
+first_page_audit=armv7-thumb-instruction-structure
+first_page_structurally_plausible=true
+```
+
+The strongest control decrypts the exact app version through two independent
+Store enrollments. All Mach-O members must be byte-identical; only personalized
+SINF and Store metadata may differ. Also retain one wrong-page-key unit test
+that must fail the ARMv7 structural audit.
+
+A pure 32-bit IPA remains desirable as an independent packaging control before
+merging ARMv7 support into a release branch.
+
 ## Exact-build fallback profile
 
 Regenerate the fail-closed 26A428/26A434 fallback only from the hash-matching
