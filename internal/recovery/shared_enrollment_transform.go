@@ -88,6 +88,12 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedPermutationTail:
 		next, err := runSharedPermutationTail(s)
 		return next, true, err
+	case sharedIndexMixStart:
+		next, err := runSharedIndexMix(s)
+		return next, true, err
+	case sharedRangeSelect:
+		next, err := runSharedRangeSelect(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
