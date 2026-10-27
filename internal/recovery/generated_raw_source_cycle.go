@@ -6,11 +6,11 @@ func runRawSourceCycleBoundary(s *state, _ fault) error {
 	if err != nil {
 		return err
 	}
-	if err := profile.runCycle(s, fault{}); err != nil {
+	if err := withRecoveryStage(s, "outer.cycle", func() error { return profile.runCycle(s, fault{}) }); err != nil {
 		return err
 	}
 	if s.x[9] == profile.cycleFinal {
-		return profile.runCycleFinal(s, fault{})
+		return withRecoveryStage(s, "outer.cycle-final", func() error { return profile.runCycleFinal(s, fault{}) })
 	}
 	return nil
 }

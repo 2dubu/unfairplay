@@ -22,6 +22,8 @@ func nestedStageSampleLimit(name string) int {
 		return 140
 	case "outer.digest.iteration":
 		return 64
+	case "outer.cycle", "outer.cycle-final":
+		return 32
 	case "outer.iteration":
 		return 8
 	}
@@ -431,7 +433,7 @@ func (s *state) traceReadValue(address uint64, size int, value uint64) {
 	}
 	key := recoveryTraceMemoryKey{pc: s.tracePC, address: address, bytes: size}
 	for _, capture := range s.tracer.active {
-		if capture.name == "outer.iteration" {
+		if capture.name == "outer.iteration" || capture.name == "outer.cycle" || capture.name == "outer.cycle-final" {
 			for index := len(capture.memoryEvents) - 1; index >= 0; index-- {
 				event := &capture.memoryEvents[index]
 				if !event.Write && event.PC == s.tracePC && event.Address == address && event.Bytes == size && event.ValueHex == "" {
@@ -457,7 +459,7 @@ func (s *state) traceWriteValue(address uint64, value []byte) {
 	key := recoveryTraceWriteKey{pc: s.tracePC, address: address, bytes: len(value)}
 	decoded := binary.LittleEndian.Uint64(encoded[:])
 	for _, capture := range s.tracer.active {
-		if capture.name == "outer.iteration" {
+		if capture.name == "outer.iteration" || capture.name == "outer.cycle" || capture.name == "outer.cycle-final" {
 			for index := len(capture.memoryEvents) - 1; index >= 0; index-- {
 				event := &capture.memoryEvents[index]
 				if event.Write && event.PC == s.tracePC && event.Address == address && event.Bytes == len(value) && event.ValueHex == "" {
@@ -485,7 +487,7 @@ func (s *state) traceAccess(address uint64, size int, write bool) {
 		return
 	}
 	for _, capture := range s.tracer.active {
-		if s.tracer.includeValues && s.tracePC != 0 && capture.name == "outer.iteration" {
+		if s.tracer.includeValues && s.tracePC != 0 && (capture.name == "outer.iteration" || capture.name == "outer.cycle" || capture.name == "outer.cycle-final") {
 			scope := s.tracer.active[len(s.tracer.active)-1].name
 			capture.memoryEvents = append(capture.memoryEvents, RecoveryTraceMemoryEvent{
 				PC: s.tracePC, Address: address, Bytes: size, Write: write, Scope: scope,
