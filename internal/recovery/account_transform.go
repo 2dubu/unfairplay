@@ -530,6 +530,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountSavedPairTarget:
 		next, err := runAccountSavedPairTarget(s)
 		return next, true, err
+	case accountSavedCompareDispatch:
+		next, err := runAccountSavedCompareDispatch(s)
+		return next, true, err
+	case accountPairCompareDispatch:
+		next, err := runAccountPairCompareDispatch(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
