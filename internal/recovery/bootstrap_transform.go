@@ -2103,29 +2103,45 @@ func runBootstrapAccumulatorCycleTailBlock(s *state) (uint64, error) {
 }
 
 func runBootstrapByteWriterCycle(s *state) (uint64, error) {
-	pc := bootstrapByteWriterControl
-	const maximumBlocks = 8192
-	for count := 0; count < maximumBlocks; count++ {
-		var next uint64
-		var err error
-		switch pc {
-		case bootstrapByteWriterControl:
-			next, err = runBootstrapByteWriterControl(s)
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap byte-writer state is unavailable")
+	}
+	const maximumBytes = 4096
+	for count := 0; count < maximumBytes; count++ {
+		next, err := runBootstrapByteWriterControl(s)
+		if err != nil {
+			return 0, err
+		}
+		switch next {
 		case bootstrapByteWriterMix:
 			next, err = runBootstrapByteWriterMix(s)
-		case bootstrapByteWriterLoad:
+			if err != nil {
+				return 0, err
+			}
+			if next != bootstrapByteWriterLoad {
+				return next, nil
+			}
 			next, err = runBootstrapByteWriterLoad(s)
+			if err != nil {
+				return 0, err
+			}
+			if next != bootstrapByteWriterStore {
+				return next, nil
+			}
 		case bootstrapByteWriterStore:
-			next, err = runBootstrapByteWriterStore(s)
 		default:
-			return pc, nil
+			return next, nil
 		}
+
+		next, err = runBootstrapByteWriterStore(s)
 		if err != nil {
-			return pc, err
+			return 0, err
 		}
-		pc = next
+		if next != bootstrapByteWriterControl {
+			return next, nil
+		}
 	}
-	return 0, fmt.Errorf("bootstrap byte-writer cycle exceeded %d blocks", maximumBlocks)
+	return 0, fmt.Errorf("bootstrap byte-writer cycle exceeded %d bytes", maximumBytes)
 }
 
 func runBootstrapByteWriterControl(s *state) (uint64, error) {
