@@ -479,6 +479,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountReverseWriteRoute:
 		next, err := runAccountReverseWriteRoute(s)
 		return next, true, err
+	case accountCCmpTargetRoute:
+		next, err := runAccountCCmpTargetRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
