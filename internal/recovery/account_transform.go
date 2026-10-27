@@ -10,6 +10,7 @@ const (
 	accountEntryWordMixerPass     = uint64(0x10007ba1c)
 	accountEntryByteCopyPass      = uint64(0x1001f39b8)
 	accountEntryFourWordPass      = uint64(0x1002376d4)
+	accountEntryZeroFillPass      = uint64(0x10092144c)
 )
 
 func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -35,9 +36,43 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountEntryFourWordPass:
 		next, err := runAccountEntryFourWordPass(s)
 		return next, true, err
+	case accountEntryZeroFillPass:
+		next, err := runAccountEntryZeroFill(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runAccountEntryZeroFill(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runAccountEntryZeroFillStep(s)
+		if err != nil || next != accountEntryZeroFillPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("account-entry zero fill exceeded %d bytes", maximumBytes)
+}
+
+func runAccountEntryZeroFillStep(s *state) (uint64, error) {
+	s.traceBlock(accountEntryZeroFillPass)
+	s.x[11] = s.x[16] + s.x[10]
+	if err := s.storeValue(s.x[11], 0, 1); err != nil {
+		return 0, fmt.Errorf("account-entry zero-fill output: %w", err)
+	}
+	s.x[11] = s.x[10] - 0x48f
+	s.x[13] = s.x[8] ^ s.x[14]
+	s.compare64(s.x[11], s.x[13])
+	dispatchIndex := uint32(boolValue(s.condition("eq")))*uint32(s.x[15]) ^ uint32(s.x[9])
+	next, err := loadBootstrapPointer(s, s.x[30], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry zero-fill dispatch: %w", err)
+	}
+	s.x[10]++
+	s.x[11] = next
+	s.x[17] = 0x345f
+	return next, nil
 }
 
 func runAccountEntryByteCopy(s *state) (uint64, error) {
