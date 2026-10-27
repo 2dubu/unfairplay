@@ -7,7 +7,18 @@ import (
 )
 
 func TestSemanticOuterStageBridge(t *testing.T) {
+	testSemanticOuterStageBridge(t, rawSourceBinaryHash)
+}
+
+func TestSemanticOuterStageBridgeIndependentBuildHash(t *testing.T) {
+	buildHash := [32]byte{0x42, 0x6f, 0x75, 0x6e, 0x64, 0x61, 0x72, 0x79}
+	testSemanticOuterStageBridge(t, buildHash)
+}
+
+func testSemanticOuterStageBridge(t *testing.T, buildHash [32]byte) {
+	t.Helper()
 	profile := embedded26A428ExecutionProfile()
+	profile.binaryHash = buildHash
 	layout := outerStage26A428Layout
 	const stack = uint64(0x7000000eeb80)
 	pages := make(map[uint64][]byte)
@@ -22,7 +33,7 @@ func TestSemanticOuterStageBridge(t *testing.T) {
 	mapRange(layout.hardwareAddress, 6)
 	mapRange(layout.codecAddress, 29)
 	value := &model{
-		binaryHash: rawSourceBinaryHash,
+		binaryHash: buildHash,
 		profile:    profile,
 		sp:         stack,
 		pages:      pages,
