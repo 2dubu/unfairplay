@@ -650,6 +650,39 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountSignedLimitRouteC:
 		next, err := runAccountSignedLimitRouteC(s)
 		return next, true, err
+	case accountWideCallSetup:
+		next, err := runAccountWideCallSetup(s)
+		return next, true, err
+	case accountWideCallTail:
+		next, err := runAccountWideCallTail(s)
+		return next, true, err
+	case accountDigestStateSetup:
+		next, err := runAccountDigestStateSetup(s)
+		return next, true, err
+	case accountDigestRoute:
+		next, err := runAccountDigestRoute(s)
+		return next, true, err
+	case accountByteConditionSetup:
+		next, err := runAccountByteConditionSetup(s)
+		return next, true, err
+	case accountDigestMixFront:
+		next, err := runAccountDigestMixFront(s)
+		return next, true, err
+	case accountDigestMixMiddle:
+		next, err := runAccountDigestMixMiddle(s)
+		return next, true, err
+	case accountDigestMixTail:
+		next, err := runAccountDigestMixTail(s)
+		return next, true, err
+	case accountByteCompareFront:
+		next, err := runAccountByteCompareFront(s)
+		return next, true, err
+	case accountByteCompareDispatchTail:
+		next, err := runAccountByteCompareDispatchTail(s)
+		return next, true, err
+	case accountLoopLimitRoute:
+		next, err := runAccountLoopLimitRoute(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
