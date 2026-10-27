@@ -1,4 +1,4 @@
-// Code generated from the proved writer seed recurrence; DO NOT EDIT.
+// Generated reference circuit retained only for differential tests.
 package recovery
 
 import "math/bits"
