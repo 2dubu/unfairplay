@@ -5,12 +5,14 @@ package recovery
 // the earlier digest window starts two bytes later. Codec is the 17-byte state
 // shared by both stages.
 type outerTableRoundState struct {
-	Words         [5]uint32
-	Hardware      [6]byte
-	HardwareIndex uint8
-	Codec         [33]byte
-	Source        [224]byte
-	Tail          [140]byte
+	Words          [5]uint32
+	Hardware       [6]byte
+	HardwareIndex  uint8
+	Codec          [33]byte
+	Source         [224]byte
+	Tail           [140]byte
+	SelectionState [32]byte
+	OptionalWord   uint32
 }
 
 type outerIterationControl struct {
@@ -104,6 +106,30 @@ func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state 
 		return 0, false
 	}
 	initialSeed := control.CounterSeed
+	firstOptionalIndex := outerOptionalFirstIndex(initialSeed)
+	if firstOptionalIndex >= outerTableWords {
+		return 0, false
+	}
+	encodedOptionalIndex := table[firstOptionalIndex] ^ 0x224ea33b
+	secondOptionalIndex := encodedOptionalIndex - uint32((uint64(encodedOptionalIndex)*0x621b97c3)>>38)*outerTableWords
+	if secondOptionalIndex >= outerTableWords {
+		return 0, false
+	}
+	optionalInput := outerOptionalDecode(table[secondOptionalIndex])
+	state.OptionalWord = optionalInput
+	if outerOptionalActive(optionalInput) {
+		transformed, ok := optionalTransform26A428(optionalInput, 0x5d5c)
+		if !ok {
+			return 0, false
+		}
+		state.OptionalWord = transformed
+	}
+	state.SelectionState = [32]byte{
+		0x3b, 0x49, 0xf5, 0xf1, 0xb3, 0x5c, 0x4c, 0xe9,
+		0xa1, 0xb9, 0x92, 0x63, 0x6a, 0xd5, 0xb9, 0x2c,
+		0x2d, 0xf3, 0xfd, 0x98, 0x4b, 0xcd, 0x22, 0x37,
+		0x4b, 0x63, 0x86, 0x18, 0x23, 0xd3, 0x34, 0x66,
+	}
 	var hookSeeds outerHookSeeds
 	if !applyOuterFront(table, base, state, control.X1, control.CounterSeed, &hookSeeds) {
 		return 0, false

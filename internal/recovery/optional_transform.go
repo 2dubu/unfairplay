@@ -30,3 +30,10 @@ func optionalTransform26A428(input, selector uint32) (uint32, bool) {
 	}
 	return inputBase + ((value + delta) & 0x1ff), true
 }
+
+// outerOptionalActive is the natural dispatch predicate recovered for the
+// 26A428 profile. Values in the upper byte half select the optional handler;
+// 0x0d is its single low-half control value.
+func outerOptionalActive(input uint32) bool {
+	return input&0xffffff00 == 0x976dec00 && (byte(input) >= 0x80 || byte(input) == 0x0d)
+}
