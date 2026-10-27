@@ -1256,13 +1256,55 @@ func runAccountEntryByteCopyStep(s *state) (uint64, error) {
 
 func runAccountEntryFourWordPass(s *state) (uint64, error) {
 	const maximumWords = 4096
-	for index := 0; index < maximumWords; index++ {
-		next, err := runAccountEntryFourWordStep(s)
-		if err != nil || next != accountEntryFourWordPass {
-			return next, err
+	if s == nil {
+		return 0, fmt.Errorf("account-entry four-word state is unavailable")
+	}
+	continueTarget, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[13]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry four-word continuation: %w", err)
+	}
+	if continueTarget != accountEntryFourWordPass {
+		return 0, fmt.Errorf("unsupported account-entry four-word continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[13])^0x7615)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry four-word exit: %w", err)
+	}
+	if exitTarget == accountEntryFourWordPass {
+		return 0, fmt.Errorf("account-entry four-word exit loops to itself")
+	}
+
+	const terminal = uint64(0x1cc848e3)
+	start := s.x[1]
+	count := terminal - start
+	if count == 0 || count > maximumWords {
+		return 0, fmt.Errorf("account-entry four-word pass exceeded %d words", maximumWords)
+	}
+	s.x[0] = uint64((uint32(s.x[13]) + 0xffff5fad) | 0x410)
+	for offset := uint64(0); offset < count; offset++ {
+		s.traceBlock(accountEntryFourWordPass)
+		outputAddress := s.x[8] + s.x[14] + ((start + offset) << 2)
+		var words [4]uint32
+		for index, distance := range [...]uint64{3, 8, 14, 16} {
+			value, err := s.load(outputAddress-distance*4, 4)
+			if err != nil {
+				return 0, fmt.Errorf("account-entry four-word input %d: %w", index, err)
+			}
+			words[index] = uint32(value)
+		}
+		mixed := words[0] ^ words[1] ^ words[2] ^ words[3]
+		result := uint32(s.x[12]) ^ uint32(rotateRight(uint64(mixed), 31, 32))
+		if err := s.storeValue(outputAddress, uint64(result), 4); err != nil {
+			return 0, fmt.Errorf("account-entry four-word output: %w", err)
 		}
 	}
-	return 0, fmt.Errorf("account-entry four-word pass exceeded %d words", maximumWords)
+	s.x[1] = terminal
+	s.x[9] = terminal
+	s.compare64(s.x[1], terminal)
+	s.x[2] = exitTarget
+	s.x[16] = 0x1cc84893
+	s.x[17] = 0xe949
+	return exitTarget, nil
 }
 
 func runAccountEntryFourWordStep(s *state) (uint64, error) {
