@@ -2,9 +2,7 @@ package recovery
 
 import "fmt"
 
-const accountHotMixFourth = uint64(0x100088c14)
-
-func runAccountHotMixFourth(s *state) (uint64, error) {
+func runAccountHotMixFourthCircuit(s *state) (uint64, error) {
 	s.traceBlock(accountHotMixFourth)
 	s.x[17] = s.x[9]
 	s.x[9] = 0x50c9d63e

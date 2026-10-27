@@ -2,12 +2,7 @@ package recovery
 
 import "fmt"
 
-const (
-	accountHotMixThirdFront = uint64(0x100065320)
-	accountHotMixThirdTail  = uint64(0x100065400)
-)
-
-func runAccountHotMixThird(s *state) (uint64, error) {
+func runAccountHotMixThirdCircuit(s *state) (uint64, error) {
 	s.traceBlock(accountHotMixThirdFront)
 	s.x[9] = s.x[11]
 	s.x[11] = s.x[13]
