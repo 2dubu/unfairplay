@@ -380,6 +380,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountBitTestRoute:
 		next, err := runAccountBitTestRoute(s)
 		return next, true, err
+	case accountStackRouteSetup:
+		next, err := runAccountStackRouteSetup(s)
+		return next, true, err
+	case accountStackRouteSave:
+		next, err := runAccountStackRouteSave(s)
+		return next, true, err
+	case accountStackRouteLoad:
+		next, err := runAccountStackRouteLoad(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
