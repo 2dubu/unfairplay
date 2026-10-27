@@ -29,7 +29,7 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 		next, err := runSharedEnrollmentPackedPath(s)
 		return next, true, err
 	case sharedEnrollmentClassify:
-		next, err := runSharedEnrollmentClassify(s)
+		next, err := runSharedEnrollmentTransform(s)
 		return next, true, err
 	case sharedEnrollmentBranch:
 		next, err := runSharedEnrollmentBranch(s)
@@ -104,6 +104,67 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	default:
 		return pc, false, nil
 	}
+}
+
+// runSharedEnrollmentTransform executes the natural byte-state loop shared by
+// record selection and SINF enrollment. Each iteration selects one of four
+// recovered transforms from the low two bits of the current byte, writes the
+// result, and advances the common counter state.
+func runSharedEnrollmentTransform(s *state) (uint64, error) {
+	const maximumIterations = 16384
+	for iteration := 0; iteration < maximumIterations; iteration++ {
+		next, err := runSharedEnrollmentClassify(s)
+		if err != nil || next != sharedEnrollmentBranch {
+			return next, err
+		}
+		next, err = runSharedEnrollmentBranch(s)
+		if err != nil {
+			return next, err
+		}
+		switch next {
+		case sharedEnrollmentLeftPath:
+			next, err = runSharedEnrollmentLeftPath(s)
+		case sharedEnrollmentRightPath:
+			next, err = runSharedEnrollmentRightPath(s)
+		default:
+			return next, fmt.Errorf("unsupported shared enrollment class path %#x", next)
+		}
+		if err != nil {
+			return next, err
+		}
+
+		switch next {
+		case sharedEnrollmentPackedStart:
+			next, err = runSharedEnrollmentPackedPath(s)
+			if err == nil && next == sharedEnrollmentPolynomialReturn {
+				s.traceBlock(sharedEnrollmentPolynomialReturn)
+				next = s.x[2]
+			}
+		case sharedMBAFront:
+			next, err = runSharedMBASemantic(s)
+		case sharedEnrollmentBytePermute:
+			next, err = runSharedEnrollmentBytePermuteSemantic(s)
+			if err == nil && next == sharedPermutationFront {
+				next, err = runSharedPermutationSemantic(s)
+			}
+		case sharedPermutationFront:
+			next, err = runSharedPermutationSemantic(s)
+		default:
+			return next, fmt.Errorf("unsupported shared enrollment transform %#x", next)
+		}
+		if err != nil || next != sharedEnrollmentWrite {
+			return next, err
+		}
+		next, err = runSharedEnrollmentWrite(s)
+		if err != nil || next != sharedEnrollmentAdvance {
+			return next, err
+		}
+		next, err = runSharedEnrollmentAdvance(s)
+		if err != nil || next != sharedEnrollmentClassify {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("shared enrollment transform exceeded %d iterations", maximumIterations)
 }
 
 func runSharedEnrollmentSavedSelect(s *state) (uint64, error) {
