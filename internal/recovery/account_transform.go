@@ -77,6 +77,27 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountHotMixFourth:
 		next, err := runAccountHotMixFourth(s)
 		return next, true, err
+	case accountBooleanWriterA:
+		next, err := runAccountBooleanWriterA(s)
+		return next, true, err
+	case accountBooleanWriterB:
+		next, err := runAccountBooleanWriterB(s)
+		return next, true, err
+	case accountBooleanWriterC:
+		next, err := runAccountBooleanWriterC(s)
+		return next, true, err
+	case accountBooleanWriterD:
+		next, err := runAccountBooleanWriterD(s)
+		return next, true, err
+	case accountSmallSelectorA:
+		next, err := runAccountSmallSelectorA(s)
+		return next, true, err
+	case accountSmallSelectorB:
+		next, err := runAccountSmallSelectorB(s)
+		return next, true, err
+	case accountBoundsSelector:
+		next, err := runAccountBoundsSelector(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
