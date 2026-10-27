@@ -67,6 +67,7 @@ func TestExternalMachoBlockExtraction(t *testing.T) {
 	case fairplay.FairPlayBuild26A428Hash:
 		wanted[0x1001511f0] = false
 		wanted[0x100151304] = false
+		wanted[0x1003384cc] = false
 	case fairplay.FairPlayBuild26B118Hash:
 		wanted[0x10026d170] = false
 	default:
@@ -105,7 +106,7 @@ func TestExternalSeededMachoExtraction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, address := range []uint64{0x1000103a8, 0x100484cd0, 0x1006dd508, 0x100796630, 0x100796720, 0x1007ead40, 0x1007eadc0, 0x1008fe5d4, 0x10093fe44, 0x10093ff14, 0x1009f0994} {
+	for _, address := range []uint64{0x1000103a8, 0x1003384cc, 0x100484cd0, 0x1006dd508, 0x100796630, 0x100796720, 0x1007ead40, 0x1007eadc0, 0x1008fe5d4, 0x10093fe44, 0x10093ff14, 0x1009f0994} {
 		seeds[address] = true
 	}
 	all, err := annotatedMachoBlocks(path, seeds)

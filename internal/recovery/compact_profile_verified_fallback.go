@@ -1,8 +1,8 @@
 package recovery
 
-// compact26A428VerifiedFallbackBlocks contains exact-hash blocks that were
-// missing from the original traced maps and independently checked against the
-// 26A428/26A434 fairplayd instruction stream. Keep this map small: an
+// compact26A428VerifiedFallbackBlocks contains exact-hash blocks needed outside
+// their original phase-specific traced maps and independently checked against
+// the 26A428/26A434 fairplayd instruction stream. Keep this map small: an
 // automatically decodable block is not accepted here until its boundaries,
 // instructions, and terminator have been reviewed.
 var compact26A428VerifiedFallbackBlocks = map[uint64]compactBlock{
@@ -16,6 +16,43 @@ var compact26A428VerifiedFallbackBlocks = map[uint64]compactBlock{
 		{op: compactMovK32, destination: 9, shift: 16, immediate: 0xce75},
 		{op: compactCSEL32, destination: 8, left: 9, right: 8, shift: uint8(compactConditionEQ)},
 		{op: compactStoreBaseImm32, destination: 8, left: 0, immediate: 0x4},
+	}, terminator: compactBlockReturn},
+	0x1003384cc: {start: 0x1003384cc, instructions: []compactInstruction{
+		{op: compactMovImm64, destination: 8, immediate: 0x6674},
+		{op: compactMovK64, destination: 8, shift: 16, immediate: 0xb3ce},
+		{op: compactMovK64, destination: 8, shift: 32, immediate: 0x63ed},
+		{op: compactMovK64, destination: 8, shift: 48, immediate: 0xee97},
+		{op: compactOr64, destination: 9, left: 0, right: 8},
+		{op: compactAnd64, destination: 8, left: 0, right: 8},
+		{op: compactMovImm64, destination: 10, immediate: 0xff00},
+		{op: compactMovK64, destination: 10, shift: 16, immediate: 0x4a1a},
+		{op: compactMovK64, destination: 10, shift: 32, immediate: 0xc17f},
+		{op: compactMovK64, destination: 10, shift: 48, immediate: 0xa374},
+		{op: compactSub64, destination: 8, left: 9, right: 8},
+		{op: compactXor64, destination: 8, left: 8, right: 10},
+		{op: compactMovImm32, destination: 9, immediate: 0xa827},
+		{op: compactMovK32, destination: 9, shift: 16, immediate: 0xda51},
+		{op: compactMul64, destination: 8, left: 8, right: 9},
+		{op: compactPairLoad32, destination: 10, left: 0, right: 9, accumulator: 0, immediate: 0x0},
+		{op: compactSub32, destination: 9, left: 9, right: 8},
+		{op: compactLoadBaseImm32, destination: 11, left: 0, immediate: 0x1c},
+		{op: compactXor32, destination: 11, left: 11, right: 8},
+		{op: compactLoadBaseImm32, destination: 12, left: 0, immediate: 0x28},
+		{op: compactXor32, destination: 12, left: 12, right: 8},
+		{op: compactLoadBaseImm64, destination: 13, left: 0, immediate: 0x10},
+		{op: compactSub64, destination: 13, left: 13, right: 8},
+		{op: compactLoadBaseImm64, destination: 14, left: 0, immediate: 0x20},
+		{op: compactAdd64, destination: 14, left: 14, right: 8},
+		{op: compactCmp64, left: 13, right: 14},
+		{op: compactCSet32EQ, destination: 13},
+		{op: compactCSet32HI, destination: 14},
+		{op: compactTstImm32, left: 12, right: 0x0, accumulator: 0x0, immediate: 0x1},
+		{op: compactCSEL32, destination: 12, left: 14, right: 13, shift: uint8(compactConditionNE)},
+		{op: compactCmpImm32, left: 12, immediate: 0x0},
+		{op: compactCSEL32, destination: 9, left: 9, right: 11, shift: uint8(compactConditionNE)},
+		{op: compactSub32, destination: 8, left: 10, right: 8},
+		{op: compactXor32, destination: 8, left: 9, right: 8},
+		{op: compactStoreBaseImm32, destination: 8, left: 0, immediate: 0x8},
 	}, terminator: compactBlockReturn},
 	0x100484cd0: {start: 0x100484cd0, instructions: []compactInstruction{
 		{op: compactMovImm32, destination: 9, immediate: 0x21b9},

@@ -1,6 +1,9 @@
 package recovery
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func newSINFEntryTestState(t *testing.T) (*state, func(uint64, uint64, int)) {
 	t.Helper()
@@ -49,6 +52,84 @@ func TestSINFEntryDispatch(t *testing.T) {
 				t.Fatalf("dispatch = %#x, stopped=%v z=%v err=%v", next, stopped, s.z, err)
 			}
 		})
+	}
+}
+
+func TestSINFEntrySharedRecordLeaf(t *testing.T) {
+	const (
+		address    = uint64(0x1003384cc)
+		record     = uint64(0x720000001000)
+		returnTo   = uint64(0x100020000)
+		mask       = uint64(0xee9763edb3ce6674)
+		xorMask    = uint64(0xa374c17f4a1aff00)
+		multiplier = uint64(0xda51a827)
+		pairValue  = uint32(0x11223344)
+		otherValue = uint32(0xaabbccdd)
+		baseValue  = uint32(0x01020304)
+	)
+	mixed := record | mask
+	mixed -= record & mask
+	mixed ^= xorMask
+	mixed *= multiplier
+	for _, test := range []struct {
+		name             string
+		bit              uint32
+		left, right      uint64
+		wantPairSelected bool
+	}{
+		{"bit-selects-higher", 1, 3, 2, true},
+		{"bit-rejects-lower", 1, 2, 3, false},
+		{"clear-selects-equal", 0, 2, 2, true},
+		{"clear-rejects-different", 0, 2, 3, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			s, write := newSINFEntryTestState(t)
+			s.x[0], s.x[30] = record, returnTo
+			write(record, uint64(baseValue+uint32(mixed)), 4)
+			write(record+4, uint64(pairValue+uint32(mixed)), 4)
+			write(record+8, 0, 4)
+			write(record+0x10, test.left+mixed, 8)
+			write(record+0x1c, uint64(otherValue^uint32(mixed)), 4)
+			write(record+0x20, test.right-mixed, 8)
+			write(record+0x28, uint64(test.bit^uint32(mixed)), 4)
+
+			profile := embedded26A428ExecutionProfile()
+			block, ok := recoverySINFEntryBlock(s, profile, address)
+			if !ok {
+				t.Fatal("shared record leaf is unavailable to the SINF-entry CFG")
+			}
+			next, stopped, err := runCompactBlock(s, nil, block)
+			if err != nil || stopped || next != returnTo {
+				t.Fatalf("record leaf next=%#x stopped=%v err=%v", next, stopped, err)
+			}
+			selected := otherValue
+			if test.wantPairSelected {
+				selected = pairValue
+			}
+			want := selected ^ baseValue
+			got, err := s.load(record+8, 4)
+			if err != nil || uint32(got) != want {
+				t.Fatalf("record result=%#x err=%v, want %#x", got, err, want)
+			}
+		})
+	}
+}
+
+func TestSINFEntrySharedRecordLeafMatchesTracedProfiles(t *testing.T) {
+	const address = uint64(0x1003384cc)
+	verified, ok := compact26A428VerifiedFallbackBlocks[address]
+	if !ok {
+		t.Fatal("shared record leaf is missing from the verified fallback")
+	}
+	for name, blocks := range map[string]map[uint64]compactBlock{
+		"account-entry": compact26A428AccountEntryBlocks,
+		"bootstrap":     compact26A428BootstrapBlocks,
+		"selection":     compact26A428SelectionBlocks,
+	} {
+		traced, ok := blocks[address]
+		if !ok || !reflect.DeepEqual(verified, traced) {
+			t.Fatalf("verified shared record leaf differs from %s: %+v", name, traced)
+		}
 	}
 }
 

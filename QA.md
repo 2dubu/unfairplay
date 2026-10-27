@@ -105,8 +105,9 @@ arm64e `fairplayd`:
 go run ./tools/compact-kernel \
   --macho /private/path/fairplayd.arm64e \
   --seed-profile internal/recovery/profiles/macos26a428-compact-cfg.bin.gz \
-  --seed-start 0x1000103a8 --seed-start 0x100484cd0 \
-  --seed-start 0x1006dd508 --seed-start 0x100796630 \
+  --seed-start 0x1000103a8 --seed-start 0x1003384cc \
+  --seed-start 0x100484cd0 --seed-start 0x1006dd508 \
+  --seed-start 0x100796630 \
   --seed-start 0x100796720 --seed-start 0x1007ead40 \
   --seed-start 0x1007eadc0 --seed-start 0x1008fe5d4 \
   --seed-start 0x10093fe44 --seed-start 0x10093ff14 \
