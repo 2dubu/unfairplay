@@ -28,6 +28,9 @@ func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case selectionReverseProjection:
 		next, err := runSelectionReverseProjection(s)
 		return next, true, err
+	case bootstrapLookupCopySeed:
+		next, err := runBootstrapLookupCopyPass(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
