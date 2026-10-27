@@ -13,6 +13,10 @@ you control. It is intended for interoperability, preservation, and authorized
 research. The authors do not condone piracy, credential theft, copyright
 infringement, or unauthorized distribution of decrypted apps.
 
+## Discord
+
+Feel free to hang out in the [Discord](https://discord.gg/hpwvuQHfaf).
+
 ## Build
 
 ```sh
