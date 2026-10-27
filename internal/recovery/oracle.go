@@ -194,6 +194,7 @@ type state struct {
 	destinationPages   map[uint64]bool
 	extractedBlockHits int
 	tracer             *recoveryTraceRecorder
+	tracePC            uint64
 }
 
 func newState(value *model) *state {
@@ -256,6 +257,7 @@ func (s *state) reset() {
 	s.vectors = [32][16]byte{}
 	s.sp = s.model.sp
 	s.n, s.z, s.c, s.v = s.model.n, s.model.z, s.model.c, s.model.v
+	s.tracePC = 0
 
 }
 

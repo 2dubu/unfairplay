@@ -22,6 +22,8 @@ func nestedStageSampleLimit(name string) int {
 		return 140
 	case "outer.digest.iteration":
 		return 64
+	case "outer.iteration":
+		return 8
 	}
 	return maximumNestedStageSamples
 }
@@ -43,29 +45,47 @@ type RecoveryTraceRegister struct {
 	After    uint64 `json:"after"`
 }
 
+type RecoveryTraceFlags struct {
+	Negative bool `json:"negative"`
+	Zero     bool `json:"zero"`
+	Carry    bool `json:"carry"`
+	Overflow bool `json:"overflow"`
+}
+
 type RecoveryTraceBlock struct {
 	Address uint64 `json:"address"`
 	Count   int    `json:"count"`
 }
 
+type RecoveryTraceMemorySite struct {
+	PC      uint64 `json:"pc"`
+	Address uint64 `json:"address"`
+	Bytes   int    `json:"bytes"`
+	Count   int    `json:"count"`
+}
+
 type RecoveryStageTrace struct {
-	Name              string                  `json:"name"`
-	Invocation        int                     `json:"invocation"`
-	TotalInvocations  int                     `json:"total_invocations"`
-	EntryStateSHA256  string                  `json:"entry_state_sha256"`
-	ExitStateSHA256   string                  `json:"exit_state_sha256"`
-	PathSHA256        string                  `json:"path_sha256"`
-	Blocks            int                     `json:"blocks"`
-	UniqueBlocks      int                     `json:"unique_blocks"`
-	TopBlocks         []RecoveryTraceBlock    `json:"top_blocks"`
-	LiveInSpans       []RecoveryTraceSpan     `json:"live_in_spans"`
-	WriteSpans        []RecoveryTraceSpan     `json:"write_spans"`
-	RegisterChanges   []RecoveryTraceRegister `json:"register_changes"`
-	EntryStackPointer uint64                  `json:"entry_stack_pointer"`
-	ExitStackPointer  uint64                  `json:"exit_stack_pointer"`
-	Error             string                  `json:"error,omitempty"`
-	EntryRegisters    []uint64                `json:"entry_registers,omitempty"`
-	ExitRegisters     []uint64                `json:"exit_registers,omitempty"`
+	Name              string                    `json:"name"`
+	Invocation        int                       `json:"invocation"`
+	TotalInvocations  int                       `json:"total_invocations"`
+	EntryStateSHA256  string                    `json:"entry_state_sha256"`
+	ExitStateSHA256   string                    `json:"exit_state_sha256"`
+	PathSHA256        string                    `json:"path_sha256"`
+	Blocks            int                       `json:"blocks"`
+	UniqueBlocks      int                       `json:"unique_blocks"`
+	TopBlocks         []RecoveryTraceBlock      `json:"top_blocks"`
+	ReadSites         []RecoveryTraceMemorySite `json:"read_sites,omitempty"`
+	WriteSites        []RecoveryTraceMemorySite `json:"write_sites,omitempty"`
+	LiveInSpans       []RecoveryTraceSpan       `json:"live_in_spans"`
+	WriteSpans        []RecoveryTraceSpan       `json:"write_spans"`
+	RegisterChanges   []RecoveryTraceRegister   `json:"register_changes"`
+	EntryStackPointer uint64                    `json:"entry_stack_pointer"`
+	ExitStackPointer  uint64                    `json:"exit_stack_pointer"`
+	Error             string                    `json:"error,omitempty"`
+	EntryRegisters    []uint64                  `json:"entry_registers,omitempty"`
+	ExitRegisters     []uint64                  `json:"exit_registers,omitempty"`
+	EntryFlags        *RecoveryTraceFlags       `json:"entry_flags,omitempty"`
+	ExitFlags         *RecoveryTraceFlags       `json:"exit_flags,omitempty"`
 }
 
 type recoveryStageCapture struct {
@@ -73,16 +93,26 @@ type recoveryStageCapture struct {
 	entryState string
 	entryX     [31]uint64
 	entrySP    uint64
+	entryFlags RecoveryTraceFlags
 	before     map[uint64][]byte
 	read       map[uint64][]byte
 	liveIn     map[uint64][]byte
 	write      map[uint64][]byte
 	written    map[uint64][]byte
 	blocks     map[uint64]int
+	readSites  map[recoveryTraceMemoryKey]int
+	writeSites map[recoveryTraceWriteKey]int
 	path       hash.Hash
 	blockCount int
 	invocation int
 }
+
+type recoveryTraceMemoryKey struct {
+	pc, address uint64
+	bytes       int
+}
+
+type recoveryTraceWriteKey = recoveryTraceMemoryKey
 
 type recoveryTraceRecorder struct {
 	active        []*recoveryStageCapture
@@ -263,8 +293,10 @@ func (r *recoveryTraceRecorder) begin(s *state, name string) *recoveryStageCaptu
 	}
 	capture := &recoveryStageCapture{
 		name: name, invocation: invocation, entryState: s.digest(), entryX: s.x, entrySP: s.sp,
-		before: currentTracePages(s), read: make(map[uint64][]byte), liveIn: make(map[uint64][]byte), write: make(map[uint64][]byte),
+		entryFlags: RecoveryTraceFlags{Negative: s.n, Zero: s.z, Carry: s.c, Overflow: s.v},
+		before:     currentTracePages(s), read: make(map[uint64][]byte), liveIn: make(map[uint64][]byte), write: make(map[uint64][]byte),
 		written: make(map[uint64][]byte), blocks: make(map[uint64]int), path: sha256.New(),
+		readSites: make(map[recoveryTraceMemoryKey]int), writeSites: make(map[recoveryTraceWriteKey]int),
 	}
 	r.active = append(r.active, capture)
 	return capture
@@ -290,6 +322,10 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 	if r.includeValues {
 		trace.EntryRegisters = append(trace.EntryRegisters, capture.entryX[:]...)
 		trace.ExitRegisters = append(trace.ExitRegisters, s.x[:]...)
+		entryFlags := capture.entryFlags
+		exitFlags := RecoveryTraceFlags{Negative: s.n, Zero: s.z, Carry: s.c, Overflow: s.v}
+		trace.EntryFlags = &entryFlags
+		trace.ExitFlags = &exitFlags
 	}
 	for index, before := range capture.entryX {
 		if afterValue := s.x[index]; afterValue != before {
@@ -309,6 +345,41 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 		return blocks[left].Address < blocks[right].Address
 	})
 	trace.TopBlocks = blocks[:min(len(blocks), 32)]
+	buildMemorySites := func(source map[recoveryTraceMemoryKey]int) []RecoveryTraceMemorySite {
+		sites := make([]RecoveryTraceMemorySite, 0, len(source))
+		for key, count := range source {
+			sites = append(sites, RecoveryTraceMemorySite{
+				PC: key.pc, Address: key.address, Bytes: key.bytes, Count: count,
+			})
+		}
+		sort.Slice(sites, func(left, right int) bool {
+			if sites[left].PC != sites[right].PC {
+				return sites[left].PC < sites[right].PC
+			}
+			if sites[left].Address != sites[right].Address {
+				return sites[left].Address < sites[right].Address
+			}
+			return sites[left].Bytes < sites[right].Bytes
+		})
+		return sites
+	}
+	trace.ReadSites = buildMemorySites(capture.readSites)
+	writeSites := make([]RecoveryTraceMemorySite, 0, len(capture.writeSites))
+	for key, count := range capture.writeSites {
+		writeSites = append(writeSites, RecoveryTraceMemorySite{
+			PC: key.pc, Address: key.address, Bytes: key.bytes, Count: count,
+		})
+	}
+	sort.Slice(writeSites, func(left, right int) bool {
+		if writeSites[left].PC != writeSites[right].PC {
+			return writeSites[left].PC < writeSites[right].PC
+		}
+		if writeSites[left].Address != writeSites[right].Address {
+			return writeSites[left].Address < writeSites[right].Address
+		}
+		return writeSites[left].Bytes < writeSites[right].Bytes
+	})
+	trace.WriteSites = writeSites
 	r.results = append(r.results, trace)
 	for _, page := range capture.before {
 		clear(page)
@@ -330,8 +401,14 @@ func (s *state) traceAccess(address uint64, size int, write bool) {
 	for _, capture := range s.tracer.active {
 		if write {
 			traceMarkWrite(capture, address, size)
+			if s.tracer.includeValues && s.tracePC != 0 {
+				capture.writeSites[recoveryTraceWriteKey{pc: s.tracePC, address: address, bytes: size}]++
+			}
 		} else {
 			traceMarkRead(capture, address, size)
+			if s.tracer.includeValues && s.tracePC != 0 {
+				capture.readSites[recoveryTraceMemoryKey{pc: s.tracePC, address: address, bytes: size}]++
+			}
 		}
 	}
 }

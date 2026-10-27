@@ -369,6 +369,8 @@ func runCompactHook(s *state, action compactHookAction) error {
 }
 
 func runCompactKernel(s *state, kernel compactKernel) error {
+	previousTracePC := s.tracePC
+	defer func() { s.tracePC = previousTracePC }()
 	pc := kernel.start
 	s.traceBlock(pc)
 	segment := 0
@@ -380,6 +382,7 @@ func runCompactKernel(s *state, kernel compactKernel) error {
 			segment++
 		}
 		d, left, right := int(instruction.destination), int(instruction.left), int(instruction.right)
+		s.tracePC = pc
 		switch instruction.op {
 		case compactAnd32:
 			s.x[d] = uint64(uint32(s.x[left]) & uint32(s.x[right]))

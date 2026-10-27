@@ -748,7 +748,9 @@ func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {
 			return profile.runDigest(worker, fault{})
 		})
 	case "outer":
-		err = profile.runOuter(worker, fault{})
+		err = withRecoveryValueTrace(worker, "outer.iteration", func() error {
+			return profile.runOuter(worker, fault{})
+		})
 		if err == nil && worker.x[12] == profile.outerCycle {
 			err = runRawSourceCycleBoundary(worker, fault{})
 			if err == nil {
