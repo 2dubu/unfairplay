@@ -19,6 +19,22 @@ func outerBooleanMask(inputs []uint32, terms []outerBooleanTerm) uint32 {
 	return output
 }
 
+var outerTableLane0Terms = [...]outerBooleanTerm{
+	{0x57e031c3, 0x00}, {0x0e731103, 0x01}, {0x10600100, 0x02}, {0x10000000, 0x03},
+	{0x1a220001, 0x04}, {0x18000100, 0x05}, {0x00002100, 0x06}, {0x00002000, 0x07},
+	{0x1a622001, 0x08}, {0x18002100, 0x09}, {0x10202101, 0x0a}, {0x10002100, 0x0b},
+	{0x00002100, 0x0c}, {0x00002000, 0x0d}, {0x40808020, 0x10}, {0x00201140, 0x11},
+	{0x00200040, 0x12}, {0x00000180, 0x13}, {0x01200180, 0x14}, {0x01000080, 0x15},
+	{0x00002180, 0x16}, {0x00002000, 0x17}, {0x01200040, 0x18}, {0x01000000, 0x19},
+	{0x01200000, 0x1a}, {0x01000080, 0x1b}, {0x00000080, 0x1c}, {0x10200000, 0x20},
+	{0x10000100, 0x21}, {0x00002100, 0x22}, {0x00002000, 0x23}, {0x00002100, 0x28},
+	{0x00002000, 0x29}, {0x00200100, 0x30}, {0x00002100, 0x32}, {0x00002000, 0x33},
+	{0x0a000000, 0x40}, {0x08000000, 0x41}, {0x08000000, 0x60}, {0x08000000, 0x61},
+	{0x00002000, 0x62}, {0x00002000, 0x63}, {0x00002000, 0x68}, {0x00002000, 0x69},
+	{0x00002000, 0x72}, {0x00002000, 0x73}, {0x00200000, 0x80}, {0x00200000, 0x90},
+	{0x00200000, 0xa0}, {0x00200000, 0xb0},
+}
+
 var outerTableLane1Terms = [...]outerBooleanTerm{
 	{0xe42514dd, 0}, {0x02810004, 1}, {0x19000010, 2}, {0x02080800, 3},
 	{0x80520000, 4}, {0x00100000, 5}, {0x01000000, 6}, {0xc4006130, 8},
@@ -26,9 +42,11 @@ var outerTableLane1Terms = [...]outerBooleanTerm{
 	{0x00000200, 13}, {0x01000000, 14}, {0x00000200, 15},
 }
 
-var outerTableLane2Terms = [...]outerBooleanTerm{
-	{0x705c894a, 0}, {0x34828080, 1}, {0x10406028, 2}, {0x15820004, 3},
-	{0x123c1a58, 4}, {0x10000001, 5}, {0x10006408, 6}, {0x19000404, 7},
+func outerTableLane0Mask(pendingS2, s0, s1, s3, s4, tap27, tap69, tap111 uint32) uint32 {
+	return outerBooleanMask(
+		[]uint32{pendingS2, s0, s1, s3, s4, tap27, tap69, tap111},
+		outerTableLane0Terms[:],
+	)
 }
 
 var outerTableLane5Terms = [...]outerBooleanTerm{
@@ -80,10 +98,6 @@ var outerTableLane20Terms = [...]outerBooleanTerm{
 
 func outerTableLane1Mask(pendingS1, pendingS2, pendingS3, s4 uint32) uint32 {
 	return outerBooleanMask([]uint32{pendingS1, pendingS2, pendingS3, s4}, outerTableLane1Terms[:])
-}
-
-func outerTableLane2Mask(s0, s2, s4 uint32) uint32 {
-	return outerBooleanMask([]uint32{s0, s2, s4}, outerTableLane2Terms[:])
 }
 
 func outerTableLane3Mask(s0, pendingS3 uint32) uint32 {

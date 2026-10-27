@@ -77,12 +77,14 @@ func TestOuterTableRecoveredMaskVectors(t *testing.T) {
 		got  uint32
 		want uint32
 	}{
+		{"lane0", outerTableLane0Mask(a, b, c, d, 0xdeadbeef, 0x13579bdf, 0x2468ace0, 0xfedcba98), 0x0723b0a0},
 		{"lane1", outerTableLane1Mask(a, b, c, d), 0xac3635c9},
-		{"lane2", outerTableLane2Mask(a, b, c), 0x7240c172},
+		{"lane2", outerTableLane2Mask(a, b, c, d, 0xdeadbeef), 0x4770d3a2},
 		{"lane3", outerTableLane3Mask(a, b), 0xd583636e},
 		{"lane4", outerTableLane4Mask(a, b, c, d), 0x33333333},
 		{"lane5", outerTableLane5Mask(a, b, c), 0x85a68f14},
 		{"lane6", outerTableLane6Mask(a, b, c), 0x561d3c4e},
+		{"lane7", outerTableLane7Mask(a, b, c, d, 0xdeadbeef), 0x80bcca61},
 		{"lane8", outerTableLane8Mask(a, b, c, d), 0x33333333},
 		{"lane9", outerTableLane9Mask(a, b, c), 0x9e05d60b},
 		{"lane10", outerTableLane10Mask(a, b, c), 0xbf0a18a3},
@@ -93,6 +95,8 @@ func TestOuterTableRecoveredMaskVectors(t *testing.T) {
 		{"lane15", outerTableLane15Mask(a, b, c, d), 0x33333333},
 		{"lane16", outerTableLane16Mask(a, b, c), 0x6c8ae9c5},
 		{"lane17", outerTableLane17Mask(a, b, c), 0xda80f414},
+		{"lane18", outerTableLane18Mask(a, b, c, d, 0xdeadbeef), 0xfe677373},
+		{"lane19", outerTableLane19Mask(a, b, c, d, 0xdeadbeef, 0x13579bdf), 0x169731cb},
 		{"lane20", outerTableLane20Mask(a, b, c, d), 0x0a92601c},
 	}
 	for _, test := range tests {
