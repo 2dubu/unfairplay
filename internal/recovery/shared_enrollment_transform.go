@@ -13,6 +13,7 @@ const (
 	sharedEnrollmentWordCompare = uint64(0x10055fb1c)
 	sharedEnrollmentLoopSelect  = uint64(0x10027b7c8)
 	sharedEnrollmentLoopTail    = uint64(0x10027b800)
+	sharedEnrollmentSavedSelect = uint64(0x1003ea090)
 )
 
 // runSharedEnrollmentBlock replaces the small protected dispatcher core that
@@ -50,9 +51,38 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentLoopSelect:
 		next, err := runSharedEnrollmentLoopSelect(s)
 		return next, true, err
+	case sharedEnrollmentSavedSelect:
+		next, err := runSharedEnrollmentSavedSelect(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSharedEnrollmentSavedSelect(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentSavedSelect)
+	s.x[8] = 0x710bceae
+	if err := s.storeValue(s.sp+0x3b3c, uint64(uint32(s.x[12])), 4); err != nil {
+		return 0, fmt.Errorf("shared enrollment saved selector: %w", err)
+	}
+	s.x[9] = uint64(uint32(s.x[12]) + 0xf1fc0501)
+	s.compare32(uint32(s.x[9]), 0x16c)
+	selector := (uint32(s.x[19]) ^ uint32(boolValue(s.condition("lo")))) & 1
+	s.x[9] = uint64(selector * 0x31)
+	s.x[8] = uint64(uint32(s.x[19]) + uint32(s.x[8]))
+	dispatchIndex := uint32(s.x[9]) ^ uint32(s.x[8])
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment saved-select table: %w", err)
+	}
+	s.x[9] = dispatchTable
+	next, err := loadBootstrapPointer(s, dispatchTable, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment saved-select dispatch: %w", err)
+	}
+	s.x[8] = next
+	s.x[17] = 0x58c6
+	return next, nil
 }
 
 func runSharedEnrollmentWordCompare(s *state) (uint64, error) {
