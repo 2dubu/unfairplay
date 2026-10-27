@@ -13,8 +13,13 @@ import (
 const maximumNestedStageSamples = 3
 
 func nestedStageSampleLimit(name string) int {
-	if name == "outer.optional" {
+	switch name {
+	case "outer.optional":
 		return 256
+	case "outer.even.iteration", "outer.odd.iteration":
+		return 50
+	case "outer.tail.iteration", "outer.writer.iteration":
+		return 140
 	}
 	return maximumNestedStageSamples
 }
@@ -352,4 +357,11 @@ func withRecoveryStage(s *state, name string, run func() error) (err error) {
 	}
 	defer func() { s.tracer.finish(s, capture, err) }()
 	return run()
+}
+
+func withRecoveryValueTrace(s *state, name string, run func() error) error {
+	if s.tracer == nil || !s.tracer.includeValues {
+		return run()
+	}
+	return withRecoveryStage(s, name, run)
 }

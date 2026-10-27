@@ -725,16 +725,24 @@ func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {
 		exit = true
 	case "writer":
 		exit = uint32(worker.x[1])+0x9FCE627E > 0xC7
-		err = profile.runWriter(worker, fault{})
+		err = withRecoveryValueTrace(worker, "outer.writer.iteration", func() error {
+			return profile.runWriter(worker, fault{})
+		})
 	case "tail":
 		exit = uint32(worker.x[3])+0x9FCE627E >= 0x12C
-		err = profile.runTail(worker, fault{})
+		err = withRecoveryValueTrace(worker, "outer.tail.iteration", func() error {
+			return profile.runTail(worker, fault{})
+		})
 	case "even":
 		exit = uint32(worker.x[12])+2 > 0x63
-		err = profile.runEven(worker, fault{})
+		err = withRecoveryValueTrace(worker, "outer.even.iteration", func() error {
+			return profile.runEven(worker, fault{})
+		})
 	case "odd":
 		exit = uint32(worker.x[1])+0x9FCE627F > 0x64
-		err = profile.runOdd(worker, fault{})
+		err = withRecoveryValueTrace(worker, "outer.odd.iteration", func() error {
+			return profile.runOdd(worker, fault{})
+		})
 	case "digest":
 		err = profile.runDigest(worker, fault{})
 	case "outer":
