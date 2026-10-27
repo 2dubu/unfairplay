@@ -64,19 +64,42 @@ func LookupFairPlayBuild(hash string) (FairPlayBuildSupport, bool) {
 	return result, ok
 }
 
+func isBetaBuildVersion(build string) bool {
+	build = strings.TrimSpace(build)
+	if len(build) < 4 || build[len(build)-1] < 'a' || build[len(build)-1] > 'z' {
+		return false
+	}
+	index := 0
+	for index < len(build)-1 && build[index] >= '0' && build[index] <= '9' {
+		index++
+	}
+	if index == 0 || index >= len(build)-1 || build[index] < 'A' || build[index] > 'Z' {
+		return false
+	}
+	index++
+	digitStart := index
+	for index < len(build)-1 && build[index] >= '0' && build[index] <= '9' {
+		index++
+	}
+	return index == len(build)-1 && index > digitStart
+}
+
 // ResolveFairPlayBuildSupport returns exact validation metadata for known
 // builds and a fail-closed portable recovery candidate for every other build.
 // The portable path does not execute the captured daemon. It consumes the
 // captured enrollment inputs with the portable semantic evaluator and promotes a model
 // only after complete SINF and IPA validation succeeds.
 func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool) {
-	if support, ok := LookupFairPlayBuild(hash); ok {
-		return support, true
-	}
 	normalized := strings.ToLower(hash)
 	decoded, err := hex.DecodeString(normalized)
 	if err != nil || len(decoded) != sha256.Size {
 		return FairPlayBuildSupport{Build: build, Status: "invalid-fairplayd-identity"}, false
+	}
+	if isBetaBuildVersion(build) {
+		return FairPlayBuildSupport{Build: build, Status: "unsupported-beta-build"}, false
+	}
+	if support, ok := LookupFairPlayBuild(normalized); ok {
+		return support, true
 	}
 	return FairPlayBuildSupport{
 		Profile:          "portable-current-sinf",
@@ -91,7 +114,7 @@ func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool
 }
 
 func applyFairPlayBinaryProfile(support FairPlayBuildSupport, known bool, profile *FairPlayBinaryProfile) FairPlayBuildSupport {
-	if known || profile == nil || !profile.PortableCandidate {
+	if known || !support.Recovery || profile == nil || !profile.PortableCandidate {
 		return support
 	}
 	support.Profile = profile.StructuralFamily
@@ -751,7 +774,10 @@ func CollectEnrollment(options EnrollmentCollectOptions) (EnrollmentCaptureManif
 	if ipaFile == nil {
 		manifest.Warnings = append(manifest.Warnings, "capture has no IPA; recovery requires a matching personalized IPA")
 	}
-	if !known {
+	if support.Status == "unsupported-beta-build" {
+		manifest.Warnings = append(manifest.Warnings,
+			"beta macOS builds are not supported; use a stable macOS release for enrollment recovery")
+	} else if !known {
 		manifest.Warnings = append(manifest.Warnings,
 			"fairplayd hash is not independently verified; portable recovery requires complete SINF and IPA validation")
 	}

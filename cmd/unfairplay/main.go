@@ -163,11 +163,24 @@ type enrollmentRecoveryOutcome struct {
 	ModelPath string
 }
 
+func enrollmentRecoverySupportError(manifest fairplay.EnrollmentCaptureManifest) error {
+	if manifest.FairPlay.Recovery {
+		return nil
+	}
+	if manifest.FairPlay.Status == "unsupported-beta-build" {
+		return fmt.Errorf("macOS beta build %s is not supported for enrollment recovery", manifest.BuildVersion)
+	}
+	return fmt.Errorf("fairplayd build %s is not supported for enrollment recovery (%s)", manifest.BuildVersion, manifest.FairPlay.Status)
+}
+
 func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrollmentRecoveryOutcome, error) {
 	var outcome enrollmentRecoveryOutcome
 	manifest, err := fairplay.LoadEnrollmentCapture(options.Capture, true)
 	if err != nil {
 		return outcome, fmt.Errorf("validate capture: %w", err)
+	}
+	if err := enrollmentRecoverySupportError(manifest); err != nil {
+		return outcome, err
 	}
 	if manifest.IPA == nil {
 		return outcome, errors.New("capture has no matching personalized IPA")

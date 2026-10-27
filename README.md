@@ -39,6 +39,19 @@ sudo ./unfairplay setup \
 The saved model is private. It is tied to the Mac App Store enrollment, not to
 one app, so it can decrypt other personalized IPAs from the same enrollment.
 
+Some stable portable-evaluator paths may require the exact evaluator
+`fairplayd` arm64e slice as hash-checked reference data. If diagnostics request
+it, pass a private copy without committing or sharing it:
+
+```sh
+sudo ./unfairplay setup \
+  --app /Applications/App.app \
+  --ipa App.ipa \
+  --reference-binary /private/path/fairplayd.arm64e
+```
+
+The reference binary is parsed as data and is never loaded or executed.
+
 Decrypt another IPA:
 
 ```sh
@@ -176,6 +189,14 @@ Verified enrollment contracts: `25G83`, `26A428`/`26A434`, and `26B118`.
 `25G83` and `26B118` use the portable semantic evaluator; native fairplayd
 execution is not required. Unknown arm64e builds are accepted only when model
 recovery and full IPA validation succeed.
+
+Some `26B118` enrollment paths are known to leave the embedded evaluator trace
+and require the exact `26A428`/`26A434` evaluator reference through
+`--reference-binary`. These paths remain fail-closed without it.
+
+Beta or seed builds are not supported. Build identifiers with a trailing
+lowercase seed suffix, such as `26B5091g`, fail before enrollment recovery; use
+a stable macOS release when collecting a reusable model.
 
 The evaluator source build is recorded for audit purposes. UnfairPlay does not
 load or run that fairplayd binary during recovery.

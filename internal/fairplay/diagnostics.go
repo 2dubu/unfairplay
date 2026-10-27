@@ -353,6 +353,10 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 				report.Warnings = append(report.Warnings,
 					"this fairplayd hash is not independently verified; collect a matching IPA and require complete recovery validation")
 			}
+			if host.EnrollmentSupport.Status == "unsupported-beta-build" {
+				report.Warnings = append(report.Warnings,
+					"beta macOS builds are not supported; use a stable macOS release for enrollment recovery")
+			}
 			report.Checks["native_state_accessible"] = host.StateAccessible && host.StateFiles != 0
 			report.Checks["hardware_iomac"] = host.HardwareMACPresent
 		} else if ipaPath == "" && modelPath == "" {
@@ -394,6 +398,10 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 				report.Checks["portable_semantic_validation_candidate"] = true
 				report.Warnings = append(report.Warnings,
 					"this fairplayd hash is not independently verified; recovery will use the portable semantic evaluator and promote a model only after complete SINF and IPA validation")
+			}
+			if capture.FairPlay.Status == "unsupported-beta-build" {
+				report.Warnings = append(report.Warnings,
+					"beta macOS builds are not supported; use a stable macOS release for enrollment recovery")
 			}
 			if ipaPath == "" && capture.IPA != nil {
 				resolved, resolveErr := captureFilePath(capturePath, capture.IPA.Path)

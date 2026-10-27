@@ -21,8 +21,8 @@ import (
 const modelDirectoryEnvironment = "UNFAIRPLAY_MODEL_DIR"
 
 type setupOptions struct {
-	AppPath, IPAPath, ModelDirectory, HardwareInterface string
-	KeepWork                                            bool
+	AppPath, IPAPath, ModelDirectory, HardwareInterface, Reference string
+	KeepWork                                                       bool
 }
 
 func defaultModelDirectory() (string, error) {
@@ -211,7 +211,7 @@ func setupEnrollment(ctx context.Context, options setupOptions) error {
 	}
 	recoveryDirectory := filepath.Join(work, "recovery")
 	recovered, err := recoverEnrollmentResult(ctx, recoverOptions{
-		Capture: capture, Output: recoveryDirectory, SelectionMaxBlocks: 2_000_000,
+		Capture: capture, Output: recoveryDirectory, Reference: options.Reference, SelectionMaxBlocks: 2_000_000,
 	})
 	if err != nil {
 		return err
@@ -268,6 +268,7 @@ func newSetupCommand() *cobra.Command {
 	flags.StringVar(&options.IPAPath, "ipa", "", "Matching personalized encrypted IPA")
 	flags.StringVar(&options.ModelDirectory, "model-dir", "", "Private model directory (defaults to the user configuration directory)")
 	flags.StringVar(&options.HardwareInterface, "interface", "en0", "Built-in IORegistry network interface")
+	flags.StringVar(&options.Reference, "reference-binary", "", "Exact evaluator fairplayd arm64e slice used as hash-checked data")
 	flags.BoolVar(&options.KeepWork, "keep-work", false, "Keep the private capture and validation files")
 	_ = command.MarkFlagRequired("app")
 	_ = command.MarkFlagRequired("ipa")

@@ -186,6 +186,32 @@ func TestUnknownFairPlayBuildUsesPortableValidation(t *testing.T) {
 	}
 }
 
+func TestBetaFairPlayBuildFailsClosed(t *testing.T) {
+	const unknownHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+	for _, build := range []string{"26B5091g", "27A123b"} {
+		support, known := ResolveFairPlayBuildSupport(unknownHash, build)
+		if known || support.Recovery || support.Decrypt || support.Status != "unsupported-beta-build" ||
+			support.EvaluatorProfile != "" || support.EvaluatorSHA256 != "" {
+			t.Fatalf("beta build %s support = %#v, known=%v", build, support, known)
+		}
+		matched := applyFairPlayBinaryProfile(support, false, &FairPlayBinaryProfile{
+			StructuralFamily: "portable-family", PortableCandidate: true,
+		})
+		if matched != support {
+			t.Fatalf("structural profiling enabled beta build %s: %#v", build, matched)
+		}
+	}
+	knownHash, known := ResolveFairPlayBuildSupport(FairPlayBuild26A428Hash, "26B5091g")
+	if known || knownHash.Recovery || knownHash.Status != "unsupported-beta-build" {
+		t.Fatalf("known fairplayd hash enabled a beta build: %#v, known=%v", knownHash, known)
+	}
+	for _, build := range []string{"25G83", "26A434", "26B118", "future-build", ""} {
+		if isBetaBuildVersion(build) {
+			t.Fatalf("stable or unknown build %q classified as beta", build)
+		}
+	}
+}
+
 func TestSemanticEvaluatorModelMatchesCapture(t *testing.T) {
 	capture := &EnrollmentCaptureManifest{
 		FairPlayd: EnrollmentCaptureFile{SHA256: FairPlayBuild26B118Hash},

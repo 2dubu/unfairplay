@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/DrWhax/unfairplay/internal/fairplay"
@@ -24,6 +25,15 @@ func TestConvertIPAMacOSFlags(t *testing.T) {
 	for _, name := range []string{"input", "output", "model", "credential", "force"} {
 		if command.Flags().Lookup(name) == nil {
 			t.Fatalf("convert-ipa-macos has no --%s flag", name)
+		}
+	}
+}
+
+func TestSetupFlags(t *testing.T) {
+	command := newSetupCommand()
+	for _, name := range []string{"app", "ipa", "model-dir", "interface", "reference-binary", "keep-work"} {
+		if command.Flags().Lookup(name) == nil {
+			t.Fatalf("setup has no --%s flag", name)
 		}
 	}
 }
@@ -145,6 +155,23 @@ func TestRecoveryReferenceSelection(t *testing.T) {
 	exact.FairPlayd.Path = "../fairplayd"
 	if _, _, err := recoveryReference(recoverOptions{Capture: "/capture"}, exact); err == nil {
 		t.Fatal("accepted unsafe captured fairplayd path")
+	}
+}
+
+func TestEnrollmentRecoveryRejectsBetaBuild(t *testing.T) {
+	manifest := fairplay.EnrollmentCaptureManifest{
+		BuildVersion: "26B5091g",
+		FairPlay: fairplay.FairPlayBuildSupport{
+			Build: "26B5091g", Status: "unsupported-beta-build",
+		},
+	}
+	err := enrollmentRecoverySupportError(manifest)
+	if err == nil || !strings.Contains(err.Error(), "beta build 26B5091g") {
+		t.Fatalf("beta recovery gate returned %v", err)
+	}
+	manifest.FairPlay.Recovery = true
+	if err := enrollmentRecoverySupportError(manifest); err != nil {
+		t.Fatalf("supported recovery was rejected: %v", err)
 	}
 }
 
