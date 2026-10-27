@@ -6,6 +6,7 @@ const (
 	selectionSIDBProjectionPass = uint64(0x10006c78c)
 	selectionPackedWordSeed     = uint64(0x10072c394)
 	selectionPackedWordStep     = uint64(0x10072c400)
+	selectionByteWriter         = uint64(0x10087c89c)
 )
 
 func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -16,9 +17,47 @@ func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case selectionPackedWordSeed:
 		next, err := runSelectionPackedWordPass(s)
 		return next, true, err
+	case selectionByteWriter:
+		next, err := runSelectionByteWriter(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSelectionByteWriter(s *state) (uint64, error) {
+	s.traceBlock(selectionByteWriter)
+	value, err := s.load(s.x[20]+uint64(uint32(s.x[9])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("selection byte-writer input: %w", err)
+	}
+	s.x[17] = uint64(byte(value))
+	s.x[9] = uint64(uint32(s.x[9]) + 1)
+	s.x[0] = uint64(uint32(s.x[13]) & uint32(s.x[17]<<1))
+	s.x[0] = uint64(uint32(s.x[14]) ^ uint32(s.x[0]))
+	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[0]))
+	s.x[17] = uint64(uint32(s.x[17]) + 0x1c)
+	if err := s.storeValue(s.x[16], uint64(byte(s.x[17])), 1); err != nil {
+		return 0, fmt.Errorf("selection byte-writer output: %w", err)
+	}
+	s.x[16]++
+	s.compare64(s.x[11], 0)
+	gate := uint32(boolValue(s.condition("ne")))
+	s.x[17] = uint64(gate * uint32(s.x[15]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[12]))
+	table, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("selection byte-writer table: %w", err)
+	}
+	s.x[0] = table
+	next, err := loadBootstrapPointer(s, table, uint32(s.x[17]))
+	if err != nil {
+		return 0, fmt.Errorf("selection byte-writer target: %w", err)
+	}
+	s.x[0] = next
+	s.x[11]--
+	s.x[17] = 0x18b5
+	return next, nil
 }
 
 func runSelectionPackedWordPass(s *state) (uint64, error) {
