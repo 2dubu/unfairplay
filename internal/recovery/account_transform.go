@@ -272,6 +272,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountIndexedWordDispatch:
 		next, err := runAccountIndexedWordDispatch(s)
 		return next, true, err
+	case accountIndexedWordStore:
+		next, err := runAccountIndexedWordStore(s)
+		return next, true, err
+	case accountWordCopyRoute:
+		next, err := runAccountWordCopyRoute(s)
+		return next, true, err
+	case accountRangeRoute:
+		next, err := runAccountRangeRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
