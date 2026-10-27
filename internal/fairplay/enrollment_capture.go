@@ -456,11 +456,11 @@ func parseIORegistryHardwareMAC(output []byte, interfaceName string) ([]byte, er
 		roots = append(roots, value)
 	case []any:
 		for _, entry := range value {
-			root, ok := entry.(map[string]any)
-			if !ok {
-				return nil, fmt.Errorf("parse IORegistry: subtree is not a dictionary")
+			// Skip any non-dictionary subtree rather than abandoning the
+			// search; a valid interface may still appear in another subtree.
+			if root, ok := entry.(map[string]any); ok {
+				roots = append(roots, root)
 			}
-			roots = append(roots, root)
 		}
 	default:
 		return nil, fmt.Errorf("parse IORegistry: expected a dictionary or array of subtrees")
