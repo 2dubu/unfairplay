@@ -11,6 +11,7 @@ const (
 	accountOrderedSelect  = uint64(0x10019843c)
 	accountDescriptorMove = uint64(0x10021eb98)
 	accountLimitDispatch  = uint64(0x10030af80)
+	accountWordRoundTail  = uint64(0x10010e000)
 )
 
 func runAccountSmallPair(s *state) (uint64, error) {
@@ -43,6 +44,35 @@ func runAccountSmallPair(s *state) (uint64, error) {
 	}
 	s.x[1] = next
 	s.x[17] = 0x68bc
+	return next, nil
+}
+
+func runAccountWordRoundTail(s *state) (uint64, error) {
+	s.traceBlock(accountWordRoundTail)
+	s.x[12] = uint64(uint32(s.x[16]) + uint32(s.x[11]))
+	s.x[12] = uint64(uint32(s.x[15]) ^ uint32(s.x[12]))
+	s.x[8] = uint64(uint32(s.x[8]) ^ uint32(s.x[12]))
+	s.x[11] = 0xb8563a95
+	s.x[12] = uint64(uint32(s.x[17]) + uint32(s.x[11]))
+	s.x[11] = 0x9249d72b
+	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[11]))
+	s.x[8] = uint64(uint32(s.x[8]) ^ uint32(s.x[12]))
+	s.x[19] = uint64(uint32(s.x[21]) ^ uint32(rotateRight(s.x[22], 2, 32)))
+	s.x[27]++
+	s.x[11] = 0x481b90ff
+	s.compare64(s.x[27], s.x[11])
+	gate := uint32(boolValue(s.condition("eq")))
+	s.x[12] = uint64(gate * 0x867f)
+	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[25]))
+	next, err := loadBootstrapPointer(s, s.x[24], uint32(s.x[12]))
+	if err != nil {
+		return 0, fmt.Errorf("account word-round tail target: %w", err)
+	}
+	s.x[12] = next
+	s.x[22] = s.x[3]
+	s.x[15] = s.x[2]
+	s.x[26] = 0x481b90ff
+	s.x[17] = 0xaaed
 	return next, nil
 }
 
