@@ -1,11 +1,13 @@
 package fairplay
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -37,6 +39,84 @@ func TestParseIORegistryHardwareMAC(t *testing.T) {
 	}
 	if _, err := parseIORegistryHardwareMAC(encoded, "en9"); err == nil {
 		t.Fatal("missing interface was accepted")
+	}
+}
+
+func TestParseIORegistryHardwareMACSubtrees(t *testing.T) {
+	want := []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01}
+	other := []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x02}
+	controller := func(name string, builtin bool, mac []byte) map[string]any {
+		return map[string]any{
+			"IOMACAddress": mac,
+			"IORegistryEntryChildren": []any{
+				map[string]any{"BSD Name": name, "IOBuiltin": builtin},
+			},
+		}
+	}
+	for _, test := range []struct {
+		name     string
+		document any
+		wantMAC  bool
+	}{
+		{"multiple-controllers", []any{controller("en1", true, other), controller("en0", false, other), controller("en0", true, want)}, true},
+		{"not-built-in", []any{controller("en0", false, want)}, false},
+		{"wrong-interface", []any{controller("en1", true, want)}, false},
+		{"short-parent-address", []any{controller("en0", true, want[:5])}, false},
+		{"missing-parent-address", []any{map[string]any{
+			"IORegistryEntryChildren": []any{map[string]any{"BSD Name": "en0", "IOBuiltin": true, "IOMACAddress": want}},
+		}}, false},
+		{"empty", []any{}, false},
+		{"invalid-root", "not a registry", false},
+		{"invalid-subtree", []any{"not a registry"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := plist.Marshal(test.document, plist.XMLFormat)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := parseIORegistryHardwareMAC(encoded, "en0")
+			if test.wantMAC {
+				if err != nil || !bytes.Equal(got, want) {
+					t.Fatalf("IOMACAddress = %x, err = %v; want %x", got, err, want)
+				}
+			} else if err == nil {
+				t.Fatal("invalid hardware identity was accepted")
+			}
+		})
+	}
+}
+
+func TestParseIORegistryHardwareMACRejectsInvalidXML(t *testing.T) {
+	for _, document := range []string{
+		`<plist><array><dict><key>unrelated</key><string>` + "\x01" + `</string></dict></array></plist>`,
+		`<plist><array><dict>`,
+	} {
+		if _, err := parseIORegistryHardwareMAC([]byte(document), "en0"); err == nil {
+			t.Fatal("invalid XML was accepted")
+		}
+	}
+}
+
+func TestExternalIORegistryHardwareMAC(t *testing.T) {
+	macPath := os.Getenv("UNFAIRPLAY_IOMAC_FILE")
+	if runtime.GOOS != "darwin" || macPath == "" {
+		t.Skip("private macOS hardware identity control is not configured")
+	}
+	want, err := os.ReadFile(macPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(want)
+	if len(want) != 6 {
+		t.Fatal("private hardware identity control must contain six bytes")
+	}
+	got, err := ioregHardwareMAC("en0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(got)
+	if !bytes.Equal(got, want) {
+		t.Fatal("hardware identity does not match the private control")
 	}
 }
 

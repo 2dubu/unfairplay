@@ -47,6 +47,23 @@ decryption across other accounts and app layouts. The command fails on any
 changed hash, image count, page count, or incomplete decryption. Use it before
 creating a release tag.
 
+## IORegistry hardware identity control
+
+On macOS, compare live hardware discovery with a previously verified six-byte
+`IOMACAddress` file from the same Mac:
+
+```sh
+UNFAIRPLAY_IOMAC_FILE=/private/path/iomac.bin \
+go test ./internal/fairplay -run '^TestExternalIORegistryHardwareMAC$' -count=1 -v
+```
+
+This exercises the actual `ioreg` query and checks the built-in `en0` interface's
+parent address. Discovery queries only subtrees with `IOMACAddress`, avoiding
+unrelated registry properties that can contain invalid XML characters. It
+still rejects malformed XML and requires a matching built-in interface with a
+six-byte parent address. The test prints neither the address nor its hash; do
+not commit the private control or a full IORegistry dump.
+
 ## macOS IPA conversion control
 
 The private conversion control proves that a version-2 enrollment model derives
