@@ -85,6 +85,7 @@ type RecoveryStageTrace struct {
 	EntryStateSHA256  string                     `json:"entry_state_sha256"`
 	ExitStateSHA256   string                     `json:"exit_state_sha256"`
 	PathSHA256        string                     `json:"path_sha256"`
+	BlockPath         []uint64                   `json:"block_path,omitempty"`
 	Blocks            int                        `json:"blocks"`
 	UniqueBlocks      int                        `json:"unique_blocks"`
 	TopBlocks         []RecoveryTraceBlock       `json:"top_blocks"`
@@ -123,6 +124,7 @@ type recoveryStageCapture struct {
 	writeValues    map[recoveryTraceWriteKey]uint64
 	memoryEvents   []RecoveryTraceMemoryEvent
 	path           hash.Hash
+	blockPath      []uint64
 	blockCount     int
 	invocation     int
 }
@@ -343,6 +345,7 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 		trace.Error = stageErr.Error()
 	}
 	if r.includeValues {
+		trace.BlockPath = append(trace.BlockPath, capture.blockPath...)
 		trace.EntryRegisters = append(trace.EntryRegisters, capture.entryX[:]...)
 		trace.ExitRegisters = append(trace.ExitRegisters, s.x[:]...)
 		entryFlags := capture.entryFlags
@@ -521,6 +524,9 @@ func (s *state) traceBlock(address uint64) {
 	for _, capture := range s.tracer.active {
 		capture.blockCount++
 		capture.blocks[address]++
+		if s.tracer.includeValues {
+			capture.blockPath = append(capture.blockPath, address)
+		}
 		_, _ = capture.path.Write(encoded[:])
 	}
 }
