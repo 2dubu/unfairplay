@@ -5,6 +5,7 @@ import "fmt"
 const (
 	bootstrapRoundFront      = uint64(0x10093ffd0)
 	bootstrapRoundTail       = uint64(0x100940000)
+	bootstrapReducedByte     = uint64(0x10090e67c)
 	bootstrapPreparedStart   = uint64(0x100344b1c)
 	bootstrapPreparedTail    = uint64(0x100344c00)
 	bootstrapPreparedTable   = uint64(0x101075000)
@@ -12,6 +13,73 @@ const (
 	bootstrapPreparedBytesB  = uint64(0x100fe9000)
 	bootstrapPreparedTargets = uint64(0x10105b000)
 )
+
+func runBootstrapReducedByte(s *state) (uint64, error) {
+	s.traceBlock(bootstrapReducedByte)
+	s.x[16] = 0xc0e07039
+	s.x[16] = uint64(uint32(s.x[10])) * uint64(uint32(s.x[16]))
+	s.x[16] >>= 32
+	s.x[17] = uint64(uint32(s.x[10]) - uint32(s.x[16]))
+	s.x[16] = uint64(uint32(s.x[16]) + uint32(s.x[17])>>1)
+	s.x[16] = uint64(uint32(s.x[16]) >> 6)
+	s.x[17] = 0x49
+	s.x[16] = uint64(uint32(s.x[10]) - uint32(s.x[16])*uint32(s.x[17]))
+	s.x[17] = 0xaf478f47
+	s.x[17] = uint64(uint32(s.x[24]) + uint32(s.x[17]))
+	base, err := s.load(s.sp+0x1b8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reduced-byte first table: %w", err)
+	}
+	s.x[3] = base
+	value, err := s.load(base+uint64(uint32(s.x[17])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reduced-byte first input: %w", err)
+	}
+	s.x[17] = uint64(byte(value))
+	s.x[3] = 0x402863da
+	s.x[3] = uint64(uint32(s.x[12]) + uint32(s.x[3]))
+	s.x[6] = 0x2613008c
+	s.x[26] = uint64(uint32(s.x[3]) | uint32(s.x[6]))
+	s.x[3] = 0x2b7b
+	s.x[3] = uint64(uint32(s.x[24]) + uint32(s.x[3]))
+	s.x[3] = uint64(uint32(s.x[3]) + uint32(s.x[26]))
+	s.x[3] = uint64(uint32(s.x[3]) & 0xf)
+	s.x[3] = uint64(uint32(s.x[3]) ^ 2)
+	s.x[6] = 0x6f
+	s.x[3] = uint64(uint32(s.x[3])*uint32(s.x[6]) + uint32(s.x[15]))
+	s.x[6] = uint64(uint32(s.x[3]) * uint32(s.x[9]))
+	s.x[6] = uint64(uint32(s.x[6]) >> 19)
+	s.x[3] = uint64(uint32(s.x[3]) - uint32(s.x[6])*uint32(s.x[20]))
+	s.x[24] = uint64(uint32(s.x[24]) + 1)
+	base, err = s.load(s.sp+0x1b0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reduced-byte second table: %w", err)
+	}
+	s.x[6] = base
+	s.x[3] = base + uint64(uint16(s.x[3]))
+	value, err = s.load(s.x[3], 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reduced-byte second input: %w", err)
+	}
+	s.x[3] = uint64(byte(value))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[21]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[3]))
+	output, err := s.load(s.sp+0x1c0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reduced-byte output: %w", err)
+	}
+	s.x[3] = output
+	if err := s.storeValue(output+uint64(uint32(s.x[16])), uint64(byte(s.x[17])), 1); err != nil {
+		return 0, fmt.Errorf("bootstrap reduced-byte output byte: %w", err)
+	}
+	next, err := loadBootstrapPointer(s, s.x[13], uint32(s.x[12]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reduced-byte dispatch: %w", err)
+	}
+	s.x[12] = next
+	s.x[17] = 0x823b
+	return next, nil
+}
 
 func runBootstrapRound(s *state) (uint64, error) {
 	s.traceBlock(bootstrapRoundFront)
