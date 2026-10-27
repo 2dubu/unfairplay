@@ -175,6 +175,22 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapPointerCycleStart && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapPointerCycle(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapByteClassifyPass && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapByteClassify(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if runtime == nil || runtime.stopPC == 0 {
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {
