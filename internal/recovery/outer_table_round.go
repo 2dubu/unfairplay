@@ -76,5 +76,9 @@ func applyOuterSemanticIteration(table *[outerTableWords]uint32, base uint32, st
 	if !applyOuterPreRound(table, base, state) {
 		return 0, false
 	}
-	return applyOuterTableRound(table, base, state)
+	next, ok := applyOuterTableRound(table, base, state)
+	if !ok || !applyOuterPostRound(table, base, state) {
+		return 0, false
+	}
+	return next, true
 }

@@ -96,7 +96,7 @@ func TestOuterSemanticIterationDeterministic(t *testing.T) {
 		binary.LittleEndian.PutUint32(word[:], value)
 		_, _ = hasher.Write(word[:])
 	}
-	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "c5a2e05e28f6e09fb0ffe851be95d949ab6118ce3d03b8e73cd4fd31f0f2dee9"; got != want {
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "cb32356c29d5e9c9514288305b49dd3d5b39ffb4cf426d5dd2efd64688355e13"; got != want {
 		t.Fatalf("semantic iteration digest = %s, want %s", got, want)
 	}
 }
