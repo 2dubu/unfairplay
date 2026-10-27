@@ -137,6 +137,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountWordRoundStart:
 		next, err := runAccountWordRound(s)
 		return next, true, err
+	case accountDualWordRoundFront:
+		next, err := runAccountDualWordRound(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
