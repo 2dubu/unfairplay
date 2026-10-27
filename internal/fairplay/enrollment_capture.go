@@ -437,7 +437,8 @@ func querySystemVersion(flag string) (string, error) {
 }
 
 func ioregHardwareMAC(interfaceName string) ([]byte, error) {
-	output, err := exec.Command("/usr/sbin/ioreg", "-a", "-l", "-p", "IOService").Output()
+	// Unrelated registry properties can contain characters that are invalid in XML.
+	output, err := exec.Command("/usr/sbin/ioreg", "-a", "-l", "-r", "-k", "IOMACAddress", "-p", "IOService").Output()
 	if err != nil {
 		return nil, fmt.Errorf("read IORegistry: %w", err)
 	}
@@ -445,9 +446,24 @@ func ioregHardwareMAC(interfaceName string) ([]byte, error) {
 }
 
 func parseIORegistryHardwareMAC(output []byte, interfaceName string) ([]byte, error) {
-	var root map[string]any
-	if _, err := plist.Unmarshal(output, &root); err != nil {
+	var document any
+	if _, err := plist.Unmarshal(output, &document); err != nil {
 		return nil, fmt.Errorf("parse IORegistry: %w", err)
+	}
+	var roots []map[string]any
+	switch value := document.(type) {
+	case map[string]any:
+		roots = append(roots, value)
+	case []any:
+		for _, entry := range value {
+			root, ok := entry.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("parse IORegistry: subtree is not a dictionary")
+			}
+			roots = append(roots, root)
+		}
+	default:
+		return nil, fmt.Errorf("parse IORegistry: expected a dictionary or array of subtrees")
 	}
 	var visit func(map[string]any, map[string]any) []byte
 	visit = func(node, parent map[string]any) []byte {
@@ -468,8 +484,10 @@ func parseIORegistryHardwareMAC(output []byte, interfaceName string) ([]byte, er
 		}
 		return nil
 	}
-	if result := visit(root, map[string]any{}); result != nil {
-		return result, nil
+	for _, root := range roots {
+		if result := visit(root, nil); result != nil {
+			return result, nil
+		}
 	}
 	return nil, fmt.Errorf("built-in interface %s has no six-byte parent IOMACAddress", interfaceName)
 }
