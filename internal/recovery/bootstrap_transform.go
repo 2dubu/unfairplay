@@ -10,6 +10,10 @@ const (
 	bootstrapMixerContinue        = uint64(0x1008c3b90)
 	bootstrapShortWordPass        = uint64(0x100b4dea0)
 	bootstrapLongWordPass         = uint64(0x100b4e878)
+	bootstrapAccumulatorPassA     = uint64(0x1009729ac)
+	bootstrapAccumulatorPassB     = uint64(0x100916db0)
+	bootstrapShufflePass          = uint64(0x10051b558)
+	bootstrapShuffleExit          = uint64(0x10051b5a8)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -190,6 +194,224 @@ func runBootstrapLongWordStep(s *state) (uint64, error) {
 	s.x[13] = next
 	s.x[17] = 0x1028
 	return next, nil
+}
+
+// runBootstrapAccumulatorPass executes either bounded accumulator loop. Both
+// native handlers return their own address while a word range remains and a
+// continuation address when the range is complete.
+func runBootstrapAccumulatorPass(s *state, pc uint64) (uint64, error) {
+	const maximumWords = 128
+	for word := 0; word < maximumWords; word++ {
+		var next uint64
+		var err error
+		switch pc {
+		case bootstrapAccumulatorPassA:
+			next, err = runBootstrapAccumulatorStepA(s)
+		case bootstrapAccumulatorPassB:
+			next, err = runBootstrapAccumulatorStepB(s)
+		default:
+			return pc, fmt.Errorf("unknown bootstrap accumulator pass %#x", pc)
+		}
+		if err != nil || next != pc {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap accumulator pass %#x exceeded %d words", pc, maximumWords)
+}
+
+func runBootstrapAccumulatorStepA(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap accumulator A state is unavailable")
+	}
+	s.traceBlock(bootstrapAccumulatorPassA)
+	index := uint32(s.x[11]) + uint32(s.x[14])
+	left, err := loadBootstrapWord(s, s.x[9], index)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator A left table: %w", err)
+	}
+	masked := uint32(s.x[4]) & uint32(s.x[20])
+	left = (left ^ s.x[16]) + (s.x[8] >> 32)
+	right, err := loadBootstrapWord(s, s.x[27], index)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator A right table: %w", err)
+	}
+	coefficient := masked + uint32(s.x[19])
+	right = uint64(uint32(right) ^ coefficient)
+	s.x[8] = uint64(uint32(s.x[7]))*uint64(uint32(right)) + left
+
+	accumulator := s.x[13] >> 32
+	tableWord, err := loadBootstrapWord(s, s.x[26], index)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator A coefficient table: %w", err)
+	}
+	accumulator += uint64(uint32(tableWord^s.x[16]))*uint64(uint32(s.x[0])) + uint64(uint32(s.x[8]))
+	fold := uint32(s.x[24]) & uint32(accumulator<<1)
+	output := uint32(accumulator) - fold + uint32(s.x[16])
+	storeIndex := uint32(s.x[11]) + uint32(s.x[12])
+	if err := storeBootstrapWord(s, s.x[9], storeIndex, output); err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator A output table: %w", err)
+	}
+
+	nextCounter := uint32(s.x[11]) + 1
+	branchCounter := uint32(s.x[11]) + uint32(s.x[28])
+	s.compare32(branchCounter, uint32(s.x[25]))
+	if s.condition("gt") {
+		s.compare32(branchCounter, uint32(s.x[1]))
+	} else {
+		s.setNZCV(0)
+	}
+	dispatchIndex := uint32(boolValue(s.condition("lt")))*uint32(s.x[21]) ^ uint32(s.x[2])
+	dispatchBase, err := s.load(s.sp+0xa8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator A dispatch base: %w", err)
+	}
+	next, err := loadBootstrapPointer(s, dispatchBase, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator A dispatch: %w", err)
+	}
+
+	s.x[5] = uint64(nextCounter)
+	s.x[6] = next
+	s.x[11] = uint64(nextCounter)
+	s.x[13] = accumulator
+	s.x[15] = dispatchBase
+	s.x[17] = 0x5bb3
+	s.x[22] = uint64(masked)
+	return next, nil
+}
+
+func runBootstrapAccumulatorStepB(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap accumulator B state is unavailable")
+	}
+	s.traceBlock(bootstrapAccumulatorPassB)
+	s.compare32(uint32(s.x[27]), uint32(s.x[22]))
+	gate := uint32(boolValue(s.condition("gt")))
+	index := uint32(s.x[8]) + uint32(s.x[19])
+	left, err := loadBootstrapWord(s, s.x[28], index)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator B left table: %w", err)
+	}
+	carry := s.x[23] ^ (s.x[1] >> 32)
+	left = uint64(uint32(s.x[30]) ^ uint32(left))
+	carry += left
+	right, err := loadBootstrapWord(s, s.x[14], index)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator B right table: %w", err)
+	}
+	mixed := (right ^ s.x[24]) + s.x[25]
+	chain := (right ^ s.x[26]) + s.x[9]
+	mixed ^= chain
+	s.x[23] = 0xc0c02ce9
+	combined := ((right ^ s.x[16]) + s.x[0]) ^ mixed
+	combined += s.x[2]
+	combined = combined*s.x[15] + carry
+	combined -= s.x[21] & (combined << 1)
+	result := combined + s.x[7]
+	output := uint32(result) ^ uint32(s.x[3])
+	storeIndex := uint32(s.x[8]) + uint32(s.x[4])
+	if err := storeBootstrapWord(s, s.x[28], storeIndex, output); err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator B output table: %w", err)
+	}
+
+	nextCounter := uint32(s.x[8]) + 1
+	branchCounter := uint32(s.x[8]) + uint32(s.x[5])
+	s.compare32(branchCounter, uint32(s.x[6]))
+	lessThanFirstBound := uint32(boolValue(s.condition("lt")))
+	selector := gate ^ lessThanFirstBound
+	s.compare32(branchCounter, uint32(s.x[13]))
+	lessThanSecondBound := uint32(boolValue(s.condition("lt")))
+	s.compare32(selector, 0)
+	dispatchBit := lessThanSecondBound
+	if s.condition("ne") {
+		dispatchBit = gate
+	}
+	dispatchIndex := dispatchBit*uint32(s.x[12]) ^ uint32(s.x[11])
+	dispatchBase, err := s.load(s.sp+0xa8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator B dispatch base: %w", err)
+	}
+	next, err := loadBootstrapPointer(s, dispatchBase, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator B dispatch: %w", err)
+	}
+
+	s.x[1] = result
+	s.x[8] = uint64(nextCounter)
+	s.x[10] = uint64(nextCounter)
+	s.x[17] = 0x207f
+	s.x[20] = next
+	return next, nil
+}
+
+// runBootstrapShufflePass is a descending Fisher-Yates-style permutation of
+// 64-bit table entries. The native code expresses each XOR swap as a handler
+// that dispatches back to itself.
+func runBootstrapShufflePass(s *state) (uint64, error) {
+	const maximumEntries = 4096
+	for entry := 0; entry < maximumEntries; entry++ {
+		next, err := runBootstrapShuffleStep(s)
+		if err != nil || next != bootstrapShufflePass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap shuffle exceeded %d entries", maximumEntries)
+}
+
+func runBootstrapShuffleStep(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap shuffle state is unavailable")
+	}
+	s.traceBlock(bootstrapShufflePass)
+	limit := uint32(s.x[11])
+	seed := uint32(s.x[17])
+	mixed := (seed + limit) ^ seed
+	mixed *= uint32(s.x[0])
+	selected := uint32(0)
+	if limit != 0 {
+		selected = mixed % limit
+	}
+	leftAddress := s.x[16] + uint64(limit)*8
+	rightAddress := s.x[16] + uint64(selected)*8
+	left, err := s.load(leftAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap shuffle left entry: %w", err)
+	}
+	right, err := s.load(rightAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap shuffle right entry: %w", err)
+	}
+	left ^= right
+	if err := s.storeValue(leftAddress, left, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap shuffle left xor: %w", err)
+	}
+	rightLoaded, err := s.load(rightAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap shuffle updated right entry: %w", err)
+	}
+	right = rightLoaded ^ left
+	if err := s.storeValue(rightAddress, right, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap shuffle right xor: %w", err)
+	}
+	left, err = s.load(leftAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap shuffle updated left entry: %w", err)
+	}
+	left ^= right
+	if err := s.storeValue(leftAddress, left, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap shuffle final left entry: %w", err)
+	}
+
+	s.x[1] = uint64(limit) + 1
+	s.x[2] = leftAddress
+	s.x[3] = right
+	s.x[4] = rightLoaded
+	s.x[11] = uint64(limit) - 1
+	s.compare64(s.x[1], 2)
+	if s.condition("gt") {
+		return bootstrapShufflePass, nil
+	}
+	return bootstrapShuffleExit, nil
 }
 
 // runBootstrapRecurrenceStep is the direct form of the hot recurrence used by
