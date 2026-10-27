@@ -53,6 +53,49 @@ func TestMontgomeryCIOSSquare(t *testing.T) {
 	}
 }
 
+func TestMontgomeryCIOSMultiply(t *testing.T) {
+	random := rand.New(rand.NewSource(0x10057ae74))
+	base := new(big.Int).Lsh(big.NewInt(1), 32)
+	for _, limbs := range []int{1, 2, 32, 64} {
+		for trial := 0; trial < 64; trial++ {
+			modulus := make([]uint32, limbs)
+			left := make([]uint32, limbs)
+			right := make([]uint32, limbs)
+			for index := range modulus {
+				modulus[index] = random.Uint32()
+				left[index] = random.Uint32()
+				right[index] = random.Uint32()
+			}
+			modulus[0] |= 1
+			modulus[len(modulus)-1] |= 0x80000000
+			modulusValue := littleEndianWordsBig(modulus)
+			leftValue := littleEndianWordsBig(left)
+			rightValue := littleEndianWordsBig(right)
+			leftValue.Mod(leftValue, modulusValue)
+			rightValue.Mod(rightValue, modulusValue)
+			for index := range left {
+				left[index] = uint32(new(big.Int).Rsh(new(big.Int).Set(leftValue), uint(32*index)).Uint64())
+				right[index] = uint32(new(big.Int).Rsh(new(big.Int).Set(rightValue), uint(32*index)).Uint64())
+			}
+			inverseValue := new(big.Int).ModInverse(new(big.Int).SetUint64(uint64(modulus[0])), base)
+			inverse := -uint32(inverseValue.Uint64())
+			got, err := montgomeryCIOSMultiply(left, right, modulus, inverse)
+			if err != nil {
+				t.Fatalf("limbs %d trial %d: %v", limbs, trial, err)
+			}
+			raw := littleEndianWordsBig(append(append([]uint32(nil), got.Words...), got.Carry))
+			radix := new(big.Int).Lsh(big.NewInt(1), uint(32*limbs))
+			radixInverse := new(big.Int).ModInverse(radix, modulusValue)
+			want := new(big.Int).Mul(leftValue, rightValue)
+			want.Mul(want, radixInverse)
+			want.Mod(want, modulusValue)
+			if new(big.Int).Mod(new(big.Int).Set(raw), modulusValue).Cmp(want) != 0 {
+				t.Fatalf("limbs %d trial %d has wrong residue", limbs, trial)
+			}
+		}
+	}
+}
+
 func TestMontgomeryCIOSSquareRejectsInvalidParameters(t *testing.T) {
 	if _, err := montgomeryCIOSSquare(nil, nil, 0); err == nil {
 		t.Fatal("empty Montgomery input was accepted")

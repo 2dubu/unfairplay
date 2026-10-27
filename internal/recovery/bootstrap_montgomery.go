@@ -101,19 +101,25 @@ func runBootstrapMontgomerySquare(s *state) (uint64, error) {
 // bootstrap retains the extra carry limb and deliberately does not perform the
 // usual final conditional subtraction.
 func montgomeryCIOSSquare(input, modulus []uint32, inverse uint32) (montgomeryWordResult, error) {
-	if len(input) == 0 || len(input) != len(modulus) {
-		return montgomeryWordResult{}, fmt.Errorf("invalid Montgomery geometry %d/%d", len(input), len(modulus))
+	return montgomeryCIOSMultiply(input, input, modulus, inverse)
+}
+
+// montgomeryCIOSMultiply is the general multiply used by the bootstrap around
+// the recovered squaring fast path.
+func montgomeryCIOSMultiply(left, right, modulus []uint32, inverse uint32) (montgomeryWordResult, error) {
+	if len(left) == 0 || len(left) != len(right) || len(left) != len(modulus) {
+		return montgomeryWordResult{}, fmt.Errorf("invalid Montgomery geometry %d/%d/%d", len(left), len(right), len(modulus))
 	}
 	if modulus[0]&1 == 0 || modulus[0]*inverse != ^uint32(0) {
 		return montgomeryWordResult{}, fmt.Errorf("invalid Montgomery modulus inverse")
 	}
 
-	multiplicand := littleEndianWordsBig(input)
+	multiplicand := littleEndianWordsBig(right)
 	modulusValue := littleEndianWordsBig(modulus)
 	accumulator := new(big.Int)
 	product := new(big.Int)
 	reduction := new(big.Int)
-	for _, word := range input {
+	for _, word := range left {
 		product.Mul(multiplicand, new(big.Int).SetUint64(uint64(word)))
 		accumulator.Add(accumulator, product)
 		factor := uint32(accumulator.Uint64()) * inverse
@@ -125,7 +131,7 @@ func montgomeryCIOSSquare(input, modulus []uint32, inverse uint32) (montgomeryWo
 		accumulator.Rsh(accumulator, 32)
 	}
 
-	words := make([]uint32, len(input))
+	words := make([]uint32, len(left))
 	remaining := new(big.Int).Set(accumulator)
 	mask := new(big.Int).SetUint64(0xffffffff)
 	for index := range words {
