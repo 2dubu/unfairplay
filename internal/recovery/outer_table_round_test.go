@@ -15,7 +15,7 @@ func TestOuterTableRoundDeterministic(t *testing.T) {
 	state := outerTableRoundState{
 		Words:    [5]uint32{0x01234567, 0x89abcdef, 0x0f1e2d3c, 0x4b5a6978, 0xdeadbeef},
 		Hardware: [6]byte{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc},
-		Codec:    [17]byte{4: 0x78, 6: 0x9a, 8: 0xbc},
+		Codec:    [33]byte{4: 0x78, 6: 0x9a, 8: 0xbc},
 	}
 	next, ok := applyOuterTableRound(&table, outerTableInitialBase, &state)
 	if !ok || next != 11 {
@@ -69,6 +69,9 @@ func TestOuterSemanticIterationRejectsInvalidInput(t *testing.T) {
 	if _, ok := applyOuterFullIteration(&table, 0, &state, nil); ok {
 		t.Fatal("accepted nil full-iteration control state")
 	}
+	if _, ok := applyOuterNaturalLoop(&table, &state, nil); ok {
+		t.Fatal("accepted nil natural-loop control state")
+	}
 }
 
 func TestOuterSemanticIterationDeterministic(t *testing.T) {
@@ -80,7 +83,7 @@ func TestOuterSemanticIterationDeterministic(t *testing.T) {
 		Words:         [5]uint32{0x243f6a88, 0x85a308d3, 0x13198a2e, 0x03707344, 0xa4093822},
 		Hardware:      [6]byte{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc},
 		HardwareIndex: 4,
-		Codec: [17]byte{
+		Codec: [33]byte{
 			4: 0xde, 6: 0xad, 7: 0xbe, 8: 0xef, 9: 0x13,
 			10: 0x57, 11: 0x9b, 12: 0xdf, 14: 0x24, 15: 0x68, 16: 0xac,
 		},
@@ -113,7 +116,7 @@ func TestOuterFullIterationDeterministic(t *testing.T) {
 		Words:         [5]uint32{0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f},
 		Hardware:      [6]byte{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc},
 		HardwareIndex: 0,
-		Codec: [17]byte{
+		Codec: [33]byte{
 			4: 0x10, 5: 0x21, 6: 0x32, 7: 0x43, 8: 0x54, 9: 0x65,
 			10: 0x76, 11: 0x87, 12: 0x98, 13: 0xa9, 14: 0xba, 15: 0xcb, 16: 0xdc,
 		},
@@ -139,5 +142,39 @@ func TestOuterFullIterationDeterministic(t *testing.T) {
 	}
 	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "7d75c9b0f553425e8a979606b7eaa48af3415c7ca396aa89f23571890417a8e0"; got != want {
 		t.Fatalf("full iteration digest = %s, want %s", got, want)
+	}
+}
+
+func TestOuterNaturalLoopDeterministic(t *testing.T) {
+	var table [outerTableWords]uint32
+	for index := range table {
+		table[index] = uint32(index)*0x7feb352d ^ 0x846ca68b
+	}
+	state := outerTableRoundState{
+		Words:    [5]uint32{0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f},
+		Hardware: [6]byte{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc},
+		Codec:    [33]byte{4: 0x10, 5: 0x21, 6: 0x32, 7: 0x43, 8: 0x54, 9: 0x65, 10: 0x76, 11: 0x87, 12: 0x98, 13: 0xa9, 14: 0xba, 15: 0xcb, 16: 0xdc, 17: 0xed, 18: 0xfe, 19: 0x0f, 20: 0x11, 21: 0x22, 22: 0x33, 23: 0x44, 24: 0x55, 25: 0x66, 26: 0x77, 27: 0x88, 28: 0x99, 29: 0xaa, 30: 0xbb, 31: 0xcc, 32: 0xdd},
+	}
+	control := outerIterationControl{X1: 0x60319d83, CounterSeed: 0x12345678}
+	iterations, ok := applyOuterNaturalLoop(&table, &state, &control)
+	if !ok || iterations != outerNaturalIterationCount {
+		t.Fatalf("natural loop=%d/%v", iterations, ok)
+	}
+	hasher := sha256.New()
+	var word [4]byte
+	for _, value := range table {
+		binary.LittleEndian.PutUint32(word[:], value)
+		_, _ = hasher.Write(word[:])
+	}
+	for _, value := range state.Words {
+		binary.LittleEndian.PutUint32(word[:], value)
+		_, _ = hasher.Write(word[:])
+	}
+	for _, value := range [...]uint32{control.X1, control.CounterSeed, uint32(state.HardwareIndex)} {
+		binary.LittleEndian.PutUint32(word[:], value)
+		_, _ = hasher.Write(word[:])
+	}
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "bf7ae79b18e4ec06b6b7d8efe7f4c3500a479e587ff422b8174fce762ce8ac46"; got != want {
+		t.Fatalf("natural loop digest = %s, want %s", got, want)
 	}
 }

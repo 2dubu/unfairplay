@@ -24,7 +24,7 @@ type outerDigestState struct {
 // applyOuterDigest evaluates the complete protected digest recurrence. The
 // generated step below is a direct bit-vector circuit: it does not interpret
 // lifted instructions or depend on a captured address space.
-func applyOuterDigest(state *outerDigestState, hardware *[6]byte, codec *[17]byte) bool {
+func applyOuterDigest(state *outerDigestState, hardware *[6]byte, codec *[33]byte) bool {
 	if state == nil || hardware == nil || codec == nil {
 		return false
 	}
@@ -32,7 +32,7 @@ func applyOuterDigest(state *outerDigestState, hardware *[6]byte, codec *[17]byt
 	return applyOuterDigestAtHardwareBase(state, hardware, codec, hardwareBase)
 }
 
-func applyOuterDigestAtHardwareBase(state *outerDigestState, hardware *[6]byte, codec *[17]byte, hardwareBase uint32) bool {
+func applyOuterDigestAtHardwareBase(state *outerDigestState, hardware *[6]byte, codec *[33]byte, hardwareBase uint32) bool {
 	if state == nil || hardware == nil || codec == nil || hardwareBase >= 6 {
 		return false
 	}

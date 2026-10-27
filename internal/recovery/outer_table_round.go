@@ -8,13 +8,15 @@ type outerTableRoundState struct {
 	Words         [5]uint32
 	Hardware      [6]byte
 	HardwareIndex uint8
-	Codec         [17]byte
+	Codec         [33]byte
 }
 
 type outerIterationControl struct {
 	X1          uint32
 	CounterSeed uint32
 }
+
+const outerNaturalIterationCount = 317
 
 // applyOuterTableRoundReduced preserves the named lane formulas used by the
 // focused unit tests. The complete circuit below is authoritative because a
@@ -115,4 +117,27 @@ func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state 
 	}
 	control.X1 = 0x60319e4b
 	return next, true
+}
+
+func applyOuterNaturalLoop(table *[outerTableWords]uint32, state *outerTableRoundState, control *outerIterationControl) (int, bool) {
+	if table == nil || state == nil || control == nil {
+		return 0, false
+	}
+	base := outerTableInitialBase
+	cycleIndex := uint32(0)
+	for iteration := 1; iteration <= outerNaturalIterationCount; iteration++ {
+		next, ok := applyOuterFullIteration(table, base, state, control)
+		if !ok {
+			return iteration - 1, false
+		}
+		base = next
+		if iteration >= 9 && (iteration-9)%11 == 0 {
+			cycleIndex++
+			if !applyOuterCycle(state, cycleIndex) {
+				return iteration, false
+			}
+			control.X1 = 0x60319d87
+		}
+	}
+	return outerNaturalIterationCount, true
 }

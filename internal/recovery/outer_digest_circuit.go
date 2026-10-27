@@ -2,7 +2,7 @@
 package recovery
 
 func applyOuterDigestStep(
-	state *outerDigestState, hardwareBytes *[6]byte, codecBytes *[17]byte,
+	state *outerDigestState, hardwareBytes *[6]byte, codecBytes *[33]byte,
 	hardwareBase, codecPhase uint32,
 ) bool {
 	if state == nil || hardwareBytes == nil || codecBytes == nil || hardwareBase >= 6 || codecPhase >= 13 {

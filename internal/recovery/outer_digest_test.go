@@ -36,7 +36,7 @@ func TestOuterDigestMatchesLiftedKernel(t *testing.T) {
 	binary.LittleEndian.PutUint64(stack[0xdf0:], lookupBase)
 
 	hardware := [6]byte{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc}
-	codec := [17]byte{
+	codec := [33]byte{
 		4: 0x10, 5: 0x21, 6: 0x32, 7: 0x43, 8: 0x54, 9: 0x65,
 		10: 0x76, 11: 0x87, 12: 0x98, 13: 0xa9, 14: 0xba, 15: 0xcb, 16: 0xdc,
 	}
@@ -93,7 +93,7 @@ func TestOuterDigestMatchesLiftedKernel(t *testing.T) {
 func TestOuterDigestRejectsInvalidInput(t *testing.T) {
 	var state outerDigestState
 	var hardware [6]byte
-	var codec [17]byte
+	var codec [33]byte
 	if applyOuterDigest(nil, &hardware, &codec) || applyOuterDigest(&state, nil, &codec) || applyOuterDigest(&state, &hardware, nil) {
 		t.Fatal("accepted an invalid digest input")
 	}
@@ -108,6 +108,7 @@ func TestOuterDigestInitialCounter(t *testing.T) {
 		{0x60319d83, 0x9abcdef0, 0x62477518},
 		{0x60319d83, 0xffffffff, 0x6247751c},
 		{0x60319e4b, 0x12345678, 0x62477517},
+		{0x60319d87, 0x12345678, 0x6247751b},
 	}
 	for _, vector := range vectors {
 		got, ok := outerDigestInitialCounter(vector.x1, vector.seed)

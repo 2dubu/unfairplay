@@ -676,9 +676,13 @@ func outerDigestCounterHash(x1, seed uint32) uint32 {
 }
 
 func outerDigestInitialCounter(x1, seed uint32) (uint32, bool) {
-	if x1 != 0x60319d83 && x1 != 0x60319e4b {
+	if x1 != 0x60319d83 && x1 != 0x60319e4b && x1 != 0x60319d87 {
 		return 0, false
 	}
 	remainder := outerDigestCounterHash(x1, seed) % 7
-	return 0x62477516 + (remainder+6)%7, true
+	base := uint32(0x62477516)
+	if x1 == 0x60319d87 {
+		base += 4
+	}
+	return base + (remainder+6)%7, true
 }
