@@ -19,7 +19,7 @@ func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 		next, err := runSelectionPackedWordPass(s)
 		return next, true, err
 	case selectionByteWriter:
-		next, err := runSelectionByteWriter(s)
+		next, err := runSelectionByteWriterPass(s)
 		return next, true, err
 	case selectionMixTail:
 		next, err := runSelectionMixTail(s)
@@ -27,6 +27,49 @@ func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSelectionByteWriterPass(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	if s == nil || s.x[11] >= maximumBytes {
+		return 0, fmt.Errorf("unsupported selection byte-writer length %d", s.x[11]+1)
+	}
+	length := int(s.x[11] + 1)
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("selection byte-writer table: %w", err)
+	}
+	continueTarget, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[15])^uint32(s.x[12]))
+	if err != nil {
+		return 0, fmt.Errorf("selection byte-writer continuation: %w", err)
+	}
+	if length > 1 && continueTarget != selectionByteWriter {
+		return 0, fmt.Errorf("unsupported selection byte-writer continuation %#x", continueTarget)
+	}
+	for index := 0; index < length; index++ {
+		s.traceBlock(selectionByteWriter)
+		value, err := s.load(s.x[20]+uint64(uint32(s.x[9])), 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection byte-writer input: %w", err)
+		}
+		input := uint32(byte(value))
+		mixed := uint32(s.x[14]) ^ (uint32(s.x[13]) & (input << 1))
+		output := byte(input + mixed + 0x1c)
+		if err := s.storeValue(s.x[16], uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("selection byte-writer output: %w", err)
+		}
+		s.x[9] = uint64(uint32(s.x[9]) + 1)
+		s.x[16]++
+	}
+	next, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[12]))
+	if err != nil {
+		return 0, fmt.Errorf("selection byte-writer target: %w", err)
+	}
+	s.x[0] = next
+	s.x[11] = ^uint64(0)
+	s.x[17] = 0x18b5
+	s.compare64(0, 0)
+	return next, nil
 }
 
 func runSelectionMixTail(s *state) (uint64, error) {
