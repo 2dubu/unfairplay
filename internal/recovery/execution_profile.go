@@ -2,9 +2,16 @@ package recovery
 
 import "fmt"
 
+// semanticBuildProfile contains only genuine per-build ABI and encoding data.
+// The algorithms consuming it are shared typed Go and must not vary by build.
+type semanticBuildProfile struct {
+	outer outerStageLayout
+}
+
 type executionProfile struct {
 	name       string
 	binaryHash [32]byte
+	semantic   *semanticBuildProfile
 
 	accountEntryStart, accountEntryStop uint64
 	bootstrapStart, bootstrapStop       uint64
@@ -48,6 +55,7 @@ type executionProfile struct {
 func embedded26A428ExecutionProfile() *executionProfile {
 	return &executionProfile{
 		name: "macos26a428", binaryHash: rawSourceBinaryHash,
+		semantic:          &semanticBuildProfile{outer: outerStage26A428Layout},
 		accountEntryStart: 0x100cd1c18, accountEntryStop: 0x10057ae74,
 		bootstrapStart: 0x10057ae74, bootstrapStop: 0x1005b7438,
 		selectionStart: 0x1006b10a0, selectionStop: 0x10008a644, selectionStopHits: 2,

@@ -182,7 +182,17 @@ func storeOuterStageState(worker *state, profile *executionProfile, layout outer
 // fairplayd blocks. Its inputs and outputs are the same stage ABI used by the
 // direct selection state machine.
 func runSemanticOuterStage(worker *state) (int, error) {
-	return runSemanticOuterStageWithLayout(worker, outerStage26A428Layout)
+	if worker == nil || worker.model == nil {
+		return 0, fmt.Errorf("outer stage state is unavailable")
+	}
+	profile, err := executionProfileForModel(worker.model)
+	if err != nil {
+		return 0, err
+	}
+	if profile.semantic == nil {
+		return 0, fmt.Errorf("no semantic outer-stage profile for build %q", profile.name)
+	}
+	return runSemanticOuterStageWithLayout(worker, profile.semantic.outer)
 }
 
 func runSemanticNestedOuterStage(worker *state) (int, error) {
@@ -193,7 +203,10 @@ func runSemanticNestedOuterStage(worker *state) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	layout := outerStage26A428Layout
+	if profile.semantic == nil {
+		return 0, fmt.Errorf("no semantic outer-stage profile for build %q", profile.name)
+	}
+	layout := profile.semantic.outer
 	codecAddress, err := worker.load(worker.sp+layout.codecEndPointerSlot, 8)
 	if err != nil {
 		return 0, fmt.Errorf("load nested outer codec pointer: %w", err)
@@ -214,9 +227,6 @@ func runSemanticOuterStageWithLayout(worker *state, layout outerStageLayout) (in
 	profile, err := executionProfileForModel(worker.model)
 	if err != nil {
 		return 0, err
-	}
-	if profile.binaryHash != rawSourceBinaryHash {
-		return 0, fmt.Errorf("no semantic outer stage for fairplayd build")
 	}
 	table, semantic, control, err := loadOuterStageState(worker, profile, layout)
 	if err != nil {
