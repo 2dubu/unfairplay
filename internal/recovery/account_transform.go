@@ -17,6 +17,8 @@ const (
 	accountEntryCompareTail       = uint64(0x100af3000)
 	accountEntryRoundTailA        = uint64(0x100139000)
 	accountEntryRoundTailB        = uint64(0x100147c00)
+	accountEntryByteStoreStart    = uint64(0x100131bc0)
+	accountEntryByteStoreTail     = uint64(0x100131c00)
 )
 
 func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -60,9 +62,84 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountEntryRoundTailB:
 		next, err := runAccountEntryRoundTailB(s)
 		return next, true, err
+	case accountEntryByteStoreStart:
+		next, err := runAccountEntryByteStore(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runAccountEntryByteStore(s *state) (uint64, error) {
+	s.traceBlock(accountEntryByteStoreStart)
+	s.x[11] = 0x545dd584
+	s.x[17] = 0x00025fdf
+	s.x[11] = uint64(uint32(s.x[8]) + uint32(s.x[11]))
+	s.x[11] = uint64(uint32(s.x[11]) & uint32(s.x[17]))
+	base, err := s.load(s.x[1]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-store input base: %w", err)
+	}
+	s.x[17] = base
+	s.x[4] = uint64(uint32(s.x[3]) + 0xef50d627)
+	value, err := s.load(base+uint64(uint32(s.x[4])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-store input: %w", err)
+	}
+	s.x[17] = uint64(byte(value))
+	s.x[4] = uint64(uint32(s.x[3]) + 1)
+	s.x[5] = s.x[0] + 4
+	if err := s.storeValue(s.x[5]+uint64(uint32(s.x[9])), uint64(byte(s.x[17])), 1); err != nil {
+		return 0, fmt.Errorf("account-entry byte-store output: %w", err)
+	}
+	s.x[9] = uint64(uint32(s.x[9]) + 1)
+	word, err := s.load(s.x[1]+4, 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-store word: %w", err)
+	}
+	s.x[17] = uint64(uint32(word))
+
+	s.traceBlock(accountEntryByteStoreTail)
+	s.x[5] = uint64(uint32(s.x[17]) ^ uint32(s.x[12]))
+	s.x[5] = uint64(uint32(s.x[5]) + uint32(s.x[13]))
+	s.x[6] = uint64(uint32(s.x[17]) ^ uint32(s.x[14]))
+	s.x[6] = uint64(uint32(s.x[6]) + uint32(s.x[15]))
+	s.x[5] = uint64(uint32(s.x[5]) ^ uint32(s.x[6]))
+	s.x[6] = 0xcd463667
+	s.x[6] = uint64(uint32(s.x[11]) + uint32(s.x[6]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[6]))
+	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[16]))
+	s.x[17] = uint64(uint32(s.x[5]) ^ uint32(s.x[17]))
+	s.x[5] = 0x3489f9a3
+	s.x[6] = 0x13ae9f40
+	s.x[7] = 0x4539237b
+	s.x[3] = uint64(uint32(s.x[3]) + uint32(s.x[5]))
+	s.compare32(uint32(s.x[3]), uint32(s.x[7]))
+	first := uint32(boolValue(s.condition("lo")))
+	s.x[5] = uint64(first)
+	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[6]))
+	s.compare32(uint32(s.x[17]), uint32(s.x[7]))
+	second := uint32(boolValue(s.condition("lo")))
+	s.x[6] = uint64(second)
+	s.x[5] = uint64(first ^ second)
+	s.compare32(uint32(s.x[3]), uint32(s.x[17]))
+	ordered := uint32(boolValue(s.condition("lo")))
+	s.x[17] = uint64(ordered)
+	s.compare32(uint32(s.x[5]), 0)
+	selected := ordered
+	if s.condition("ne") {
+		selected = second
+	}
+	s.x[17] = uint64(selected * uint32(s.x[2]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[8]))
+	next, err := s.load(s.x[10]+uint64(uint32(s.x[17]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-store target: %w", err)
+	}
+	s.x[5] = next
+	s.x[3] = s.x[4]
+	s.x[17] = 0x45bc
+	return next, nil
 }
 
 func runAccountEntryRoundTailA(s *state) (uint64, error) {
