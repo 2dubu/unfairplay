@@ -18,7 +18,118 @@ const (
 	bootstrapProtectedDispatch = uint64(0x10034d800)
 	bootstrapRangeDispatchA    = uint64(0x10015dd44)
 	bootstrapRangeDispatchB    = uint64(0x100040340)
+	bootstrapStateDispatch     = uint64(0x100187d9c)
+	bootstrapWordDispatch      = uint64(0x1000f4834)
 )
+
+func runBootstrapStateDispatch(s *state) (uint64, error) {
+	s.traceBlock(bootstrapStateDispatch)
+	s.x[12] = uint64(uint32(s.x[14]) + 0xaf200e39)
+	s.x[28] = uint64(uint32(s.x[12]) & 0x50df7fdf)
+	s.x[12] = uint64(uint32(s.x[15]) + 0x042a8d93)
+	s.x[13] = 0xffffc0b3
+	s.x[16] = uint64(0xf7aae4da - uint32(s.x[15]))
+	s.x[13] = uint64(uint32(s.x[28]) + uint32(s.x[13]))
+	s.compare32(uint32(s.x[12]), uint32(s.x[13]))
+	if s.condition("gt") {
+		s.x[12] = uint64(uint32(s.x[16]))
+	} else {
+		s.x[12] = uint64(uint32(s.x[15]))
+	}
+	s.x[13] = 0x5eec043e
+	if s.condition("gt") {
+		s.x[16] = uint64(uint32(s.x[11]))
+	} else {
+		s.x[16] = uint64(uint32(s.x[13]))
+	}
+	next, err := loadBootstrapPointer(s, s.x[10], uint32(s.x[14]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap state-dispatch target: %w", err)
+	}
+	s.x[11] = next
+	s.x[30] = 0x43522004
+	s.x[13] = 0x21037cc9
+	s.x[1] = 0xd9b0b007
+	s.x[7] = 0x264f10ad
+	s.x[2] = 0x73b42a39
+	s.x[19] = 0x8c4bd5c7
+	s.x[20] = 0x1e35d90b
+	s.x[21] = 0xe1ca26f5
+	s.x[22] = 0xa9aa7c79
+	s.x[23] = 0x56558387
+	s.x[24] = 0x95d10649
+	s.x[25] = 0x6a2ef9b7
+	s.x[26] = 0x9d987e50
+	s.x[27] = 0x7b49db15
+	s.x[14] = 0xb
+	s.x[17] = 0x1a6b
+	return next, nil
+}
+
+func runBootstrapWordDispatch(s *state) (uint64, error) {
+	s.traceBlock(bootstrapWordDispatch)
+	firstBase, err := s.load(s.x[8]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap word-dispatch first base: %w", err)
+	}
+	s.x[11] = firstBase
+	s.x[15] = 0xfffffffe10aa3648 + (s.x[12] << 2)
+	first, err := s.load(s.x[11]+s.x[15], 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap word-dispatch first word: %w", err)
+	}
+	s.x[3] = uint64(uint32(first))
+	secondBase, err := s.load(s.x[9]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap word-dispatch second base: %w", err)
+	}
+	s.x[11] = secondBase
+	second, err := s.load(s.x[11]+s.x[15], 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap word-dispatch second word: %w", err)
+	}
+	s.x[15] = uint64(uint32(second))
+	s.x[4] = uint64(uint32(s.x[5]) ^ 0x421)
+	s.x[11] = uint64((uint32(s.x[3]) ^ 0x037eabc3) + 0xfc81543d)
+	s.x[17] = uint64(uint32(s.x[4]) + 0xffff8dfb)
+	s.x[17] = uint64(uint32(s.x[17]) ^ 0x7d619862)
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[3]))
+	s.x[28] = uint64((uint32(s.x[3]) ^ 0x5c51afb4) + 0xa3ae504c)
+	s.x[11] = uint64(uint32(s.x[28]) ^ uint32(s.x[11]))
+	s.x[17] = uint64(uint32(s.x[17]) + 0x829e58b4)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[17]))
+	s.x[17] = uint64((uint32(s.x[15]) ^ 0xbdf50467) + 0x420afb99)
+	s.x[28] = uint64((uint32(s.x[15]) ^ 0xdb3d9f3a) + 0x24c260c6)
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[28]))
+	s.x[28] = uint64((uint32(s.x[15]) ^ 0x44863866) + 0xbb79c79a)
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[28]))
+	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[30]))
+	s.compare32(uint32(s.x[11]), uint32(s.x[13]))
+	firstBound := uint32(boolValue(s.condition("lo")))
+	s.x[28] = uint64(firstBound)
+	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[30]))
+	s.compare32(uint32(s.x[17]), uint32(s.x[13]))
+	secondBound := uint32(boolValue(s.condition("lo")))
+	s.x[6] = uint64(firstBound ^ secondBound)
+	s.compare32(uint32(s.x[11]), uint32(s.x[17]))
+	higher := uint32(boolValue(s.condition("hi")))
+	s.x[11] = uint64(higher)
+	s.compare32(uint32(s.x[6]), 0)
+	if s.condition("ne") {
+		s.x[11] = uint64(firstBound)
+	}
+	s.x[11] = uint64(uint32(s.x[11]) ^ 1)
+	s.x[11] = uint64(uint32(s.x[11]) * 0x51)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[5]))
+	next, err := loadBootstrapPointer(s, s.x[10], uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap word-dispatch target: %w", err)
+	}
+	s.x[5] = next
+	s.x[11] = s.x[16]
+	s.x[17] = 0x578f
+	return next, nil
+}
 
 func runBootstrapRangeDispatchA(s *state) (uint64, error) {
 	s.traceBlock(bootstrapRangeDispatchA)
