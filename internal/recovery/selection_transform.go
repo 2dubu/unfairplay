@@ -8,6 +8,7 @@ const (
 	selectionPackedWordStep     = uint64(0x10072c400)
 	selectionByteWriter         = uint64(0x10087c89c)
 	selectionMixTail            = uint64(0x100450400)
+	selectionReverseProjection  = uint64(0x10013df58)
 )
 
 func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -24,9 +25,71 @@ func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case selectionMixTail:
 		next, err := runSelectionMixTail(s)
 		return next, true, err
+	case selectionReverseProjection:
+		next, err := runSelectionReverseProjection(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSelectionReverseProjection(s *state) (uint64, error) {
+	const maximumBytes = 2048
+	if s == nil || s.x[10] == 0 || s.x[10] > maximumBytes {
+		return 0, fmt.Errorf("unsupported selection reverse-projection length %d", s.x[10])
+	}
+	targets := [2]uint64{}
+	for more := uint32(0); more < 2; more++ {
+		index := uint32(s.x[1]) ^ more*uint32(s.x[3])
+		next, err := loadBootstrapPointer(s, s.x[22], index)
+		if err != nil {
+			return 0, fmt.Errorf("selection reverse-projection target %d: %w", more, err)
+		}
+		targets[more] = next
+	}
+	if s.x[10] > 1 && targets[1] != selectionReverseProjection {
+		return 0, fmt.Errorf("unsupported selection reverse-projection continuation %#x", targets[1])
+	}
+	for s.x[10] != 0 {
+		s.traceBlock(selectionReverseProjection)
+		s.x[11] = uint64(uint32(s.x[16]) & uint32(s.x[0]))
+		s.x[10] = s.subtractWithFlags(s.x[10], 1, 64)
+		input, err := s.load(s.x[8]+s.x[10], 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection reverse-projection input: %w", err)
+		}
+		lane := s.x[10] & 0xf
+		first, err := s.load(s.x[15]+lane, 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection reverse-projection first lane: %w", err)
+		}
+		second, err := s.load(s.x[12]+lane+1, 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection reverse-projection second lane: %w", err)
+		}
+		third, err := s.load(s.x[13]+lane, 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection reverse-projection third lane: %w", err)
+		}
+		s.x[4] = uint64(byte(third))
+		s.x[5] = uint64(byte(first))
+		s.x[6] = uint64(byte(second))
+		s.x[7] = uint64(uint32(lane) * uint32(s.x[2]))
+		s.x[19] = uint64(uint32(s.x[11]) - 0x10)
+		output := byte(input) ^ byte(first) ^ byte(second) ^ byte(s.x[19]) ^ byte(s.x[7]) ^ byte(third)
+		s.x[5] = uint64(uint32(byte(second)) ^ uint32(s.x[19]))
+		if err := s.storeValue(s.x[14]+s.x[10], uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("selection reverse-projection output: %w", err)
+		}
+		more := uint32(boolValue(s.condition("ne")))
+		next := targets[more]
+		s.x[4] = next
+		s.x[17] = 0x585b
+		if next != selectionReverseProjection {
+			return next, nil
+		}
+	}
+	return 0, fmt.Errorf("selection reverse projection did not exit")
 }
 
 func runSelectionByteWriterPass(s *state) (uint64, error) {
