@@ -452,6 +452,18 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountGreaterEqualRoute:
 		next, err := runAccountGreaterEqualRoute(s)
 		return next, true, err
+	case accountLessThanRoute:
+		next, err := runAccountLessThanRoute(s)
+		return next, true, err
+	case accountOffsetRoute:
+		next, err := runAccountOffsetRoute(s)
+		return next, true, err
+	case accountSevenFoldRoute:
+		next, err := runAccountSevenFoldRoute(s)
+		return next, true, err
+	case accountWideLimitRoute:
+		next, err := runAccountWideLimitRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
