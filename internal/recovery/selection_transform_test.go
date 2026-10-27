@@ -112,13 +112,13 @@ func TestSelectionPackedWordPassMatchesIterations(t *testing.T) {
 			base.x[register] = random.Uint64()
 		}
 		base.sp = stack
-		base.x[0] = 0
-		base.x[3] = 0
-		base.x[6] = 0
-		base.x[7] = 0
+		base.x[0] = 0x1b000000
+		base.x[3] = 0x4e757bdf
+		base.x[6] = 0x1a
+		base.x[7] = 0xce757bc5
 		inputBase := uint64(input)
 		base.x[8] = inputBase - uint64(0x9b4e23ca)
-		base.x[10] = 0
+		base.x[10] = 0x1b
 		base.x[15] = 0x9b4e23cd
 		base.x[16] = 0
 		base.x[19] = 0

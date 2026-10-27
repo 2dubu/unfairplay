@@ -167,30 +167,23 @@ func runSelectionPackedWordPass(s *state) (uint64, error) {
 	if continueTarget != selectionPackedWordSeed {
 		return 0, fmt.Errorf("unsupported selection packed-word continuation %#x", continueTarget)
 	}
+	if uint32(s.x[0]) != 0x1b000000 || uint32(s.x[3]) != 0x4e757bdf ||
+		uint32(s.x[6]) != 0x1a || uint32(s.x[7]) != 0xce757bc5 ||
+		uint32(s.x[10]) != 0x1b || uint32(s.x[15]) != 0x9b4e23cd {
+		return 0, fmt.Errorf("unsupported selection packed-word encoding")
+	}
 
 	for index := 0; index < maximumWords; index++ {
 		s.traceBlock(selectionPackedWordSeed)
-		indices := [...]uint32{0x9b4e23ca, 0x9b4e23cb, 0x9b4e23cc, uint32(s.x[15])}
-		var values [4]uint32
-		for valueIndex, offset := range indices {
+		var packed uint32
+		for valueIndex, offset := range [...]uint32{0x9b4e23ca, 0x9b4e23cb, 0x9b4e23cc, 0x9b4e23cd} {
 			value, err := s.load(s.x[8]+uint64(uint32(s.x[16])+offset), 1)
 			if err != nil {
 				return 0, fmt.Errorf("selection packed-word input %d: %w", valueIndex, err)
 			}
-			values[valueIndex] = uint32(byte(value))
-			if valueIndex != len(values)-1 {
-				values[valueIndex] ^= uint32(s.x[10])
-			}
+			packed |= uint32(byte(value)) << (valueIndex * 8)
 		}
-		s.x[17] = uint64(values[0])
-		s.x[1] = uint64(values[0] | values[1]<<8)
-		s.x[9] = uint64(values[2]<<16 | values[3]<<24 | uint32(s.x[1]))
-		s.x[9] = uint64(uint32(s.x[9]) ^ uint32(s.x[0]))
-		s.x[12] = uint64(uint32(s.x[9]) & uint32(s.x[3]))
-		s.x[17] = uint64(uint32(s.x[17]) & uint32(s.x[6]))
-		s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[17]))
-		s.x[9] = uint64(uint32(s.x[9]) - uint32(s.x[12]<<1))
-		s.x[9] = uint64(uint32(s.x[9]) + uint32(s.x[7]))
+		s.x[9] = uint64(packed ^ 0xd56e60de)
 
 		s.traceBlock(selectionPackedWordStep)
 		s.x[12] = uint64(uint32(s.x[16]) ^ uint32(s.x[19]))
