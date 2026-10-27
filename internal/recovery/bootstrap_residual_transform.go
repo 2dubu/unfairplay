@@ -22,7 +22,77 @@ const (
 	bootstrapWordDispatch      = uint64(0x1000f4834)
 	bootstrapScalarRoundStart  = uint64(0x10092d608)
 	bootstrapScalarRoundTail   = uint64(0x10092d800)
+	bootstrapLimitDispatch     = uint64(0x1000613ec)
+	bootstrapLimitDispatchTail = uint64(0x100061400)
+	bootstrapOffsetDispatch    = uint64(0x10015302c)
 )
+
+func runBootstrapLimitDispatch(s *state) (uint64, error) {
+	s.traceBlock(bootstrapLimitDispatch)
+	s.x[12]--
+	s.x[11] = uint64(uint32(s.x[4]) + 0xffff7d15)
+	s.x[5] = uint64(uint32(s.x[11]) | 0x1104)
+	s.traceBlock(bootstrapLimitDispatchTail)
+	s.x[11] = uint64(uint32(s.x[4]) + 0xffff75d9)
+	s.x[28] = uint64(uint32(s.x[11]) | 0x1840)
+	s.x[11] = uint64(uint32(s.x[3]) ^ 0x884a3905)
+	s.x[17] = uint64(uint32(s.x[5]) + 0x77b587af)
+	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[3]) ^ uint32(s.x[1]))
+	s.x[6] = uint64(uint32(s.x[28]) + uint32(s.x[7]))
+	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[6]))
+	s.x[3] = uint64(uint32(s.x[3]) ^ uint32(s.x[2]))
+	s.x[3] = uint64(uint32(s.x[3]) + uint32(s.x[19]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[3]))
+	s.x[11] = uint64(uint32(s.x[17]) ^ uint32(s.x[11]))
+	s.x[17] = uint64(uint32(s.x[15]) ^ uint32(s.x[20]))
+	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[21]))
+	s.x[3] = uint64(uint32(s.x[15]) ^ uint32(s.x[22]))
+	s.x[3] = uint64(uint32(s.x[3]) + uint32(s.x[23]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[3]))
+	s.x[15] = uint64(uint32(s.x[15]) ^ uint32(s.x[24]))
+	s.x[15] = uint64(uint32(s.x[15]) + uint32(s.x[25]))
+	s.x[15] = uint64(uint32(s.x[17]) ^ uint32(s.x[15]))
+	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[26]))
+	s.compare32(uint32(s.x[11]), uint32(s.x[27]))
+	firstBound := uint32(boolValue(s.condition("lo")))
+	s.x[17] = uint64(firstBound)
+	s.x[15] = uint64(uint32(s.x[15]) + uint32(s.x[26]))
+	s.compare32(uint32(s.x[15]), uint32(s.x[27]))
+	secondBound := uint32(boolValue(s.condition("lo")))
+	s.x[3] = uint64(secondBound)
+	s.x[17] = uint64(firstBound ^ secondBound)
+	s.compare32(uint32(s.x[11]), uint32(s.x[15]))
+	ordered := uint32(boolValue(s.condition("lo")))
+	s.x[11] = uint64(ordered)
+	s.compare32(uint32(s.x[17]), 0)
+	if s.condition("ne") {
+		s.x[11] = uint64(secondBound)
+	}
+	s.x[11] = uint64(uint32(s.x[11]) * uint32(s.x[14]))
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[4]))
+	next, err := loadBootstrapPointer(s, s.x[10], uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap limit-dispatch target: %w", err)
+	}
+	s.x[11] = next
+	s.x[17] = 0x1a6b
+	return next, nil
+}
+
+func runBootstrapOffsetDispatch(s *state) (uint64, error) {
+	s.traceBlock(bootstrapOffsetDispatch)
+	s.x[8] = 0xbdd7c92e
+	s.x[9] = uint64(uint32(s.x[5]) - uint32(s.x[16]))
+	s.x[11] = uint64(uint32(s.x[9]) + uint32(s.x[8]))
+	next, err := loadBootstrapPointer(s, s.x[10], uint32(s.x[5]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap offset-dispatch target: %w", err)
+	}
+	s.x[8] = next
+	s.x[17] = 0x63e8
+	return next, nil
+}
 
 func runBootstrapScalarRound(s *state) (uint64, error) {
 	roundDone, err := runBootstrapScalarRoundFront(s)
