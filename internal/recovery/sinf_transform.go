@@ -9,6 +9,7 @@ const (
 	sinfModuloSelector     = uint64(0x10015a3c8)
 	sinfWordSelector       = uint64(0x100803454)
 	sinfByteSelector       = uint64(0x100605b18)
+	sinfByteProjectionPass = uint64(0x10005bed4)
 )
 
 func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -31,9 +32,69 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sinfByteSelector:
 		next, err := runSINFByteSelector(s)
 		return next, true, err
+	case sinfByteProjectionPass:
+		next, err := runSINFByteProjection(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSINFByteProjection(s *state) (uint64, error) {
+	const maximumBytes = 1024
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runSINFByteProjectionStep(s)
+		if err != nil || next != sinfByteProjectionPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("SINF byte projection exceeded %d bytes", maximumBytes)
+}
+
+func runSINFByteProjectionStep(s *state) (uint64, error) {
+	s.traceBlock(sinfByteProjectionPass)
+	s.x[3] = uint64(uint32(s.x[13]) + 0x7ce)
+	s.x[17] = s.x[3] ^ s.x[5]
+	s.x[4] = s.addWithCarry(s.x[17], s.x[4], false, 64)
+	value, err := s.load(s.x[16]+s.x[4], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF byte-projection input: %w", err)
+	}
+	s.x[17] = uint64(byte(value))
+	position := s.x[4] & 0xf
+	s.x[20] = position
+	first, err := s.load(s.x[1]+position, 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF byte-projection first lane: %w", err)
+	}
+	s.x[21] = uint64(byte(first))
+	second, err := s.load(s.x[2]+position+3, 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF byte-projection second lane: %w", err)
+	}
+	s.x[22] = uint64(byte(second))
+	s.x[23] = uint64(uint32(position) * uint32(s.x[6]))
+	third, err := s.load(s.x[0]+position, 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF byte-projection third lane: %w", err)
+	}
+	s.x[20] = uint64(byte(third))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[21]))
+	s.x[20] = uint64(uint32(s.x[22]) ^ uint32(s.x[20]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[20]))
+	s.x[20] = uint64(uint32(s.x[23]) ^ uint32(s.x[7]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[20]))
+	if err := s.storeValue(s.x[12]+s.x[4], uint64(byte(s.x[17])), 1); err != nil {
+		return 0, fmt.Errorf("SINF byte-projection output: %w", err)
+	}
+	dispatchIndex := uint32(boolValue(s.condition("eq")))*uint32(s.x[19]) ^ uint32(s.x[13])
+	next, err := loadBootstrapPointer(s, s.x[8], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("SINF byte-projection dispatch: %w", err)
+	}
+	s.x[17] = 0x1743
+	s.x[20] = next
+	return next, nil
 }
 
 func runSINFParitySelector(s *state) (uint64, error) {
