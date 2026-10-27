@@ -512,6 +512,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountCompareDispatchB:
 		next, err := runAccountCompareDispatchB(s)
 		return next, true, err
+	case accountLowBitTarget:
+		next, err := runAccountLowBitTarget(s)
+		return next, true, err
+	case accountFrameCompareTarget:
+		next, err := runAccountFrameCompareTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
