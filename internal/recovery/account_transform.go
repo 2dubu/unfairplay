@@ -71,6 +71,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountHotMixSecond:
 		next, err := runAccountHotMixSecond(s)
 		return next, true, err
+	case accountHotMixThirdFront:
+		next, err := runAccountHotMixThird(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
