@@ -69,6 +69,15 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentCodecWriter:
 		next, err := runSharedEnrollmentCodecWriter(s)
 		return next, true, err
+	case sharedEnrollmentRegisterReturn:
+		next, err := runSharedEnrollmentRegisterReturn(s)
+		return next, true, err
+	case sharedEnrollmentBoundsSelect:
+		next, err := runSharedEnrollmentBoundsSelect(s)
+		return next, true, err
+	case sharedEnrollmentProductSelect:
+		next, err := runSharedEnrollmentProductSelect(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
