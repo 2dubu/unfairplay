@@ -934,10 +934,48 @@ func runAccountEntryRoundTailB(s *state) (uint64, error) {
 
 func runAccountEntryIndexedBytePass(s *state) (uint64, error) {
 	const maximumBytes = 4096
+	if s == nil {
+		return 0, fmt.Errorf("account-entry indexed-byte state is unavailable")
+	}
+	continueTarget, err := s.load(s.x[24]+uint64(uint32(s.x[4]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry indexed-byte continuation: %w", err)
+	}
+	if continueTarget != accountEntryIndexedBytePass {
+		return 0, fmt.Errorf("unsupported account-entry indexed-byte continuation %#x", continueTarget)
+	}
+	exitTarget, err := s.load(s.x[24]+uint64(uint32(s.x[4])^uint32(s.x[5]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry indexed-byte exit: %w", err)
+	}
+	if exitTarget == accountEntryIndexedBytePass {
+		return 0, fmt.Errorf("account-entry indexed-byte exit loops to itself")
+	}
+
+	s.x[20] = uint64(uint32(s.x[4]) + uint32(s.x[11]))
+	delta := s.x[20] ^ s.x[2]
 	for index := 0; index < maximumBytes; index++ {
-		next, err := runAccountEntryIndexedByteStep(s)
-		if err != nil || next != accountEntryIndexedBytePass {
-			return next, err
+		s.traceBlock(accountEntryIndexedBytePass)
+		value, err := s.load(s.x[26]+uint64(uint32(s.x[8])), 1)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry indexed-byte input: %w", err)
+		}
+		input := uint32(byte(value))
+		s.x[8] = uint64(uint32(s.x[8]) + 1)
+		s.x[15] = s.x[12] + s.x[13]
+		masked := uint32(s.x[0]) & (input << 1)
+		s.x[16] = uint64(masked)
+		output := byte(input - masked + 0x1b)
+		if err := s.storeValue(s.x[21]+s.x[15], uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("account-entry indexed-byte output: %w", err)
+		}
+		s.x[10] = delta
+		s.x[12] = s.x[10] + s.x[12]
+		s.compare64(s.x[12], s.x[3])
+		if s.x[12] == s.x[3] {
+			s.x[10] = exitTarget
+			s.x[17] = 0xe66f
+			return exitTarget, nil
 		}
 	}
 	return 0, fmt.Errorf("account-entry indexed-byte pass exceeded %d bytes", maximumBytes)
@@ -1006,13 +1044,56 @@ func runAccountEntryCompareSelect(s *state) (uint64, error) {
 
 func runAccountEntrySecondaryWordPass(s *state) (uint64, error) {
 	const maximumWords = 4096
-	for index := 0; index < maximumWords; index++ {
-		next, err := runAccountEntrySecondaryWordStep(s)
-		if err != nil || next != accountEntrySecondaryWordPass {
-			return next, err
-		}
+	if s == nil {
+		return 0, fmt.Errorf("account-entry secondary-word state is unavailable")
 	}
-	return 0, fmt.Errorf("account-entry secondary word pass exceeded %d words", maximumWords)
+	continueTarget, err := loadBootstrapPointer(s, s.x[24], uint32(s.x[15]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry secondary-word continuation: %w", err)
+	}
+	if continueTarget != accountEntrySecondaryWordPass {
+		return 0, fmt.Errorf("unsupported account-entry secondary-word continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, s.x[24], uint32(s.x[15])^0x46)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry secondary-word exit: %w", err)
+	}
+	if exitTarget == accountEntrySecondaryWordPass {
+		return 0, fmt.Errorf("account-entry secondary-word exit loops to itself")
+	}
+
+	s.x[0] = uint64(uint32(s.x[15]) + 0x42)
+	terminal := s.x[0] + 0x481b782a
+	start := s.x[3]
+	count := terminal - start
+	if count == 0 || count > maximumWords {
+		return 0, fmt.Errorf("account-entry secondary word pass exceeded %d words", maximumWords)
+	}
+	for offset := uint64(0); offset < count; offset++ {
+		s.traceBlock(accountEntrySecondaryWordPass)
+		outputAddress := s.x[20] + s.x[9] + ((start + offset) << 2)
+		var words [4]uint32
+		for index, distance := range [...]uint64{3, 8, 14, 16} {
+			value, err := s.load(outputAddress-distance*4, 4)
+			if err != nil {
+				return 0, fmt.Errorf("account-entry secondary word input %d: %w", index, err)
+			}
+			words[index] = uint32(value)
+		}
+		mixed := words[0] ^ words[1] ^ words[2] ^ words[3]
+		result := uint32(s.x[13]) ^ uint32(rotateRight(uint64(mixed), 31, 32))
+		if err := s.storeValue(outputAddress, uint64(result), 4); err != nil {
+			return 0, fmt.Errorf("account-entry secondary word output: %w", err)
+		}
+		s.x[25] = uint64(words[3])
+	}
+	s.x[3] = terminal
+	s.x[11] = 0x481b782a
+	s.compare64(s.x[3], terminal)
+	s.x[2] = 0x481b90d7
+	s.x[17] = 0xaaed
+	s.x[22] = exitTarget
+	return exitTarget, nil
 }
 
 func runAccountEntrySecondaryWordStep(s *state) (uint64, error) {
