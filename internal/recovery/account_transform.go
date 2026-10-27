@@ -338,6 +338,18 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountByteTableRoute:
 		next, err := runAccountByteTableRoute(s)
 		return next, true, err
+	case accountByteSignedGate:
+		next, err := runAccountByteSignedGate(s)
+		return next, true, err
+	case accountFrameTargetSetup:
+		next, err := runAccountFrameTargetSetup(s)
+		return next, true, err
+	case accountBitGateRoute:
+		next, err := runAccountBitGateRoute(s)
+		return next, true, err
+	case accountDispatchSetup:
+		next, err := runAccountDispatchSetup(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
