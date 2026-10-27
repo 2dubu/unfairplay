@@ -150,9 +150,9 @@ func TestSharedBytePermuteSemanticMatchesCircuit(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		circuit := newState(base.model)
+		expected := newState(base.model)
 		semantic := newState(base.model)
-		for _, item := range []*state{circuit, semantic} {
+		for _, item := range []*state{expected, semantic} {
 			item.sp = base.sp
 			item.x = base.x
 			item.n, item.z, item.c, item.v = base.n, base.z, base.c, base.v
@@ -162,24 +162,42 @@ func TestSharedBytePermuteSemanticMatchesCircuit(t *testing.T) {
 				item.dirty[page] = true
 			}
 		}
-		circuitNext, circuitErr := runSharedEnrollmentBytePermute(circuit)
-		semanticNext, semanticErr := runSharedEnrollmentBytePermuteSemantic(semantic)
-		if circuitErr != nil || semanticErr != nil {
-			t.Fatalf("trial %d errors: circuit=%v semantic=%v", trial, circuitErr, semanticErr)
+		sourceByte, err := expected.load(source+uint64(byte(expected.x[20]^expected.x[8])), 1)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if circuitNext != semanticNext || !reflect.DeepEqual(circuit.writable, semantic.writable) {
-			circuitByte, _ := circuit.load(work+base.x[0], 1)
+		first := sharedBytePermuteFirstCircuit(byte(sourceByte))
+		if err := expected.storeValue(work+expected.x[0], uint64(first), 1); err != nil {
+			t.Fatal(err)
+		}
+		secondIndex := sharedBytePermuteSecondIndexCircuit(byte(expected.x[11]))
+		second, err := expected.load(work+uint64(secondIndex), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		output := sharedBytePermuteFinalCircuit(first ^ 0x5b ^ byte(second))
+		if err := expected.storeValue(work+expected.x[0], uint64(output), 1); err != nil {
+			t.Fatal(err)
+		}
+		expected.x[1] = target
+		expected.x[3] = 0x060be5d0
+		expected.x[17] = 0xbf5f
+		expected.x[20] = uint64(output)
+		expected.x[27] = work
+		expectedNext := target
+		semanticNext, semanticErr := runSharedEnrollmentBytePermuteSemantic(semantic)
+		if semanticErr != nil {
+			t.Fatalf("trial %d semantic error: %v", trial, semanticErr)
+		}
+		if expectedNext != semanticNext || !reflect.DeepEqual(expected.writable, semantic.writable) {
+			expectedByte, _ := expected.load(work+base.x[0], 1)
 			semanticByte, _ := semantic.load(work+base.x[0], 1)
-			sourceByte, _ := base.load(source+uint64(byte(base.x[20]^base.x[8])), 1)
-			first := sharedBytePermuteFirst[byte(sourceByte)]
-			secondIndex := byte(uint32(base.x[11]) + 0xa8)
-			secondBefore, _ := base.load(work+uint64(secondIndex), 1)
-			t.Fatalf("trial %d output differs: next=%#x/%#x byte=%#x/%#x x20=%#x/%#x x0=%#x x11=%#x source=%#x first=%#x second-index=%#x second-before=%#x", trial,
-				circuitNext, semanticNext, circuitByte, semanticByte, circuit.x[20], semantic.x[20], base.x[0], base.x[11], sourceByte, first, secondIndex, secondBefore)
+			t.Fatalf("trial %d output differs: next=%#x/%#x byte=%#x/%#x", trial,
+				expectedNext, semanticNext, expectedByte, semanticByte)
 		}
 		for _, register := range []int{1, 2, 3, 17, 19, 20, 27, 28} {
-			if circuit.x[register] != semantic.x[register] {
-				t.Fatalf("trial %d x%d: circuit=%#x semantic=%#x", trial, register, circuit.x[register], semantic.x[register])
+			if expected.x[register] != semantic.x[register] {
+				t.Fatalf("trial %d x%d: expected=%#x semantic=%#x", trial, register, expected.x[register], semantic.x[register])
 			}
 		}
 	}
