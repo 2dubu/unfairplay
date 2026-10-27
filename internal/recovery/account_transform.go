@@ -746,6 +746,63 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountDispatchSetup386528:
 		next, err := runAccountDispatchSetup386528(s)
 		return next, true, err
+	case accountBlock1003aed78:
+		next, err := runAccountBlock1003aed78(s)
+		return next, true, err
+	case accountBlock1004bec84:
+		next, err := runAccountBlock1004bec84(s)
+		return next, true, err
+	case accountBlock1004df3b0:
+		next, err := runAccountBlock1004df3b0(s)
+		return next, true, err
+	case accountBlock10055579c:
+		next, err := runAccountBlock10055579c(s)
+		return next, true, err
+	case accountBlock10092147c:
+		next, err := runAccountBlock10092147c(s)
+		return next, true, err
+	case accountBlock1009e3a28:
+		next, err := runAccountBlock1009e3a28(s)
+		return next, true, err
+	case accountBlock100a0b4d4:
+		next, err := runAccountBlock100a0b4d4(s)
+		return next, true, err
+	case accountBlock100aba4f8:
+		next, err := runAccountBlock100aba4f8(s)
+		return next, true, err
+	case accountBlock100b5f734:
+		next, err := runAccountBlock100b5f734(s)
+		return next, true, err
+	case accountBlock1000f50f4:
+		next, err := runAccountBlock1000f50f4(s)
+		return next, true, err
+	case accountBlock1008d5268:
+		next, err := runAccountBlock1008d5268(s)
+		return next, true, err
+	case accountBlock1008e64c0:
+		next, err := runAccountBlock1008e64c0(s)
+		return next, true, err
+	case accountBlock1008f5e1c:
+		next, err := runAccountBlock1008f5e1c(s)
+		return next, true, err
+	case accountBlock100900484:
+		next, err := runAccountBlock100900484(s)
+		return next, true, err
+	case accountBlock1009ecc88:
+		next, err := runAccountBlock1009ecc88(s)
+		return next, true, err
+	case accountBlock100a070f8:
+		next, err := runAccountBlock100a070f8(s)
+		return next, true, err
+	case accountBlock100a4aa04:
+		next, err := runAccountBlock100a4aa04(s)
+		return next, true, err
+	case accountBlock100a5bf1c:
+		next, err := runAccountBlock100a5bf1c(s)
+		return next, true, err
+	case accountBlock100bed25c:
+		next, err := runAccountBlock100bed25c(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
