@@ -557,6 +557,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountStackCompareRoute:
 		next, err := runAccountStackCompareRoute(s)
 		return next, true, err
+	case accountDualMaskTarget:
+		next, err := runAccountDualMaskTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
