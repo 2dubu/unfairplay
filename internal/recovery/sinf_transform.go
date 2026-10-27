@@ -59,6 +59,9 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sinfExpandedTableWriter:
 		next, err := runSINFExpandedTableWriter(s)
 		return next, true, err
+	case sinfComplexWriterStart:
+		next, err := runSINFComplexWriter(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
