@@ -12,6 +12,9 @@ const (
 	accountEntryFourWordPass      = uint64(0x1002376d4)
 	accountEntryZeroFillPass      = uint64(0x10092144c)
 	accountEntrySecondaryWordPass = uint64(0x1000fcc88)
+	accountEntryIndexedBytePass   = uint64(0x1001d527c)
+	accountEntryCompareSelect     = uint64(0x100af2fb8)
+	accountEntryCompareTail       = uint64(0x100af3000)
 )
 
 func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -43,9 +46,87 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountEntrySecondaryWordPass:
 		next, err := runAccountEntrySecondaryWordPass(s)
 		return next, true, err
+	case accountEntryIndexedBytePass:
+		next, err := runAccountEntryIndexedBytePass(s)
+		return next, true, err
+	case accountEntryCompareSelect:
+		next, err := runAccountEntryCompareSelect(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runAccountEntryIndexedBytePass(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runAccountEntryIndexedByteStep(s)
+		if err != nil || next != accountEntryIndexedBytePass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("account-entry indexed-byte pass exceeded %d bytes", maximumBytes)
+}
+
+func runAccountEntryIndexedByteStep(s *state) (uint64, error) {
+	s.traceBlock(accountEntryIndexedBytePass)
+	value, err := s.load(s.x[26]+uint64(uint32(s.x[8])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry indexed-byte input: %w", err)
+	}
+	s.x[10] = uint64(byte(value))
+	s.x[8] = uint64(uint32(s.x[8]) + 1)
+	s.x[15] = s.x[12] + s.x[13]
+	s.x[16] = uint64(uint32(s.x[0]) & uint32(s.x[10]<<1))
+	s.x[10] = uint64(uint32(s.x[10]) - uint32(s.x[16]))
+	s.x[10] = uint64(uint32(s.x[10]) + 0x1b)
+	if err := s.storeValue(s.x[21]+s.x[15], uint64(byte(s.x[10])), 1); err != nil {
+		return 0, fmt.Errorf("account-entry indexed-byte output: %w", err)
+	}
+	s.x[20] = uint64(uint32(s.x[4]) + uint32(s.x[11]))
+	s.x[10] = s.x[20] ^ s.x[2]
+	s.x[12] = s.x[10] + s.x[12]
+	s.compare64(s.x[12], s.x[3])
+	dispatchIndex := uint32(boolValue(s.condition("eq")))*uint32(s.x[5]) ^ uint32(s.x[4])
+	next, err := s.load(s.x[24]+uint64(dispatchIndex)*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry indexed-byte dispatch: %w", err)
+	}
+	s.x[10] = next
+	s.x[17] = 0xe66f
+	return next, nil
+}
+
+func runAccountEntryCompareSelect(s *state) (uint64, error) {
+	s.traceBlock(accountEntryCompareSelect)
+	s.x[8] = 0xd59bef3f
+	s.x[22] = uint64(uint32(s.x[11]) + uint32(s.x[8]))
+	s.x[8] = 0x41a7
+	s.x[10] = uint64(uint32(s.x[11]) ^ uint32(s.x[8]))
+	word, err := s.load(s.x[27], 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry compare-select input: %w", err)
+	}
+	s.x[9] = uint64(uint32(word))
+	s.x[8] = uint64(uint32(s.x[11]) + 0x785dac3f)
+	s.compare32(uint32(s.x[9]), uint32(s.x[8]))
+	s.x[8] = uint64(uint32(s.x[10]) + 0x04a755f9)
+	if s.condition("eq") {
+		s.compare32(uint32(s.x[25]), uint32(s.x[8]))
+	} else {
+		s.setNZCV(0)
+	}
+	dispatchIndex := uint32(boolValue(s.condition("ne")))*0x192 ^ uint32(s.x[11])
+	s.traceBlock(accountEntryCompareTail)
+	next, err := loadBootstrapPointer(s, s.x[30], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry compare-select dispatch: %w", err)
+	}
+	s.x[5] = 0xce757bc5
+	s.x[8] = next
+	s.x[12] = 0x192
+	s.x[17] = 0x8231
+	return next, nil
 }
 
 func runAccountEntrySecondaryWordPass(s *state) (uint64, error) {
