@@ -15,6 +15,8 @@ const (
 	accountEntryIndexedBytePass   = uint64(0x1001d527c)
 	accountEntryCompareSelect     = uint64(0x100af2fb8)
 	accountEntryCompareTail       = uint64(0x100af3000)
+	accountEntryRoundTailA        = uint64(0x100139000)
+	accountEntryRoundTailB        = uint64(0x100147c00)
 )
 
 func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -52,9 +54,61 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountEntryCompareSelect:
 		next, err := runAccountEntryCompareSelect(s)
 		return next, true, err
+	case accountEntryRoundTailA:
+		next, err := runAccountEntryRoundTailA(s)
+		return next, true, err
+	case accountEntryRoundTailB:
+		next, err := runAccountEntryRoundTailB(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runAccountEntryRoundTailA(s *state) (uint64, error) {
+	s.traceBlock(accountEntryRoundTailA)
+	s.x[9] = uint64((uint32(s.x[9]) & 0xffff) | 0xd7280000)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[9]))
+	s.x[15] = uint64(uint32(s.x[30]) ^ uint32(rotateRight(s.x[2], 2, 32)))
+	s.x[13]++
+	s.x[9] = 0x1cc848bb
+	s.compare64(s.x[13], s.x[9])
+	gate := uint32(boolValue(s.condition("eq")))
+	s.x[16] = uint64(gate * 0xa0e6)
+	s.x[16] = uint64(uint32(s.x[16]) ^ uint32(s.x[1]))
+	next, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[16]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry round-tail A target: %w", err)
+	}
+	s.x[5] = next
+	s.x[2] = s.x[6]
+	s.x[7] = s.x[19]
+	s.x[21] = 0x1cc848bb
+	s.x[17] = 0x584
+	return next, nil
+}
+
+func runAccountEntryRoundTailB(s *state) (uint64, error) {
+	s.traceBlock(accountEntryRoundTailB)
+	s.x[9] = 0x4894147e
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[9]))
+	s.x[15] = uint64(uint32(s.x[30]) ^ uint32(rotateRight(s.x[19], 2, 32)))
+	s.x[16]++
+	s.x[9] = 0x1cc848a7
+	s.compare64(s.x[16], s.x[9])
+	gate := uint32(boolValue(s.condition("eq")))
+	s.x[13] = uint64(gate * 0xeb)
+	s.x[13] = uint64(uint32(s.x[13]) ^ uint32(s.x[0]))
+	next, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[13]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry round-tail B target: %w", err)
+	}
+	s.x[21] = next
+	s.x[19] = s.x[2]
+	s.x[6] = s.x[7]
+	s.x[13] = 0x1cc848a7
+	s.x[17] = 0x584
+	return next, nil
 }
 
 func runAccountEntryIndexedBytePass(s *state) (uint64, error) {
