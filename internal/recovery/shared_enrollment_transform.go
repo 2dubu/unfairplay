@@ -25,6 +25,9 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 		return 0, true, fmt.Errorf("shared enrollment state is unavailable")
 	}
 	switch pc {
+	case sharedEnrollmentPackedStart:
+		next, err := runSharedEnrollmentPackedPath(s)
+		return next, true, err
 	case sharedEnrollmentClassify:
 		next, err := runSharedEnrollmentClassify(s)
 		return next, true, err
