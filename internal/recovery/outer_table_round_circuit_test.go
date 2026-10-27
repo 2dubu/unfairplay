@@ -1,4 +1,5 @@
-// Code generated from the proved complete outer table round; DO NOT EDIT.
+// Code generated from the proved complete outer table round. It is retained
+// only as a test oracle for the recovered semantic implementation.
 package recovery
 
 func outerTableRoundSelect(condition bool, yes, no uint64) uint64 {

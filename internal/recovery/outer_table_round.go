@@ -28,9 +28,9 @@ func outerSelectorFromHardwareIndex(index uint8) uint32 {
 	return 0x4fc66d49 + uint32((index+1)%6)
 }
 
-// applyOuterTableRoundReduced preserves the named lane formulas used by the
-// focused unit tests. The complete circuit below is authoritative because a
-// later lane can read a slot written by an earlier lane for some rolling bases.
+// applyOuterTableRoundReduced applies the recovered 21-lane table round in
+// program order. Reads intentionally use the live table because a later lane
+// can consume a slot written by an earlier lane for some rolling bases.
 func applyOuterTableRoundReduced(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
 	indexes, ok := outerTableIndexes(base)
 	if !ok || table == nil || state == nil || state.HardwareIndex >= uint8(len(state.Hardware)) {
@@ -93,7 +93,7 @@ func applyOuterTableRoundReduced(table *[outerTableWords]uint32, base uint32, st
 }
 
 func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
-	return applyOuterTableRoundCircuit(table, base, state)
+	return applyOuterTableRoundReduced(table, base, state)
 }
 
 func applyOuterSemanticIteration(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
