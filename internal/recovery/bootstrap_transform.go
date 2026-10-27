@@ -1237,10 +1237,55 @@ func runBootstrapConstantFillIteration(s *state) (uint64, error) {
 
 func runBootstrapPackedBitPass(s *state) (uint64, error) {
 	const maximumWords = 8192
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap packed-bit state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		next, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[14])^bit*uint32(s.x[7]))
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap packed-bit target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == bootstrapPackedBitPass && targets[1] == bootstrapPackedBitPass {
+		return 0, fmt.Errorf("bootstrap packed-bit pass has no exit target")
+	}
+	table, err := s.load(s.x[19]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap packed-bit table: %w", err)
+	}
+
 	for word := 0; word < maximumWords; word++ {
-		next, err := runBootstrapPackedBitStep(s)
-		if err != nil || next != bootstrapPackedBitPass {
-			return next, err
+		s.traceBlock(bootstrapPackedBitPass)
+		s.x[11] = uint64(uint32(s.x[1]) | uint32(s.x[2]))
+		index := (s.x[11] ^ s.x[3]) + s.x[10]
+		s.x[22] = s.x[10] - 1
+		s.x[23] = table
+		value, err := s.load(table+shiftLeft(index, 2, 64), 4)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap packed-bit input: %w", err)
+		}
+		s.x[17] = uint64(uint32(value) ^ uint32(s.x[12]))
+		s.x[24] = uint64(uint32(shiftRight(s.x[17], int(s.x[13]), 32)))
+		fragment := uint32(s.x[24])
+		current := uint32(s.x[21])
+		s.x[21] = uint64(current ^ (fragment & (current ^ uint32(s.x[4]) ^ uint32(s.x[5]))))
+		s.x[24] = uint64(fragment & uint32(s.x[5]))
+		if err := storeBootstrapWord(s, table, uint32(s.x[0]), uint32(s.x[21])); err != nil {
+			return 0, fmt.Errorf("bootstrap packed-bit output: %w", err)
+		}
+		s.x[17] = uint64(uint32(shiftLeft(s.x[17], int(s.x[16]), 32)))
+		s.x[17] = uint64(uint32(shiftLeft(s.x[17], int(s.x[15]), 32)))
+		s.x[21] = uint64(uint32(s.x[17]) ^ uint32(s.x[12]))
+		s.x[0] = uint64(uint32(s.x[0]) - 1)
+		dispatchBit := (^uint32(uint32(s.x[10]) + uint32(s.x[6]))) >> 31
+		next := targets[dispatchBit]
+		s.x[10] = s.x[22]
+		s.x[17] = 0x390b
+		s.x[23] = next
+		if next != bootstrapPackedBitPass {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("bootstrap packed-bit pass exceeded %d words", maximumWords)

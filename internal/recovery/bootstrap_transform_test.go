@@ -956,3 +956,79 @@ func TestBootstrapConstantFillPassMatchesIterations(t *testing.T) {
 		}
 	}
 }
+
+func TestBootstrapPackedBitPassMatchesSteps(t *testing.T) {
+	const (
+		descriptor = uint64(0x710000100000)
+		table      = uint64(0x710000200000)
+		dispatch   = uint64(0x710000300000)
+		exitTarget = uint64(0x123456789)
+	)
+	random := rand.New(rand.NewSource(int64(bootstrapPackedBitPass)))
+	for trial := 0; trial < 512; trial++ {
+		length := 1 + random.Intn(256)
+		pages := map[uint64][]byte{
+			descriptor: make([]byte, pageSize),
+			table:      make([]byte, pageSize),
+			dispatch:   make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		model := &model{pages: clonePages(pages)}
+		base := newState(model)
+		for register := range base.x {
+			base.x[register] = random.Uint64()
+		}
+		base.x[0] = uint64(length - 1)
+		base.x[1] = 0
+		base.x[2] = 0
+		base.x[3] = 0
+		base.x[6] = ^uint64(0)
+		base.x[7] = 1
+		base.x[10] = uint64(length - 1)
+		base.x[13] = 0
+		base.x[14] = 0
+		base.x[15] = 0
+		base.x[16] = 0
+		base.x[19] = descriptor
+		base.x[20] = dispatch
+		if err := base.storeValue(descriptor+8, table, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch, exitTarget, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch+8, bootstrapPackedBitPass, 8); err != nil {
+			t.Fatal(err)
+		}
+
+		repeated := newState(model)
+		semantic := newState(model)
+		for _, item := range []*state{repeated, semantic} {
+			item.x = base.x
+			item.writable = clonePages(base.writable)
+			item.dirty = map[uint64]bool{}
+			for page := range item.writable {
+				item.dirty[page] = true
+			}
+		}
+		var repeatedNext uint64
+		for index := 0; index < length; index++ {
+			var err error
+			repeatedNext, err = runBootstrapPackedBitStep(repeated)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		semanticNext, err := runBootstrapPackedBitPass(semantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
+			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
