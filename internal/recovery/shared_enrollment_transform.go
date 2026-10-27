@@ -3,13 +3,16 @@ package recovery
 import "fmt"
 
 const (
-	sharedEnrollmentClassify  = uint64(0x1005419b4)
-	sharedEnrollmentBranch    = uint64(0x1005649c4)
-	sharedEnrollmentWrite     = uint64(0x1003f63b0)
-	sharedEnrollmentAdvance   = uint64(0x1003f6400)
-	sharedEnrollmentByteFill  = uint64(0x10051c16c)
-	sharedEnrollmentLeftPath  = uint64(0x1005456ac)
-	sharedEnrollmentRightPath = uint64(0x1003d3294)
+	sharedEnrollmentClassify    = uint64(0x1005419b4)
+	sharedEnrollmentBranch      = uint64(0x1005649c4)
+	sharedEnrollmentWrite       = uint64(0x1003f63b0)
+	sharedEnrollmentAdvance     = uint64(0x1003f6400)
+	sharedEnrollmentByteFill    = uint64(0x10051c16c)
+	sharedEnrollmentLeftPath    = uint64(0x1005456ac)
+	sharedEnrollmentRightPath   = uint64(0x1003d3294)
+	sharedEnrollmentWordCompare = uint64(0x10055fb1c)
+	sharedEnrollmentLoopSelect  = uint64(0x10027b7c8)
+	sharedEnrollmentLoopTail    = uint64(0x10027b800)
 )
 
 // runSharedEnrollmentBlock replaces the small protected dispatcher core that
@@ -41,9 +44,65 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentRightPath:
 		next, err := runSharedEnrollmentRightPath(s)
 		return next, true, err
+	case sharedEnrollmentWordCompare:
+		next, err := runSharedEnrollmentWordCompare(s)
+		return next, true, err
+	case sharedEnrollmentLoopSelect:
+		next, err := runSharedEnrollmentLoopSelect(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSharedEnrollmentWordCompare(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentWordCompare)
+	s.x[12] = 0x526c
+	left, err := s.load(s.x[9]+uint64(uint32(s.x[8]))*4, 4)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment word-compare left: %w", err)
+	}
+	s.x[11] = uint64(uint32(left))
+	right, err := s.load(s.x[9]+uint64(uint32(s.x[10]))*4, 4)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment word-compare right: %w", err)
+	}
+	s.x[13] = uint64(uint32(right))
+	s.compare32(uint32(s.x[11]), uint32(s.x[13]))
+	different := uint32(boolValue(s.condition("ne")))
+	s.x[13] = uint64(different | different<<3)
+	s.x[12] = uint64(uint32(s.x[24]) + uint32(s.x[12]))
+	dispatchIndex := uint32(s.x[13]) ^ uint32(s.x[12])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment word-compare dispatch: %w", err)
+	}
+	s.x[12] = next
+	s.x[17] = 0x7cc
+	return next, nil
+}
+
+func runSharedEnrollmentLoopSelect(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentLoopSelect)
+	s.x[11] = uint64(uint32(s.x[24]) + 0x3d68)
+	s.x[12] = 0x8e1
+	s.x[11] = uint64(uint32(s.x[11]) | uint32(s.x[12]))
+	s.x[12] = 0xc153
+	s.x[10] = uint64(uint32(s.x[10]) + 1)
+	s.compare32(uint32(s.x[10]), 0x2c)
+	more := uint32(boolValue(s.condition("lo")))
+	s.x[14] = uint64(uint32(s.x[11]) ^ 0x4aea)
+	s.x[13] = uint64(more * uint32(s.x[14]))
+	s.x[12] = uint64(uint32(s.x[24]) + uint32(s.x[12]))
+	dispatchIndex := uint32(s.x[13]) ^ uint32(s.x[12])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment loop-select dispatch: %w", err)
+	}
+	s.x[12] = next
+	s.traceBlock(sharedEnrollmentLoopTail)
+	s.x[17] = 0xc87e
+	return next, nil
 }
 
 func runSharedEnrollmentLeftPath(s *state) (uint64, error) {
