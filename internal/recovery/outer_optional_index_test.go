@@ -1,6 +1,9 @@
 package recovery
 
-import "testing"
+import (
+	"math/rand"
+	"testing"
+)
 
 func TestOuterOptionalIndexAndDecode(t *testing.T) {
 	if got := outerOptionalFirstIndex(0x0a782fec); got != 20 {
@@ -20,6 +23,21 @@ func TestOuterOptionalNormalizedIndexExhaustive(t *testing.T) {
 		}
 		if got := outerOptionalFirstIndex(seed); got != want {
 			t.Fatalf("phase %d: index=%d, want=%d", phase, got, want)
+		}
+	}
+}
+
+func TestOuterOptionalFirstIndexMatchesCircuit(t *testing.T) {
+	for seed := uint32(0); seed < 1<<16; seed++ {
+		if got, want := outerOptionalFirstIndex(seed), outerOptionalFirstIndexMBA(seed); got != want {
+			t.Fatalf("seed %08x = %d, want %d", seed, got, want)
+		}
+	}
+	random := rand.New(rand.NewSource(0x26a428))
+	for sample := 0; sample < 1<<16; sample++ {
+		seed := random.Uint32()
+		if got, want := outerOptionalFirstIndex(seed), outerOptionalFirstIndexMBA(seed); got != want {
+			t.Fatalf("seed %08x = %d, want %d", seed, got, want)
 		}
 	}
 }
