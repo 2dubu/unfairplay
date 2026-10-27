@@ -1579,10 +1579,65 @@ func runBootstrapSparseFillIteration(s *state) (uint64, error) {
 
 func runBootstrapNonlinearBytePass(s *state) (uint64, error) {
 	const maximumBytes = 4096
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap nonlinear-byte state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		next, err := loadBootstrapPointer(s, s.x[30], uint32(s.x[10])^bit*uint32(s.x[19]))
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap nonlinear-byte target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == bootstrapNonlinearBytePass && targets[1] == bootstrapNonlinearBytePass {
+		return 0, fmt.Errorf("bootstrap nonlinear-byte pass has no exit target")
+	}
+
 	for index := 0; index < maximumBytes; index++ {
-		next, err := runBootstrapNonlinearByteStep(s)
-		if err != nil || next != bootstrapNonlinearBytePass {
-			return next, err
+		s.traceBlock(bootstrapNonlinearBytePass)
+		position := s.x[20] - 1
+		if err := s.storeValue(s.sp+0x280, position, 8); err != nil {
+			return 0, fmt.Errorf("bootstrap nonlinear-byte position: %w", err)
+		}
+		s.x[20] = uint64(uint32(s.x[12]) ^ uint32(s.x[15]))
+		s.x[21] = uint64(uint32(s.x[16]) & uint32(s.x[12]<<1))
+		s.x[11] = uint64(uint32(s.x[10]) + uint32(s.x[13]))
+		s.x[22] = uint64(uint32(s.x[11]) ^ uint32(s.x[0]))
+		s.x[21] = uint64(uint32(s.x[22]) ^ uint32(s.x[21]))
+		s.x[21] = uint64(uint32(s.x[21]) & uint32(s.x[12]))
+		s.x[22] = uint64(uint32(s.x[20]) << 1)
+		s.x[23] = uint64(uint32(s.x[22]) ^ uint32(s.x[1]))
+		s.x[20] = uint64(uint32(s.x[23]) & uint32(s.x[20]))
+		s.x[22] = uint64(uint32(s.x[22]) & uint32(s.x[2]))
+		s.x[20] = uint64(uint32(s.x[20]) ^ uint32(s.x[22]))
+		s.x[22] = uint64(uint32(s.x[20]) ^ uint32(s.x[3]))
+		s.x[20] = uint64(uint32(s.x[20]) & uint32(s.x[21]<<2))
+		s.x[20] = uint64(uint32(s.x[20]) ^ uint32(s.x[21]))
+		s.x[21] = uint64(uint32(s.x[22]) << 2)
+		s.x[23] = uint64(uint32(s.x[21]) ^ uint32(s.x[4]))
+		s.x[22] = uint64(uint32(s.x[23]) & uint32(s.x[22]))
+		s.x[21] = uint64(uint32(s.x[21]) & uint32(s.x[5]))
+		s.x[21] = uint64(uint32(s.x[21]) ^ uint32(s.x[6]))
+		s.x[21] = uint64(uint32(s.x[21]) ^ uint32(s.x[22]))
+		s.x[21] = uint64(uint32(s.x[21]) & uint32(s.x[20]<<4))
+		s.x[20] = uint64(uint32(s.x[21]) ^ uint32(s.x[20]))
+		s.x[20] = uint64(uint32(s.x[12]) ^ uint32(s.x[20]<<1))
+		s.x[20] = uint64(uint32(s.x[20]) ^ uint32(s.x[7]))
+		s.x[21] = uint64(uint32(s.x[12]) + 0xe2)
+		s.x[20] = uint64(uint32(s.x[20]) * uint32(s.x[21]))
+		if err := s.storeValue(s.x[9]+position, uint64(byte(s.x[20])), 1); err != nil {
+			return 0, fmt.Errorf("bootstrap nonlinear-byte output: %w", err)
+		}
+		s.x[12]++
+		s.x[20] = position
+		s.compare64(position, s.x[14])
+		dispatchBit := uint32(boolValue(s.condition("hi")))
+		next := targets[dispatchBit]
+		s.x[17] = 0x9465
+		s.x[21] = next
+		if next != bootstrapNonlinearBytePass {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("bootstrap nonlinear byte pass exceeded %d bytes", maximumBytes)
