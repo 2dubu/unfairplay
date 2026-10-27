@@ -104,3 +104,54 @@ func TestMontgomeryCIOSSquareRejectsInvalidParameters(t *testing.T) {
 		t.Fatal("even Montgomery modulus was accepted")
 	}
 }
+
+func TestMontgomeryReduceWords(t *testing.T) {
+	random := rand.New(rand.NewSource(0x100a13b30))
+	base := new(big.Int).Lsh(big.NewInt(1), 32)
+	wordMask := new(big.Int).Sub(new(big.Int).Set(base), big.NewInt(1))
+	for _, limbs := range []int{1, 2, 32, 64} {
+		for trial := 0; trial < 64; trial++ {
+			modulus := make([]uint32, limbs)
+			words := make([]uint32, limbs+1)
+			for index := range modulus {
+				modulus[index] = random.Uint32()
+				words[index] = random.Uint32()
+			}
+			words[limbs] = random.Uint32()
+			modulus[0] |= 1
+			modulus[limbs-1] |= 0x80000000
+			inverseValue := new(big.Int).ModInverse(new(big.Int).SetUint64(uint64(modulus[0])), base)
+			inverse := -uint32(inverseValue.Uint64())
+			rounds := trial % (limbs + 1)
+
+			got := append([]uint32(nil), words...)
+			if _, err := montgomeryReduceWords(got, modulus, inverse, rounds); err != nil {
+				t.Fatalf("limbs %d trial %d: %v", limbs, trial, err)
+			}
+
+			want := littleEndianWordsBig(words)
+			modulusValue := littleEndianWordsBig(modulus)
+			for round := 0; round < rounds; round++ {
+				lowWord := uint32(new(big.Int).And(new(big.Int).Set(want), wordMask).Uint64())
+				factor := lowWord * inverse
+				want.Add(want, new(big.Int).Mul(modulusValue, new(big.Int).SetUint64(uint64(factor))))
+				want.Rsh(want, 32)
+			}
+			if littleEndianWordsBig(got).Cmp(want) != 0 {
+				t.Fatalf("limbs %d trial %d differs from exact reduction", limbs, trial)
+			}
+		}
+	}
+}
+
+func TestMontgomeryReduceWordsRejectsInvalidParameters(t *testing.T) {
+	if _, err := montgomeryReduceWords(nil, nil, 0, 0); err == nil {
+		t.Fatal("empty Montgomery reduction was accepted")
+	}
+	if _, err := montgomeryReduceWords([]uint32{0, 0}, []uint32{2}, 0, 1); err == nil {
+		t.Fatal("even Montgomery reduction modulus was accepted")
+	}
+	if _, err := montgomeryReduceWords([]uint32{0, 0}, []uint32{1}, ^uint32(0), 2); err == nil {
+		t.Fatal("too many Montgomery reduction rounds were accepted")
+	}
+}

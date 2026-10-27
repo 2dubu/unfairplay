@@ -288,7 +288,7 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			continue
 		}
 		if pc == bootstrapStreamMixStart && (runtime == nil || runtime.stopPC == 0) {
-			next, err := runBootstrapStreamMix(s)
+			next, err := runBootstrapMontgomeryReduction(s)
 			if err != nil {
 				return pc, blockCount, err
 			}

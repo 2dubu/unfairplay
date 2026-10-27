@@ -11,6 +11,7 @@ type montgomeryWordResult struct {
 }
 
 const bootstrapAccumulatorCycleExit = uint64(0x1007f70c4)
+const bootstrapMontgomeryReductionExit = uint64(0x100992c48)
 
 func runBootstrapMixer(s *state, _ *rawSourceRuntime, _ *executionProfile) (uint64, error) {
 	return runBootstrapMontgomerySquare(s)
@@ -23,6 +24,119 @@ func runBootstrapAccumulatorCycle(s *state) (uint64, error) {
 		return runBootstrapAccumulatorCycleCircuit(s)
 	}
 	return runBootstrapMontgomeryMultiply(s)
+}
+
+// runBootstrapMontgomeryReduction replaces the flattened final conversion out
+// of the Montgomery domain. The input is an encoded (limbs+1)-word
+// accumulator. The native bootstrap has already performed its first radix
+// step, so this loop performs the remaining limbs-1 reduction steps.
+func runBootstrapMontgomeryReduction(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction state is unavailable")
+	}
+	limbs := int(uint32(s.x[27]))
+	mask := uint32(s.x[2])
+	if limbs != 32 && limbs != 64 || mask != 0x224ea33b || s.x[28] == 0 ||
+		s.x[7] != 0xc0c02ce911b20ca0 {
+		return 0, fmt.Errorf("unsupported bootstrap Montgomery reduction ABI")
+	}
+	modulusPointer, err := s.load(s.sp+0x70, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction modulus: %w", err)
+	}
+	lastPointer, err := s.load(s.sp+0x58, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction last-word pointer: %w", err)
+	}
+	carryPointer, err := s.load(s.sp+0x60, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction carry pointer: %w", err)
+	}
+	if lastPointer != s.x[28]+uint64((limbs-1)*4) || carryPointer != s.x[28]+uint64(limbs*4) {
+		return 0, fmt.Errorf("unsupported bootstrap Montgomery reduction geometry")
+	}
+
+	words, err := loadMontgomeryWords(s, s.x[28], limbs+1, mask, "reduction accumulator")
+	if err != nil {
+		return 0, err
+	}
+	modulus, err := loadMontgomeryWords(s, modulusPointer, limbs, mask, "reduction modulus")
+	if err != nil {
+		return 0, err
+	}
+	inverseValue, err := s.load(s.sp+0x7c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction inverse: %w", err)
+	}
+	inverse := uint32(inverseValue)
+	lastCarry, err := montgomeryReduceWords(words, modulus, inverse, limbs-1)
+	if err != nil {
+		return 0, err
+	}
+	for index, word := range words {
+		if err := s.storeValue(s.x[28]+uint64(index*4), uint64(word^mask), 4); err != nil {
+			return 0, fmt.Errorf("bootstrap Montgomery reduction output %d: %w", index, err)
+		}
+	}
+
+	startCounter := uint32(s.x[20])
+	finalCounter := startCounter + uint32(limbs-1)
+	if err := s.storeValue(s.sp+0x8c, uint64(finalCounter-1), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction counter: %w", err)
+	}
+	if err := s.storeValue(s.sp+0x98, 0x69f2, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction state: %w", err)
+	}
+	dispatchTable, err := s.load(s.sp+0xa8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery reduction dispatch table: %w", err)
+	}
+
+	// Preserve the compatibility ABI expected by the first block after the
+	// flattened loop. These are encodings and dispatcher state, not secrets.
+	s.x[1] = lastCarry ^ s.x[7]
+	s.x[8] = bootstrapMontgomeryReductionExit
+	s.x[10] = uint64(finalCounter)
+	s.x[11] = dispatchTable
+	s.x[14] = 0
+	s.x[15] = 0x2cd4
+	s.x[17] = 0xc98e
+	s.x[20] = uint64(finalCounter)
+	s.x[22] = 0x4c9e
+	s.x[30] = uint64(mask)
+	return bootstrapMontgomeryReductionExit, nil
+}
+
+// montgomeryReduceWords applies radix-2^32 Montgomery reduction to an
+// (n+1)-word accumulator. It retains the extra carry word because the native
+// bootstrap intentionally postpones its final conditional subtraction.
+func montgomeryReduceWords(words, modulus []uint32, inverse uint32, rounds int) (uint64, error) {
+	if len(modulus) == 0 || len(words) != len(modulus)+1 || rounds < 0 || rounds > len(modulus) {
+		return 0, fmt.Errorf("invalid Montgomery reduction geometry %d/%d/%d", len(words), len(modulus), rounds)
+	}
+	if modulus[0]&1 == 0 || modulus[0]*inverse != ^uint32(0) {
+		return 0, fmt.Errorf("invalid Montgomery reduction inverse")
+	}
+	var lastCarry uint64
+	for round := 0; round < rounds; round++ {
+		factor := words[0] * inverse
+		carry := uint64(0)
+		for index, modulusWord := range modulus {
+			total := uint64(factor)*uint64(modulusWord) + uint64(words[index]) + carry
+			if index == 0 && uint32(total) != 0 {
+				return 0, fmt.Errorf("Montgomery reduction did not cancel its low limb")
+			}
+			if index > 0 {
+				words[index-1] = uint32(total)
+			}
+			carry = total >> 32
+			lastCarry = total
+		}
+		total := uint64(words[len(modulus)]) + carry
+		words[len(modulus)-1] = uint32(total)
+		words[len(modulus)] = uint32(total >> 32)
+	}
+	return lastCarry, nil
 }
 
 // runBootstrapMontgomeryMultiply replaces one complete accumulator cycle with
