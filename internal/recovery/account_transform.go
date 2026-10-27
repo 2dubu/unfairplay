@@ -596,6 +596,21 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountAccumulatorStep:
 		next, err := runAccountAccumulatorStep(s)
 		return next, true, err
+	case accountFrameWordWriterStart:
+		next, err := runAccountFrameWordWriter(s)
+		return next, true, err
+	case accountFrameWordWriterTail:
+		next, err := runAccountFrameWordWriterTail(s)
+		return next, true, err
+	case accountStackWordWriterStart:
+		next, err := runAccountStackWordWriter(s)
+		return next, true, err
+	case accountStackWordWriterTail:
+		next, err := runAccountStackWordWriterTail(s)
+		return next, true, err
+	case accountWideWordWriter:
+		next, err := runAccountWideWordWriter(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
