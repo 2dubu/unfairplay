@@ -917,14 +917,52 @@ func runBootstrapPointerWalkIteration(s *state) (uint64, error) {
 // runBootstrapPairCopyPass copies two 32-bit words per iteration from the
 // source object at [x8+8] to the destination object at [x9+8].
 func runBootstrapPairCopyPass(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap pair-copy state is unavailable")
+	}
 	const maximumPairs = 8192
-	for pair := 0; pair < maximumPairs; pair++ {
-		next, err := runBootstrapPairCopyStep(s)
-		if err != nil || next != bootstrapPairCopyPass {
-			return next, err
+	counter := uint32(s.x[13])
+	if counter < 2 || counter&1 != 0 || counter/2 > maximumPairs {
+		return 0, fmt.Errorf("unsupported bootstrap pair-copy length %d", counter)
+	}
+	source, err := s.load(s.x[8]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy source pointer: %w", err)
+	}
+	destination, err := s.load(s.x[9]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy destination pointer: %w", err)
+	}
+	indexBias := (uint32(s.x[11]) ^ 0xeb62) + 0xffff8181
+	for current := counter; current != 0; current -= 2 {
+		firstIndex := indexBias + current
+		first, err := loadBootstrapWord(s, source, firstIndex)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap pair-copy first source: %w", err)
+		}
+		if err := storeBootstrapWord(s, destination, firstIndex, uint32(first)); err != nil {
+			return 0, fmt.Errorf("bootstrap pair-copy first destination: %w", err)
+		}
+		secondIndex := current - 2
+		second, err := loadBootstrapWord(s, source, secondIndex)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap pair-copy second source: %w", err)
+		}
+		if err := storeBootstrapWord(s, destination, secondIndex, uint32(second)); err != nil {
+			return 0, fmt.Errorf("bootstrap pair-copy second destination: %w", err)
 		}
 	}
-	return 0, fmt.Errorf("bootstrap pair-copy pass exceeded %d pairs", maximumPairs)
+	next, err := loadBootstrapPointer(s, s.x[10], uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pair-copy dispatch: %w", err)
+	}
+	s.x[12] = next
+	s.x[13] = 0
+	s.x[14] = 0
+	s.x[15] = destination
+	s.x[17] = 0xa668
+	s.compare32(2, 2)
+	return next, nil
 }
 
 func runBootstrapPairCopyStep(s *state) (uint64, error) {

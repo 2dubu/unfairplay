@@ -624,6 +624,91 @@ func TestBootstrapPairCopyStepMatchesLiftedBlock(t *testing.T) {
 	}
 }
 
+func TestBootstrapPairCopyPassMatchesRepeatedSteps(t *testing.T) {
+	random := rand.New(rand.NewSource(0x100176524))
+	for trial := 0; trial < 64; trial++ {
+		const (
+			sourceObject      = uint64(0x300100)
+			destinationObject = uint64(0x300200)
+			dispatchBase      = uint64(0x400000)
+			sourceBase        = uint64(0x100000000000)
+			destinationBase   = uint64(0x200000000000)
+			selector          = uint32(0x951c)
+			exitTarget        = uint64(0x123456789)
+		)
+		counter := uint32(2 * (1 + random.Intn(64)))
+		pages := map[uint64][]byte{
+			0x300000:        make([]byte, pageSize),
+			sourceBase:      make([]byte, pageSize),
+			destinationBase: make([]byte, pageSize),
+		}
+		for _, index := range []uint32{selector, selector ^ 0x24} {
+			address := dispatchBase + uint64(index)*8
+			if pages[address&^(pageSize-1)] == nil {
+				pages[address&^(pageSize-1)] = make([]byte, pageSize)
+			}
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		base := newState(&model{pages: clonePages(pages)})
+		for register := range base.x {
+			base.x[register] = random.Uint64()
+		}
+		base.x[8] = sourceObject
+		base.x[9] = destinationObject
+		base.x[10] = dispatchBase
+		base.x[11] = uint64(selector)
+		base.x[13] = uint64(counter)
+		if err := base.storeValue(sourceObject+8, sourceBase, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(destinationObject+8, destinationBase, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatchBase+uint64(selector)*8, exitTarget, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatchBase+uint64(selector^0x24)*8, bootstrapPairCopyPass, 8); err != nil {
+			t.Fatal(err)
+		}
+
+		repeated := newState(base.model)
+		bulk := newState(base.model)
+		for _, item := range []*state{repeated, bulk} {
+			item.x = base.x
+			item.n, item.z, item.c, item.v = base.n, base.z, base.c, base.v
+			item.writable = clonePages(base.writable)
+			item.dirty = make(map[uint64]bool, len(item.writable))
+			for page := range item.writable {
+				item.dirty[page] = true
+			}
+		}
+
+		var repeatedNext uint64
+		for pair := uint32(0); pair < counter/2; pair++ {
+			var err error
+			repeatedNext, err = runBootstrapPairCopyStep(repeated)
+			if err != nil {
+				t.Fatalf("trial %d pair %d: %v", trial, pair, err)
+			}
+		}
+		bulkNext, err := runBootstrapPairCopyPass(bulk)
+		if err != nil {
+			t.Fatalf("trial %d bulk pass: %v", trial, err)
+		}
+		if repeatedNext != bulkNext || repeated.x != bulk.x ||
+			repeated.n != bulk.n || repeated.z != bulk.z || repeated.c != bulk.c || repeated.v != bulk.v {
+			t.Fatalf("trial %d scalar state differs: repeated=%#x bulk=%#x", trial, repeatedNext, bulkNext)
+		}
+		if !reflect.DeepEqual(repeated.writable, bulk.writable) {
+			t.Fatalf("trial %d memory differs", trial)
+		}
+	}
+}
+
 func TestBootstrapConstantFillIterationMatchesLiftedBlocks(t *testing.T) {
 	random := rand.New(rand.NewSource(int64(bootstrapConstantFillSeed)))
 	for trial := 0; trial < 256; trial++ {
