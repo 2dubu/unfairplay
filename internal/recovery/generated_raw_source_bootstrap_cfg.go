@@ -359,6 +359,38 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapDescriptorReturn && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapDescriptorReturn(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapCallContinuation && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapCallContinuation(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapNestedReturnStart && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapNestedReturn(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapGuardedReturnStart && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapGuardedReturn(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if runtime == nil || runtime.stopPC == 0 {
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {
