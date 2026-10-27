@@ -11,6 +11,7 @@ const (
 	accountEntryByteCopyPass      = uint64(0x1001f39b8)
 	accountEntryFourWordPass      = uint64(0x1002376d4)
 	accountEntryZeroFillPass      = uint64(0x10092144c)
+	accountEntrySecondaryWordPass = uint64(0x1000fcc88)
 )
 
 func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -39,9 +40,66 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountEntryZeroFillPass:
 		next, err := runAccountEntryZeroFill(s)
 		return next, true, err
+	case accountEntrySecondaryWordPass:
+		next, err := runAccountEntrySecondaryWordPass(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runAccountEntrySecondaryWordPass(s *state) (uint64, error) {
+	const maximumWords = 4096
+	for index := 0; index < maximumWords; index++ {
+		next, err := runAccountEntrySecondaryWordStep(s)
+		if err != nil || next != accountEntrySecondaryWordPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("account-entry secondary word pass exceeded %d words", maximumWords)
+}
+
+func runAccountEntrySecondaryWordStep(s *state) (uint64, error) {
+	s.traceBlock(accountEntrySecondaryWordPass)
+	s.x[0] = uint64(uint32(s.x[15]) + 0x42)
+	s.x[17] = s.x[3] << 2
+	offsets := [...]uint64{
+		0xfffffffedf91bc98,
+		0xfffffffedf91bc84,
+		0xfffffffedf91bc6c,
+		0xfffffffedf91bc64,
+	}
+	registers := [...]int{2, 22, 22, 25}
+	var words [4]uint32
+	for index, offset := range offsets {
+		value, err := s.load(s.x[20]+s.x[17]+offset, 4)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry secondary word input %d: %w", index, err)
+		}
+		words[index] = uint32(value)
+		s.x[registers[index]] = uint64(words[index])
+	}
+	s.x[2] = uint64(words[1] ^ words[0])
+	s.x[22] = uint64(words[2] ^ words[3])
+	s.x[2] = uint64(uint32(s.x[2]) ^ uint32(s.x[22]))
+	s.x[2] = uint64(uint32(s.x[13]) ^ uint32(rotateRight(s.x[2], 31, 32)))
+	s.x[17] += s.x[9]
+	if err := s.storeValue(s.x[20]+s.x[17], uint64(uint32(s.x[2])), 4); err != nil {
+		return 0, fmt.Errorf("account-entry secondary word output: %w", err)
+	}
+	s.x[3]++
+	s.x[11] = 0x481b782a
+	s.x[17] = s.x[0] + s.x[11]
+	s.compare64(s.x[3], s.x[17])
+	dispatchIndex := uint32(boolValue(s.condition("eq")))*0x46 ^ uint32(s.x[15])
+	next, err := loadBootstrapPointer(s, s.x[24], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry secondary word dispatch: %w", err)
+	}
+	s.x[2] = 0x481b90d7
+	s.x[17] = 0xaaed
+	s.x[22] = next
+	return next, nil
 }
 
 func runAccountEntryZeroFill(s *state) (uint64, error) {
