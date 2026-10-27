@@ -464,6 +464,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountWideLimitRoute:
 		next, err := runAccountWideLimitRoute(s)
 		return next, true, err
+	case accountEqualityDispatch:
+		next, err := runAccountEqualityDispatch(s)
+		return next, true, err
+	case accountByteCCmpDispatch:
+		next, err := runAccountByteCCmpDispatch(s)
+		return next, true, err
+	case accountOffsetDispatch:
+		next, err := runAccountOffsetDispatch(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
