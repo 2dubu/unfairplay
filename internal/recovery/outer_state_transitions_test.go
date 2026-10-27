@@ -14,6 +14,7 @@ func TestOuterTableRecoveredStateVectors(t *testing.T) {
 		got  uint32
 		want uint32
 	}{
+		{"pending-s2", outerTablePendingS2(a, b, c, d), 0x37bdc4ba},
 		{"lane0-pending-s1", outerTableLane0PendingS1(a, b, c, d, 0xdeadbeef, 0x13579bdf, 0x2468ace0, 0xfedcba98), 0xe0371293},
 		{"lane0-pending-s3", outerTableLane0PendingS3(a, b, c, d), 0xab79a9e6},
 		{"lane2-s0", outerTableLane2NextS0(a, b, c, d), 0xeaa93a27},

@@ -1,37 +1,43 @@
 package recovery
 
 // outerTableRoundState is the compact semantic state consumed by the 21
-// protected table writers. PendingS2 is produced by the preceding outer-state
-// step; Source and Codec are the three byte pairs used while updating state
-// word 2.
+// protected table writers. Hardware is the six-byte native identity consumed
+// through a rotating three-byte window. Codec is the paired three-byte state
+// used while updating state word 2.
 type outerTableRoundState struct {
 	Words         [5]uint32
-	PendingS2     uint32
-	Source, Codec [3]uint32
+	Hardware      [6]byte
+	HardwareIndex uint8
+	Codec         [3]uint32
 }
 
 func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
 	indexes, ok := outerTableIndexes(base)
-	if !ok || table == nil || state == nil {
+	if !ok || table == nil || state == nil || state.HardwareIndex >= uint8(len(state.Hardware)) {
 		return 0, false
 	}
 	s0, s1, s2, s3, s4 := state.Words[0], state.Words[1], state.Words[2], state.Words[3], state.Words[4]
 	tap := func(offset uint32) uint32 { return table[(base+offset)%outerTableWords] }
-	pendingS1 := outerTableLane0PendingS1(state.PendingS2, s0, s1, s3, tap(27), tap(69), tap(111), tap(152))
-	pendingS3 := outerTableLane0PendingS3(state.PendingS2, s0, s3, s4)
+	pendingS2 := outerTablePendingS2(s2, tap(70), tap(112), tap(154))
+	pendingS1 := outerTableLane0PendingS1(pendingS2, s0, s1, s3, tap(27), tap(69), tap(111), tap(152))
+	pendingS3 := outerTableLane0PendingS3(pendingS2, s0, s3, s4)
 
-	table[indexes[0]] ^= outerTableLane0Mask(state.PendingS2, s0, s1, s3, s4, tap(27), tap(69), tap(111))
-	table[indexes[1]] ^= outerTableLane1Mask(pendingS1, state.PendingS2, pendingS3, s4)
-	s2 = state.PendingS2
-	table[indexes[2]] ^= outerTableLane2Mask(pendingS1, state.PendingS2, pendingS3, s0, s4)
-	s0 = outerTableLane2NextS0(state.PendingS2, pendingS1, pendingS3, s0)
+	table[indexes[0]] ^= outerTableLane0Mask(pendingS2, s0, s1, s3, s4, tap(27), tap(69), tap(111))
+	table[indexes[1]] ^= outerTableLane1Mask(pendingS1, pendingS2, pendingS3, s4)
+	s2 = pendingS2
+	table[indexes[2]] ^= outerTableLane2Mask(pendingS1, pendingS2, pendingS3, s0, s4)
+	s0 = outerTableLane2NextS0(pendingS2, pendingS1, pendingS3, s0)
 	table[indexes[3]] ^= outerTableLane3Mask(s0, pendingS3)
 	s3 = pendingS3
 	table[indexes[4]] ^= outerTableLane4Mask(table[4], table[101], table[115], table[119])
 	table[indexes[5]] ^= outerTableLane5Mask(pendingS1, s3, s0)
 	s1 = pendingS1
+	var source [3]uint32
+	for index := range source {
+		source[index] = uint32(state.Hardware[(int(state.HardwareIndex)+index)%len(state.Hardware)])
+	}
 	s2 = outerTableLane5NextS2(
-		s2, state.Source[0], state.Source[1], state.Source[2],
+		s2, source[0], source[1], source[2],
 		state.Codec[0], state.Codec[1], state.Codec[2],
 	)
 	pendingS4 := outerTableLane5PendingS4(s4, s0, pendingS1, s3)
@@ -61,6 +67,7 @@ func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *ou
 	s0 = pendingS0
 
 	state.Words = [5]uint32{s0, s1, s2, s3, s4}
+	state.HardwareIndex = (state.HardwareIndex + uint8(len(state.Hardware)) - 1) % uint8(len(state.Hardware))
 	next, ok := nextOuterTableBase(base)
 	return next, ok
 }
