@@ -389,6 +389,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountStackRouteLoad:
 		next, err := runAccountStackRouteLoad(s)
 		return next, true, err
+	case accountCompoundRouteA:
+		next, err := runAccountCompoundRouteA(s)
+		return next, true, err
+	case accountCompoundRouteB:
+		next, err := runAccountCompoundRouteB(s)
+		return next, true, err
+	case accountCompoundRouteC:
+		next, err := runAccountCompoundRouteC(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
