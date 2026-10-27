@@ -91,6 +91,16 @@ round-specific white box or DFA is required after a semantic round key has
 been recovered. The remaining unknown is the earlier frame-to-round-key
 producer and its protected byte representation.
 
+The producer's first semantic round is now separated from its protected
+representation as well. After removing one XOR share from the four input
+words, each output word depends on exactly one AES ShiftRows group of four
+input bytes. The complete round is a baseline plus sixteen independent
+8-to-32-bit XOR contribution tables. All 4,096 one-byte controls and 256
+independent multi-byte controls match this generalized round exactly. The same
+typed Go round primitive now drives the existing frame model. Its concrete
+SIDB tables and the remaining producer rounds still need normalization and
+cross-build proof before production can stop using the legacy path.
+
 ## Cross-build evidence
 
 Local binaries already show that CFG identity is not a useful definition of
@@ -118,9 +128,10 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Recover the remaining typed candidate-frame-to-earliest-round-key producer.
-   AES schedule rounds 6 through 10 and the round-key-to-SIDB-key stage are
-   complete and must not be replaced by another DFA implementation.
+1. Recover and normalize the remaining generalized rounds between the typed
+   first producer round and the earliest semantic AES round key. AES schedule
+   rounds 6 through 10 and the round-key-to-SIDB-key stage are complete and
+   must not be replaced by another DFA implementation.
 2. Parse the decoded SIDB registry structurally and recover its typed
    registry-to-current-SINF-precursor transform.
 3. Connect the precursor to personalized SINF validation and remove native

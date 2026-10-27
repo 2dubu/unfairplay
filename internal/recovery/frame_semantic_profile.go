@@ -10,11 +10,7 @@ import (
 	"io"
 )
 
-type frameSemanticRound struct {
-	baseline [16]byte
-	targets  [16][4]byte
-	tables   [16][256][4]byte
-}
+type frameSemanticRound = generalizedByteRound
 
 type frameSemanticFinalByte struct {
 	inputCount    byte
@@ -208,13 +204,7 @@ func (model frameSemanticModel) apply(input [16]byte) (output [16]byte, exitWord
 				exitWord |= uint32(value) << uint(outputByte*8)
 			}
 		}
-		next := round.baseline
-		for position, value := range state {
-			for slot, target := range round.targets[position] {
-				next[target] ^= round.tables[position][value][slot]
-			}
-		}
-		state = next
+		state = round.apply(state)
 	}
 	for target, entry := range model.final {
 		if entry.inputCount == 1 {
