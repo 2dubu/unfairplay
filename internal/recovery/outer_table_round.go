@@ -8,7 +8,7 @@ type outerTableRoundState struct {
 	Words         [5]uint32
 	Hardware      [6]byte
 	HardwareIndex uint8
-	Codec         [3]uint32
+	Codec         [17]byte
 }
 
 func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
@@ -38,7 +38,7 @@ func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *ou
 	}
 	s2 = outerTableLane5NextS2(
 		s2, source[0], source[1], source[2],
-		state.Codec[0], state.Codec[1], state.Codec[2],
+		uint32(state.Codec[4]), uint32(state.Codec[6]), uint32(state.Codec[8]),
 	)
 	pendingS4 := outerTableLane5PendingS4(s4, s0, pendingS1, s3)
 	table[indexes[6]] ^= outerTableLane6Mask(s1, pendingS4, s0)
@@ -70,4 +70,11 @@ func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *ou
 	state.HardwareIndex = (state.HardwareIndex + uint8(len(state.Hardware)) - 1) % uint8(len(state.Hardware))
 	next, ok := nextOuterTableBase(base)
 	return next, ok
+}
+
+func applyOuterSemanticIteration(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
+	if !applyOuterPreRound(table, base, state) {
+		return 0, false
+	}
+	return applyOuterTableRound(table, base, state)
 }
