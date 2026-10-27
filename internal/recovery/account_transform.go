@@ -575,6 +575,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountMixerSetup:
 		next, err := runAccountMixerSetup(s)
 		return next, true, err
+	case accountLookupSetupTarget:
+		next, err := runAccountLookupSetupTarget(s)
+		return next, true, err
+	case accountMultiplyCompareTarget:
+		next, err := runAccountMultiplyCompareTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
