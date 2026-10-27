@@ -286,13 +286,53 @@ func runSharedEnrollmentRightPath(s *state) (uint64, error) {
 
 func runSharedEnrollmentByteFill(s *state) (uint64, error) {
 	const maximumBytes = 16384
-	for index := 0; index < maximumBytes; index++ {
-		next, err := runSharedEnrollmentByteFillStep(s)
-		if err != nil || next != sharedEnrollmentByteFill {
-			return next, err
-		}
+	if s == nil || s.x[8] == 0 || s.x[8] > maximumBytes {
+		return 0, fmt.Errorf("unsupported shared enrollment byte-fill length %d", s.x[8])
 	}
-	return 0, fmt.Errorf("shared enrollment byte fill exceeded %d bytes", maximumBytes)
+	s.traceBlock(sharedEnrollmentByteFill)
+	position := s.x[8]
+	stateValue := s.x[10]
+	step := s.x[3] + uint64(uint32(s.x[9])+uint32(s.x[30]))
+	var lastInput uint32
+	for position != 0 {
+		position--
+		lastInput = uint32(stateValue)
+		output := sharedEnrollmentFillByte(lastInput, uint32(s.x[1]))
+		if err := s.storeValue(s.x[20]+position, uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("shared enrollment byte-fill output: %w", err)
+		}
+		stateValue += step
+	}
+	if err := s.storeValue(s.sp+0x3af8, 0, 8); err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill counter: %w", err)
+	}
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill dispatch table: %w", err)
+	}
+	continueTarget, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[9]))
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill continuation: %w", err)
+	}
+	if s.x[8] > 1 && continueTarget != sharedEnrollmentByteFill {
+		return 0, fmt.Errorf("unsupported shared enrollment byte-fill continuation %#x", continueTarget)
+	}
+	next, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[9])^8)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill dispatch: %w", err)
+	}
+	s.x[8] = 0
+	s.x[10] = stateValue
+	s.x[11] = next
+	s.x[12] = dispatchTable
+	s.x[13] = uint64(lastInput + 0x11)
+	s.x[17] = 0x3548
+	s.compare64(0, 0)
+	return next, nil
+}
+
+func sharedEnrollmentFillByte(stateValue, key uint32) byte {
+	return byte((stateValue ^ key) * (stateValue + 0x11))
 }
 
 func runSharedEnrollmentByteFillStep(s *state) (uint64, error) {
