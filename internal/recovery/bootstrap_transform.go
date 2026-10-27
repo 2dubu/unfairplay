@@ -28,7 +28,7 @@ const (
 // natural nested-loop structure. A round contains either 31 or 63 recurrence
 // steps, followed by five small control blocks. If a different, valid path is
 // selected, the caller resumes it through the verified CFG.
-func runBootstrapMixer(s *state, runtime *rawSourceRuntime, profile *executionProfile) (uint64, error) {
+func runBootstrapMixer(s *state, _ *rawSourceRuntime, profile *executionProfile) (uint64, error) {
 	if s == nil || profile == nil || profile.runBootstrap == nil {
 		return 0, fmt.Errorf("bootstrap mixer state is unavailable")
 	}
@@ -49,23 +49,23 @@ func runBootstrapMixer(s *state, runtime *rawSourceRuntime, profile *executionPr
 		}
 
 		var err error
-		pc, err = runBootstrapMixerBlock(s, runtime, profile, pc)
+		pc, err = runBootstrapMixerAfterRecurrence(s)
 		if err != nil || pc != bootstrapMixerPrepare {
 			return pc, err
 		}
-		pc, err = runBootstrapMixerBlock(s, runtime, profile, pc)
+		pc, err = runBootstrapMixerPrepareBlock(s)
 		if err != nil || pc != bootstrapMixerDispatch {
 			return pc, err
 		}
-		pc, err = runBootstrapMixerBlock(s, runtime, profile, pc)
+		pc, err = runBootstrapMixerDispatchBlock(s)
 		if err != nil || pc != bootstrapMixerRound {
 			return pc, err
 		}
-		pc, err = runBootstrapMixerBlock(s, runtime, profile, pc)
+		pc, err = runBootstrapMixerRoundBlock(s)
 		if err != nil || pc != bootstrapMixerContinue {
 			return pc, err
 		}
-		pc, err = runBootstrapMixerBlock(s, runtime, profile, pc)
+		pc, err = runBootstrapMixerContinueBlock(s)
 		if err != nil {
 			return pc, err
 		}
@@ -76,18 +76,248 @@ func runBootstrapMixer(s *state, runtime *rawSourceRuntime, profile *executionPr
 	return 0, fmt.Errorf("bootstrap mixer exceeded %d rounds", maximumRounds)
 }
 
-func runBootstrapMixerBlock(s *state, runtime *rawSourceRuntime, profile *executionProfile, pc uint64) (uint64, error) {
-	block, ok := recoveryBlock(s, pc, profile.bootstrapBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks)
-	if !ok {
-		return pc, fmt.Errorf("bootstrap mixer is missing block %#x", pc)
+func runBootstrapMixerAfterRecurrence(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap mixer controller state is unavailable")
 	}
-	next, stopped, err := runCompactBlock(s, runtime, block)
+	s.traceBlock(bootstrapMixerAfterRecurrence)
+	s.x[10] = 0x7b3b2d12
+	s.compare32(uint32(s.x[8]), uint32(s.x[10]))
+	firstGate := uint32(boolValue(s.condition("gt")))
+	s.x[12] = uint64((uint32(s.x[11]) + 0x5b58340c) & 0xa4a77ff9)
+	value := uint32(s.x[11]) + 0x38e13ca5
+	s.x[5] = uint64(value & 0xc71ebff7)
+	value = (uint32(s.x[5]) ^ 0x8d29b67c) + uint32(s.x[2])
+	s.compare32(value, 0x84c4d2ed)
+	selector := firstGate ^ uint32(boolValue(s.condition("lt")))
+	stackBound, err := s.load(s.sp+0x38, 4)
 	if err != nil {
-		return pc, fmt.Errorf("bootstrap mixer block %#x: %w", pc, err)
+		return 0, fmt.Errorf("bootstrap mixer controller bound: %w", err)
 	}
-	if stopped {
-		return next, fmt.Errorf("bootstrap mixer block %#x stopped unexpectedly", pc)
+	s.x[22] = uint64(uint32(stackBound))
+	s.compare32(value, uint32(stackBound))
+	secondGate := uint32(boolValue(s.condition("lt")))
+	s.compare32(selector, 0)
+	dispatchGate := secondGate
+	if s.condition("ne") {
+		dispatchGate = firstGate
 	}
+	s.x[14] = uint64(uint32(s.x[12]) + 0xffff9647)
+	dispatchIndex := dispatchGate*uint32(s.x[14]) ^ uint32(s.x[11])
+	next, err := loadBootstrapPointer(s, s.x[25], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer controller dispatch: %w", err)
+	}
+	s.x[0] = 0x53ceff38
+	s.x[1] = 0x224ed61b
+	s.x[6] = 0x886438de
+	s.x[9] = next
+	s.x[13] = 0x1eb
+	s.x[15] = 0x886438dd
+	s.x[16] = 0x84c4d2ed
+	s.x[17] = 0x76d5
+	s.x[21] = 0xa9292112
+	s.x[23] = 0x8d290bcc
+	s.x[27] = 0xb3563f76
+	return next, nil
+}
+
+func runBootstrapMixerPrepareBlock(s *state) (uint64, error) {
+	s.traceBlock(bootstrapMixerPrepare)
+	s.x[9] = uint64(uint32(s.x[12]) + 0xb00)
+	s.x[10] = 0xcc2d
+	s.x[20] = uint64(uint32(s.x[9]) ^ uint32(s.x[10]))
+	s.x[10] = 0x296
+	s.x[19] = uint64(uint32(s.x[9]) | uint32(s.x[10]))
+	s.x[9] = s.x[19] + 0xb355bcc0
+	s.x[9] ^= s.x[30] >> 32
+	s.x[9] += s.x[28] >> 32
+	pointer, err := s.load(s.sp+0x48, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer prepare pointer: %w", err)
+	}
+	s.x[10] = pointer
+	word, err := s.load(pointer, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer prepare word: %w", err)
+	}
+	s.x[11] = word ^ s.x[24]
+	s.x[13] = 0xf27a3d3c33e26bf7
+	return bootstrapMixerDispatch, nil
+}
+
+func runBootstrapMixerDispatchBlock(s *state) (uint64, error) {
+	s.traceBlock(bootstrapMixerDispatch)
+	s.x[14] = s.x[20] ^ s.x[13]
+	s.x[9] += s.x[11]
+	s.x[11] = s.x[9] + s.x[14]
+	s.x[13] = 0x67c44ff4
+	s.x[9] = s.x[13] & (s.x[9] << 1)
+	s.x[9] = s.x[11] - s.x[9]
+	s.x[11] = uint64(uint32(s.x[9]) ^ 0x11ac84c1)
+	outputPointer, err := s.load(s.sp+0x40, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer dispatch output pointer: %w", err)
+	}
+	s.x[14] = outputPointer
+	if err := s.storeValue(outputPointer, uint64(uint32(s.x[11])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap mixer dispatch first output: %w", err)
+	}
+	s.x[9] >>= 32
+	s.x[11] = 0xd0349e07
+	s.x[9] = uint64(uint32(s.x[9]) ^ uint32(s.x[11]))
+	if err := s.storeValue(s.x[10], uint64(uint32(s.x[9])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap mixer dispatch second output: %w", err)
+	}
+	counter, err := s.load(s.sp+0x80, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer dispatch counter: %w", err)
+	}
+	s.x[9] = uint64(uint32(counter))
+	s.x[28] = uint64(uint32(counter) + 1)
+	s.x[10] = 0x4fd98905
+	s.x[9] = uint64(uint32(s.x[9]) + uint32(s.x[10]))
+	s.x[10] = 0xe4e21e1a
+	s.compare32(uint32(s.x[9]), uint32(s.x[10]))
+	bound, err := s.load(s.sp+0x74, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer dispatch bound: %w", err)
+	}
+	s.x[11] = uint64(uint32(bound))
+	if s.condition("ge") {
+		s.compare32(uint32(s.x[9]), uint32(bound))
+	} else {
+		s.setNZCV(0)
+	}
+	dispatchBit := uint32(boolValue(s.condition("ge")))
+	dispatchIndex := uint32(s.x[12]) | dispatchBit*0x51
+	next, err := loadBootstrapPointer(s, s.x[25], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer dispatch continuation: %w", err)
+	}
+	s.x[6] = 0xb3563f76
+	s.x[9] = next
+	s.x[13] = 0x886438de
+	s.x[14] = s.x[28]
+	s.x[17] = 0x8766
+	s.x[21] = 0x886438dd
+	s.x[27] = 0xa9292112
+	return next, nil
+}
+
+func runBootstrapMixerRoundBlock(s *state) (uint64, error) {
+	s.traceBlock(bootstrapMixerRound)
+	flag, err := s.load(s.sp+0x78, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round flag: %w", err)
+	}
+	s.x[9] = uint64(uint32(flag))
+	s.compare32(uint32(flag), 1)
+	dispatchBit := uint32(boolValue(s.condition("ne")))
+	s.x[11] = uint64(uint32(s.x[20]) + 0x5237)
+	s.x[3] = uint64(uint32(s.x[11]) | 0x88)
+	s.x[11] = uint64(uint32(s.x[20]) + 0x750d)
+	s.x[12] = 0xeaf76aea
+	if err := s.storeValue(s.sp+0x80, uint64(uint32(s.x[14])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round counter: %w", err)
+	}
+	s.x[12] = uint64(uint32(s.x[14]) + uint32(s.x[12]))
+	coefficient, err := s.load(s.sp+0x60, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round coefficient: %w", err)
+	}
+	table, err := s.load(s.sp+0x68, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round table: %w", err)
+	}
+	s.x[17], s.x[14] = coefficient, table
+	tableWord, err := loadBootstrapWord(s, table, uint32(s.x[12]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round table word: %w", err)
+	}
+	s.x[12] = tableWord
+	accumulator, err := s.load(s.sp+0x2d0, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round accumulator: %w", err)
+	}
+	s.x[14] = accumulator ^ s.x[24]
+	s.x[12] ^= s.x[24]
+	s.x[28] = uint64(uint32(s.x[12]))*uint64(uint32(coefficient)) + s.x[14]
+	multiplier, err := s.load(s.sp+0x5c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round multiplier: %w", err)
+	}
+	s.x[14] = uint64(uint32(multiplier))
+	s.x[19] = uint64(uint32(s.x[28]) * uint32(multiplier))
+	s.x[14] = uint64(uint32(s.x[28]))
+	wordPointer, err := s.load(s.sp+0x50, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round word pointer: %w", err)
+	}
+	word, err := s.load(wordPointer, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round word: %w", err)
+	}
+	s.x[17] = uint64(uint32(word))
+	s.x[2] = uint64(uint32(s.x[20]) + 0x224df1ea)
+	s.x[2] = uint64(uint32(s.x[3]) ^ uint32(s.x[2]))
+	s.x[17] = uint64(uint32(s.x[2]) ^ uint32(s.x[17]))
+	s.x[14] = uint64(uint32(s.x[19]))*uint64(uint32(s.x[17])) + s.x[14]
+	s.x[17] = uint64(0x99538112e930fbad) | ^(s.x[14] << 1)
+	s.x[2] = 0xb3563f768b67822a
+	s.x[14] += s.x[2]
+	s.x[30] = s.x[14] + s.x[17]
+	dispatchIndex := dispatchBit*0x17 ^ uint32(s.x[20])
+	next, err := loadBootstrapPointer(s, s.x[25], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round dispatch: %w", err)
+	}
+	s.x[0] = 0xe663
+	s.x[1], err = s.load(s.sp+0x3c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer round bound: %w", err)
+	}
+	s.x[2] = 0x779bc723
+	s.x[9] = next
+	s.x[10] = 0xa40ddddf
+	s.x[14] = 0x17
+	s.x[15] = 0x41e1812a
+	s.x[16] = 0x4a45ba0a
+	s.x[17] = 0xcd95
+	s.x[23] = 0xc13a
+	return next, nil
+}
+
+func runBootstrapMixerContinueBlock(s *state) (uint64, error) {
+	s.traceBlock(bootstrapMixerContinue)
+	leftPointer, err := s.load(s.sp+0x30, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer continue left pointer: %w", err)
+	}
+	s.x[9] = leftPointer
+	s.x[5], err = s.load(leftPointer+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer continue left value: %w", err)
+	}
+	rightPointer, err := s.load(s.sp+0x98, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer continue right pointer: %w", err)
+	}
+	s.x[9] = rightPointer
+	s.x[22], err = s.load(rightPointer+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer continue right value: %w", err)
+	}
+	s.x[20] = 0x779bc723
+	s.x[9] = uint64(uint32(s.x[3]) + 0xffffad41)
+	s.x[11] = 0x5bf2972d
+	s.x[14] = uint64(uint32(s.x[9]) + uint32(s.x[11]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[3]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap mixer continue dispatch: %w", err)
+	}
+	s.x[11] = next
+	s.x[17] = 0xaa52
 	return next, nil
 }
 
