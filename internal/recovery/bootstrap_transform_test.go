@@ -441,3 +441,55 @@ func TestBootstrapLookupCopyIterationMatchesLiftedBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestBootstrapPointerWalkIterationMatchesLiftedBlocks(t *testing.T) {
+	random := rand.New(rand.NewSource(int64(bootstrapPointerWalkSeed)))
+	for trial := 0; trial < 512; trial++ {
+		counter := random.Uint32()
+		removed := uint64(0x6f164ec4) & (uint64(counter) << 1)
+		lookupOffset := (uint64(counter) - removed + uint64(0xf22d1348378b2762)) ^ uint64(0xf22d1348378b2762)
+		lookupBase := uint64(0x100000000000)
+		lookupAddress := lookupBase + lookupOffset
+		pages := map[uint64][]byte{
+			lookupAddress &^ (pageSize - 1): make([]byte, pageSize),
+			0x200000:                        make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		lifted := newState(&model{pages: clonePages(pages)})
+		direct := newState(&model{pages: clonePages(pages)})
+		for register := range lifted.x {
+			lifted.x[register] = random.Uint64()
+		}
+		lifted.x[10] = uint64(counter)
+		lifted.x[16] = uint64(uint32(random.Intn(33) - 16))
+		lifted.x[21] = 0x200800
+		lifted.x[24] = lookupBase
+		direct.x = lifted.x
+		direct.n, direct.z, direct.c, direct.v = lifted.n, lifted.z, lifted.c, lifted.v
+
+		seed := compact26A428BootstrapBlocks[bootstrapPointerWalkSeed]
+		next, stopped, err := runCompactBlock(lifted, nil, seed)
+		if err != nil || stopped || next != bootstrapPointerWalkDispatch {
+			t.Fatalf("trial %d lifted seed: next=%#x stopped=%v err=%v", trial, next, stopped, err)
+		}
+		dispatch := compact26A428BootstrapBlocks[bootstrapPointerWalkDispatch]
+		nextLifted, stopped, err := runCompactBlock(lifted, nil, dispatch)
+		if err != nil || stopped {
+			t.Fatalf("trial %d lifted dispatch: next=%#x stopped=%v err=%v", trial, nextLifted, stopped, err)
+		}
+		nextDirect, err := runBootstrapPointerWalkIteration(direct)
+		if err != nil {
+			t.Fatalf("trial %d direct iteration: %v", trial, err)
+		}
+		if nextLifted != nextDirect || lifted.x != direct.x {
+			t.Fatalf("trial %d state differs: next lifted=%#x direct=%#x\nlifted=%#v\ndirect=%#v", trial, nextLifted, nextDirect, lifted.x, direct.x)
+		}
+		if lifted.n != direct.n || lifted.z != direct.z || lifted.c != direct.c || lifted.v != direct.v {
+			t.Fatalf("trial %d flags differ", trial)
+		}
+	}
+}

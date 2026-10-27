@@ -20,6 +20,8 @@ const (
 	bootstrapReverseBytePass      = uint64(0x10002d8fc)
 	bootstrapLookupCopySeed       = uint64(0x1008197dc)
 	bootstrapLookupCopyStep       = uint64(0x100819800)
+	bootstrapPointerWalkSeed      = uint64(0x1000a3fa4)
+	bootstrapPointerWalkDispatch  = uint64(0x1000a4000)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -609,6 +611,57 @@ func runBootstrapLookupCopyIteration(s *state) (uint64, error) {
 	s.x[2] = next
 	s.x[12] = position
 	s.x[17] = 0x8085
+	return next, nil
+}
+
+// runBootstrapPointerWalkPass advances one encoded counter and uses a byte
+// classifier to select the next protected continuation.
+func runBootstrapPointerWalkPass(s *state) (uint64, error) {
+	const maximumSteps = 4096
+	for step := 0; step < maximumSteps; step++ {
+		next, err := runBootstrapPointerWalkIteration(s)
+		if err != nil || next != bootstrapPointerWalkSeed {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap pointer walk exceeded %d steps", maximumSteps)
+}
+
+func runBootstrapPointerWalkIteration(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap pointer-walk state is unavailable")
+	}
+	s.traceBlock(bootstrapPointerWalkSeed)
+	const (
+		counterBias = uint32(0xffff65f4)
+		counterStep = uint32(0xffffe33a)
+		mask        = uint64(0x6f164ec4)
+		pointerSalt = uint64(0xf22d1348378b2762)
+	)
+	counter := uint32(s.x[10])
+	s.x[12] = uint64(uint32(s.x[16]) + counterBias)
+	s.x[13] = uint64(counter)
+	removed := mask & (uint64(counter) << 1)
+	s.x[11] = pointerSalt
+	s.x[13] = s.x[13] - removed + pointerSalt
+	lookupOffset := s.x[13] ^ pointerSalt
+	classification, err := s.load(s.x[24]+lookupOffset, 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pointer-walk classifier: %w", err)
+	}
+	s.compare32(uint32(classification), 0x1b)
+	classified := uint32(boolValue(s.condition("ne")))
+	s.x[15] = uint64(counterStep)
+	s.x[10] = uint64(uint32(s.x[12]) + uint32(counter+counterStep))
+	classified |= classified << 2
+	dispatchIndex := classified ^ uint32(s.x[16])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap pointer-walk dispatch: %w", err)
+	}
+	s.x[14] = next
+	s.x[17] = 0x5724
+	s.traceBlock(bootstrapPointerWalkDispatch)
 	return next, nil
 }
 
