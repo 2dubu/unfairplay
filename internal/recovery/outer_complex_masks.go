@@ -117,7 +117,7 @@ func outerTableLane2Mask(pendingS1, pendingS2, pendingS3, s0, s4 uint32) uint32 
 	t112 := uint32((t111)<<0 | (0x0)<<31)
 	return t112
 }
-func outerTableLane7Mask(s0, s1, s3, s4, tap uint32) uint32 {
+func outerTableLane7MaskCircuit(s0, s1, s3, s4, tap uint32) uint32 {
 	t0 := ((s1) >> 29) & 0x1
 	t1 := ((s3) >> 29) & 0x1
 	t2 := ((s4) >> 29) & 0x1
