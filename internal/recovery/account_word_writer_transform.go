@@ -1,10 +1,68 @@
 package recovery
 
-import "fmt"
+import (
+	"fmt"
+	"math/bits"
+)
 
 const accountWordWriter = uint64(0x1001360b0)
 
 func runAccountWordWriter(s *state) (uint64, error) {
+	const (
+		firstCounter = uint64(0x1cc84893)
+		wordCount    = uint64(16)
+		wordMask     = uint32(0xd56e60de)
+	)
+	if s == nil {
+		return 0, fmt.Errorf("account word-writer state is unavailable")
+	}
+	if s.x[0] < firstCounter || (s.x[0]-firstCounter)%4 != 0 {
+		return 0, fmt.Errorf("account word-writer counter %#x is invalid", s.x[0])
+	}
+	firstWord := (s.x[0] - firstCounter) / 4
+	if firstWord >= wordCount {
+		return 0, fmt.Errorf("account word-writer index %d is outside the input block", firstWord)
+	}
+	continueTarget, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[16]))
+	if err != nil {
+		return 0, fmt.Errorf("account word-writer continuation: %w", err)
+	}
+	if continueTarget != accountWordWriter {
+		return 0, fmt.Errorf("unsupported account word-writer continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[16])^0xc1)
+	if err != nil {
+		return 0, fmt.Errorf("account word-writer exit: %w", err)
+	}
+	if exitTarget == accountWordWriter {
+		return 0, fmt.Errorf("account word-writer exit loops to itself")
+	}
+
+	for word := firstWord; word < wordCount; word++ {
+		s.traceBlock(accountWordWriter)
+		value, err := s.load(s.x[21]+word*4, 4)
+		if err != nil {
+			return 0, fmt.Errorf("account word-writer input %d: %w", word, err)
+		}
+		encoded := bits.ReverseBytes32(uint32(value)) ^ wordMask
+		if err := s.storeValue(s.x[8]+word*4, uint64(encoded), 4); err != nil {
+			return 0, fmt.Errorf("account word-writer output %d: %w", word, err)
+		}
+	}
+
+	lastCounter := firstCounter + (wordCount-1)*4
+	s.x[7] = uint64(uint32(lastCounter^0xea1b2630) + 0x092c915e)
+	s.x[30] = 0x49d83ed2
+	s.x[0] = firstCounter + wordCount*4
+	s.compare64(lastCounter+0xffffffffe337b771, 0x3f)
+	s.x[14] = 0xffffffff8cdeddb4
+	s.x[2] = exitTarget
+	s.x[1] = 0x1cc848a3
+	s.x[17] = 0xe949
+	return exitTarget, nil
+}
+
+func runAccountWordWriterStep(s *state) (uint64, error) {
 	s.traceBlock(accountWordWriter)
 	s.x[17] = s.x[0] + s.x[3]
 	value, err := s.load(s.x[21]+s.x[17], 1)
