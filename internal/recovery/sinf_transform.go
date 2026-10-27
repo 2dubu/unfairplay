@@ -50,6 +50,9 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sinfBitSelector:
 		next, err := runSINFBitSelector(s)
 		return next, true, err
+	case sinfBitPermuteStart:
+		next, err := runSINFBitPermute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
