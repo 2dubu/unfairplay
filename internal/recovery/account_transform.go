@@ -683,6 +683,18 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountLoopLimitRoute:
 		next, err := runAccountLoopLimitRoute(s)
 		return next, true, err
+	case accountStackStateRoute:
+		next, err := runAccountStackStateRoute(s)
+		return next, true, err
+	case accountOuterCallSetupA:
+		next, err := runAccountOuterCallSetupA(s)
+		return next, true, err
+	case accountSignedThresholdRoute:
+		next, err := runAccountSignedThresholdRoute(s)
+		return next, true, err
+	case accountOuterCallSetupB:
+		next, err := runAccountOuterCallSetupB(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
