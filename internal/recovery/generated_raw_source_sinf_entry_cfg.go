@@ -62,7 +62,9 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 				pc = next
 				continue
 			}
+			return pc, blockCount, fmt.Errorf("direct SINF-entry CFG reached unknown block %#x", pc)
 		}
+		// Compact blocks are retained only for explicit partial-instruction stops.
 		if block, ok := recoverySINFEntryBlock(s, profile, pc); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {

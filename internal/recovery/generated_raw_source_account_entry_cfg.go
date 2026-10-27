@@ -76,7 +76,9 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 				pc = next
 				continue
 			}
+			return pc, blockCount, fmt.Errorf("direct account-entry CFG reached unknown block %#x", pc)
 		}
+		// Compact blocks are retained only for explicit partial-instruction stops.
 		if block, ok := recoveryBlock(s, pc, profile.accountEntryBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {

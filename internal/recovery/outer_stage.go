@@ -180,7 +180,7 @@ func storeOuterStageState(worker *state, profile *executionProfile, layout outer
 
 // runSemanticOuterStage executes the recovered transform without interpreting
 // fairplayd blocks. Its inputs and outputs are the same stage ABI used by the
-// remaining lifted selection code.
+// direct selection state machine.
 func runSemanticOuterStage(worker *state) (int, error) {
 	return runSemanticOuterStageWithLayout(worker, outerStage26A428Layout)
 }

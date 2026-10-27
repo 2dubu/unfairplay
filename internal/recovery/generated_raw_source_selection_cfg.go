@@ -91,7 +91,9 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 				pc = next
 				continue
 			}
+			return pc, blockCount, fmt.Errorf("direct selection CFG reached unknown block %#x", pc)
 		}
+		// Compact blocks are retained only for explicit partial-instruction stops.
 		if block, ok := recoveryBlock(s, pc, profile.selectionBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
