@@ -51,16 +51,50 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
-Convert a supported encrypted IPA for macOS FairPlay:
+### Convert an IPA for macOS
+
+This requires an encrypted IPA personalized for the same Store enrollment as
+your saved model. Convert it with:
 
 ```sh
 ./unfairplay convert-ipa-macos --input App.ipa
 ```
 
-This uses the saved version-2 enrollment model. You can instead pass a matching
-private 16-byte `--credential`. It changes personalized SINF records, not Mach-O
-code. Apple-declared SINF copies are added for encrypted frameworks and
-extensions. Some iOS apps still refuse to run on macOS for unrelated reasons.
+The default output is `App.macos.ipa`. Use `--output` to choose another path or
+`--force` to replace an existing output.
+
+The command uses a saved version-2 enrollment model. You can instead use a
+matching private 16-byte credential:
+
+```sh
+chmod 600 credential.bin
+./unfairplay convert-ipa-macos \
+  --input App.ipa \
+  --credential credential.bin
+```
+
+The conversion:
+
+- validates and rewrites the personalized SINF into the macOS layout;
+- preserves its app key, signature, rights, and other private fields;
+- adds every SINF copy declared by Apple for encrypted frameworks and
+  extensions; and
+- leaves all Mach-O executables byte-identical and encrypted.
+
+The result is still an IPA, not a macOS installer. A macOS iOS-app wrapper or
+compatible installer must preserve this basic layout:
+
+```text
+App iOS.app/
+  WrappedBundle -> Wrapper/App.app
+  Wrapper/App.app
+  Wrapper/iTunesMetadata.plist
+```
+
+The converted IPA and wrapper contain a private account license. Keep them
+private. This feature does not decrypt, modify, re-sign, or bypass checks inside
+the app. Apps may still reject macOS, require unavailable hardware, or depend on
+services that are not present on macOS.
 
 ## Advanced commands
 
