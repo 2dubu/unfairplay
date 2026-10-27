@@ -65,7 +65,7 @@ flattened native selector.
 | Account entry | SHA-1 and the dominant copy, projection, schedule, and encoding loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Bootstrap | Montgomery arithmetic and the dominant table/byte loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
-| SINF | Portable AES/model decoding exists. The typed candidate-to-precursor selection path is not connected yet. |
+| SINF | Portable AES/model decoding exists. Directly treating a candidate state or frame as the final precursor was tested and rejected; the typed frame-to-precursor codec still has to be recovered. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
@@ -99,15 +99,17 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Connect typed selection candidates directly to personalized SINF
-   validation and remove native selection when exactly one candidate matches.
-2. Express account entry and bootstrap as typed stage functions rather than
+1. Recover the typed frame-to-precursor SINF codec. Candidate states and frames
+   alone do not validate as the final model key.
+2. Connect the codec output to personalized SINF validation and remove native
+   selection when exactly one candidate matches.
+3. Express account entry and bootstrap as typed stage functions rather than
    register-state adapters.
-3. Discover required inputs from SIDB/SINF/object structure, removing the
+4. Discover required inputs from SIDB/SINF/object structure, removing the
    remaining memory offsets.
-4. Delete generated CFG and compact-interpreter production paths after typed
+5. Delete generated CFG and compact-interpreter production paths after typed
    stage parity is proven.
-5. Validate the same algorithms across at least five independent builds and
+6. Validate the same algorithms across at least five independent builds and
    multiple enrollment layouts.
 
 Update this file whenever a stage becomes typed, an offset is removed, a
