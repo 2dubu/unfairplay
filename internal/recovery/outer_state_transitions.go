@@ -510,42 +510,14 @@ func outerTableLane19NextS0(mix uint32) uint32 {
 	return mix ^ 0xfe8eae82
 }
 func outerTableLane5NextS2(s2, source0, source1, source2, codec0, codec1, codec2 uint32) uint32 {
-	t0 := ((codec0) >> 1) & 0x3
-	t1 := ((s2) >> 30) & 0x3
-	t2 := ((t0) ^ (t1)) & 0x3
-	t3 := ((codec0) >> 0) & 0x1
-	t4 := ((source2) >> 7) & 0x1
-	t5 := ((s2) >> 29) & 0x1
-	t6 := ((t3) ^ (t4) ^ (t5)) & 0x1
-	t7 := ((source2) >> 5) & 0x3
-	t8 := ((s2) >> 27) & 0x3
-	t9 := ((t7) ^ (t8)) & 0x3
-	t10 := ((source2) >> 0) & 0x1f
-	t11 := ((codec1) >> 3) & 0x1f
-	t12 := ((s2) >> 22) & 0x1f
-	t13 := ((t10) ^ (t11) ^ (t12)) & 0x1f
-	t14 := ((codec1) >> 0) & 0x7
-	t15 := ((source1) >> 5) & 0x7
-	t16 := ((s2) >> 19) & 0x7
-	t17 := ((t14) ^ (t15) ^ (t16)) & 0x7
-	t18 := ((source1) >> 4) & 0x1
-	t19 := ((s2) >> 18) & 0x1
-	t20 := ((t18) ^ (t19)) & 0x1
-	t21 := ((source1) >> 0) & 0xf
-	t22 := ((codec2) >> 4) & 0xf
-	t23 := ((s2) >> 14) & 0xf
-	t24 := ((t21) ^ (t22) ^ (t23)) & 0xf
-	t25 := ((codec2) >> 0) & 0xf
-	t26 := ((source0) >> 4) & 0xf
-	t27 := ((s2) >> 10) & 0xf
-	t28 := ((t25) ^ (t26) ^ (t27)) & 0xf
-	t29 := ((source0) >> 0) & 0xf
-	t30 := ((s2) >> 6) & 0xf
-	t31 := ((t29) ^ (t30)) & 0xf
-	t32 := ((s2) >> 5) & 0x1
-	t33 := ((s2) >> 0) & 0x1f
-	t34 := ((codec0) >> 3) & 0x1f
-	t35 := ((t33) ^ (t34)) & 0x1f
-	t36 := uint32((t35)<<0 | (t32)<<5 | (t31)<<6 | (t28)<<10 | (t24)<<14 | (t20)<<18 | (t17)<<19 | (t13)<<22 | (t9)<<27 | (t6)<<29 | (t2)<<30)
-	return t36
+	// The low byte of each source is packed into consecutive, overlapping
+	// bit lanes. Overlap is intentional: each contribution is XORed.
+	return s2 ^
+		(codec0>>3)&0x1f ^
+		(codec0&0x07)<<29 ^
+		(source0&0xff)<<6 ^
+		(codec2&0xff)<<10 ^
+		(source1&0xff)<<14 ^
+		(codec1&0xff)<<19 ^
+		(source2&0xff)<<22
 }
