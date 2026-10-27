@@ -86,8 +86,7 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 		next, err := runSharedPermutationSemantic(s)
 		return next, true, err
 	case sharedPermutationTail:
-		next, err := runSharedPermutationTail(s)
-		return next, true, err
+		return 0, true, fmt.Errorf("unsupported partial entry into shared permutation tail")
 	case sharedIndexMixStart:
 		next, err := runSharedIndexMix(s)
 		return next, true, err

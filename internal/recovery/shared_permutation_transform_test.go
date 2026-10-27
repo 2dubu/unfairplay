@@ -95,9 +95,9 @@ func TestSharedPermutationSemanticMatchesCircuit(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		circuit := newState(base.model)
+		expected := newState(base.model)
 		semantic := newState(base.model)
-		for _, item := range []*state{circuit, semantic} {
+		for _, item := range []*state{expected, semantic} {
 			item.sp = base.sp
 			item.x = base.x
 			item.n, item.z, item.c, item.v = base.n, base.z, base.c, base.v
@@ -107,24 +107,52 @@ func TestSharedPermutationSemanticMatchesCircuit(t *testing.T) {
 				item.dirty[page] = true
 			}
 		}
-		frontNext, err := runSharedPermutationFront(circuit)
-		if err != nil || frontNext != sharedPermutationTail {
-			t.Fatalf("trial %d front: next=%#x err=%v", trial, frontNext, err)
-		}
-		circuitNext, err := runSharedPermutationTail(circuit)
+		selectorValue, err := expected.load(work+uint64(byte(uint32(expected.x[11])-0x62)), 1)
 		if err != nil {
-			t.Fatalf("trial %d tail: %v", trial, err)
+			t.Fatal(err)
 		}
+		rotation := int((byte(selectorValue) + 5) & 7)
+		rotated := bits.RotateLeft8(byte(expected.x[20])^0x1b, rotation)
+		if err := expected.storeValue(work+expected.x[0], uint64(rotated^0x1b), 1); err != nil {
+			t.Fatal(err)
+		}
+		second, err := expected.load(work+uint64(byte(uint32(expected.x[11])+0xae)), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		thirdIndex := byte(((uint32(expected.x[19]) & 0x7f) << 1) ^ 0x52)
+		third, err := expected.load(work+uint64(thirdIndex), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fourthIndex := byte(uint32(expected.x[12])*uint32(expected.x[16]) + 0xa2)
+		fourth, err := expected.load(work+uint64(fourthIndex), 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		word := uint32(rotated)<<24 |
+			uint32(byte(second)^0x1b)<<16 |
+			uint32(byte(third)^0x1b)<<8 |
+			uint32(byte(fourth)^0x1b)
+		output := sharedPermutationPolynomialCircuit(word)
+		expected.x[1] = 0x65c0
+		expected.x[2] = target
+		expected.x[17] = 0xcd20
+		expected.x[19] = 0x71
+		expected.x[20] = uint64(output)
+		expected.x[27] = bootstrapTargetTable
+		expected.x[28] = work
+		expectedNext := target
 		semanticNext, err := runSharedPermutationSemantic(semantic)
 		if err != nil {
 			t.Fatalf("trial %d semantic: %v", trial, err)
 		}
-		if circuitNext != semanticNext || !reflect.DeepEqual(circuit.writable, semantic.writable) {
+		if expectedNext != semanticNext || !reflect.DeepEqual(expected.writable, semantic.writable) {
 			t.Fatalf("trial %d output differs", trial)
 		}
 		for _, register := range []int{1, 2, 3, 17, 19, 20, 27, 28} {
-			if circuit.x[register] != semantic.x[register] {
-				t.Fatalf("trial %d x%d: circuit=%#x semantic=%#x", trial, register, circuit.x[register], semantic.x[register])
+			if expected.x[register] != semantic.x[register] {
+				t.Fatalf("trial %d x%d: expected=%#x semantic=%#x", trial, register, expected.x[register], semantic.x[register])
 			}
 		}
 	}
