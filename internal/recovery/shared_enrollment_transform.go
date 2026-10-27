@@ -272,38 +272,26 @@ func runSharedEnrollmentByteFillStep(s *state) (uint64, error) {
 
 func runSharedEnrollmentClassify(s *state) (uint64, error) {
 	s.traceBlock(sharedEnrollmentClassify)
+	// CoBRA/Z3 reduces the native 32-bit index circuit, under this loop's
+	// counter invariant, to iteration & 255. The second MBA reduces exactly to
+	// ((2*current)&0xffffffc8)-current.
+	iteration := uint32(s.x[12]) - 0x22f1f257
+	if uint32(s.x[13]) != 0xdd0e0f00-iteration || uint32(s.x[2]) != 0x27ad {
+		return 0, fmt.Errorf("unsupported shared enrollment classifier ABI")
+	}
+	index := iteration & 0xff
 	s.x[16] = uint64(uint32(s.x[12]) - 0xae)
-	s.x[17] = uint64((uint32(s.x[16]) ^ 0x3a) + 0x6d)
-	s.x[0] = uint64((uint32(s.x[16]) ^ 0x584ee074) + 0x23)
-	s.x[1] = uint64((uint32(s.x[16]) ^ 0x18) + 0x4f)
-	s.x[19] = uint64(uint32(s.x[13]) ^ uint32(s.x[16]))
-	s.x[0] = uint64(uint32(s.x[19]) ^ uint32(s.x[0]))
-	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[1]))
-	s.x[17] = uint64(uint32(s.x[0]) ^ uint32(s.x[17]))
-	s.x[0] = 0x380f
-	s.x[1] = uint64(uint32(s.x[2]) + uint32(s.x[0]))
-	s.x[0] = 0x5f43
-	s.x[0] = uint64(uint32(s.x[1]) ^ uint32(s.x[0]))
-	s.x[19] = uint64(uint32(s.x[17]) & uint32(s.x[0]))
-	s.x[17] = 0xa9
-	s.x[0] = s.x[19] ^ s.x[17]
-	value, err := s.load(s.x[28]+s.x[0], 1)
+	s.x[19] = uint64(index ^ 0xa9)
+	s.x[0] = uint64(index)
+	s.x[1] = 0x5fbc
+	value, err := s.load(s.x[28]+uint64(index), 1)
 	if err != nil {
 		return 0, fmt.Errorf("shared enrollment classifier: %w", err)
 	}
-	s.x[20] = uint64(byte(value))
-	s.x[17] = uint64(uint32(s.x[20]) ^ 0x22e6ee17)
-	s.x[22] = 0xdd1911e9
-	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[22]))
-	s.x[22] = uint64(uint32(s.x[20]) ^ 0x6482ee5e)
-	s.x[23] = 0x9b7d11a2
-	s.x[22] = uint64(uint32(s.x[22]) + uint32(s.x[23]))
-	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[22]))
-	s.x[22] = uint64(uint32(s.x[20]) ^ 0x46640052)
-	s.x[23] = 0xb99bffae
-	s.x[22] = uint64(uint32(s.x[22]) + uint32(s.x[23]))
-	s.x[22] = uint64(uint32(s.x[17]) ^ uint32(s.x[22]))
-	s.x[23] = uint64(0xfffffff4 | (uint32(s.x[20]) & 3))
+	current := uint32(byte(value))
+	s.x[20] = uint64(current)
+	s.x[22] = uint64(((current + current) & 0xffffffc8) - current)
+	s.x[23] = uint64(0xfffffff4 | (current & 3))
 	dispatchIndex := uint32(s.x[2])
 	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
 	if err != nil {
@@ -316,16 +304,15 @@ func runSharedEnrollmentClassify(s *state) (uint64, error) {
 
 func runSharedEnrollmentBranch(s *state) (uint64, error) {
 	s.traceBlock(sharedEnrollmentBranch)
-	s.x[17] = uint64(uint32(s.x[1]) + 0x4064)
-	s.x[2] = 0xc88
-	s.x[24] = uint64(uint32(s.x[17]) | uint32(s.x[2]))
-	s.x[17] = 0x13df
-	s.x[25] = uint64(uint32(s.x[1]) + uint32(s.x[17]))
-	s.x[17] = uint64(uint32(s.x[25]) ^ 0x6d)
-	right := uint32(int32(int8(s.x[17])))
-	s.compare32(uint32(s.x[23]), right)
-	selected := uint32(boolValue(s.condition("ge")))
-	s.x[2] = uint64(uint32(s.x[24]) ^ 0xace3)
+	class := uint32(s.x[20]) & 3
+	if uint32(s.x[1]) != 0x5fbc || uint32(s.x[23]) != 0xfffffff4|class {
+		return 0, fmt.Errorf("unsupported shared enrollment branch ABI")
+	}
+	s.x[24] = 0xaca8
+	s.x[25] = 0x739b
+	s.compare32(uint32(s.x[23]), 0xfffffff6)
+	selected := class >> 1
+	s.x[2] = 0x4b
 	dispatchIndex := selected*uint32(s.x[2]) ^ uint32(s.x[1])
 	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
 	if err != nil {
