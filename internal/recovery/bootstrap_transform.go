@@ -29,6 +29,8 @@ const (
 	bootstrapTableAccumulatorPass = uint64(0x10021aea4)
 	bootstrapSparseFillSeed       = uint64(0x1008a97ac)
 	bootstrapSparseFillDispatch   = uint64(0x1008a9800)
+	bootstrapNonlinearBytePass    = uint64(0x10094ca9c)
+	bootstrapByteStatePass        = uint64(0x1008eb0a8)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -1204,6 +1206,134 @@ func runBootstrapSparseFillIteration(s *state) (uint64, error) {
 	s.x[3] = s.x[17]
 	s.x[4] = next
 	s.x[17] = 0x6d1a
+	return next, nil
+}
+
+func runBootstrapNonlinearBytePass(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runBootstrapNonlinearByteStep(s)
+		if err != nil || next != bootstrapNonlinearBytePass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap nonlinear byte pass exceeded %d bytes", maximumBytes)
+}
+
+func runBootstrapNonlinearByteStep(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap nonlinear-byte state is unavailable")
+	}
+	s.traceBlock(bootstrapNonlinearBytePass)
+	position := s.x[20] - 1
+	if err := s.storeValue(s.sp+0x280, position, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap nonlinear-byte position: %w", err)
+	}
+	s.x[20] = uint64(uint32(s.x[12]) ^ uint32(s.x[15]))
+	s.x[21] = uint64(uint32(s.x[16]) & uint32(s.x[12]<<1))
+	s.x[11] = uint64(uint32(s.x[10]) + uint32(s.x[13]))
+	s.x[22] = uint64(uint32(s.x[11]) ^ uint32(s.x[0]))
+	s.x[21] = uint64(uint32(s.x[22]) ^ uint32(s.x[21]))
+	s.x[21] = uint64(uint32(s.x[21]) & uint32(s.x[12]))
+	s.x[22] = uint64(uint32(s.x[20]) << 1)
+	s.x[23] = uint64(uint32(s.x[22]) ^ uint32(s.x[1]))
+	s.x[20] = uint64(uint32(s.x[23]) & uint32(s.x[20]))
+	s.x[22] = uint64(uint32(s.x[22]) & uint32(s.x[2]))
+	s.x[20] = uint64(uint32(s.x[20]) ^ uint32(s.x[22]))
+	s.x[22] = uint64(uint32(s.x[20]) ^ uint32(s.x[3]))
+	s.x[20] = uint64(uint32(s.x[20]) & uint32(s.x[21]<<2))
+	s.x[20] = uint64(uint32(s.x[20]) ^ uint32(s.x[21]))
+	s.x[21] = uint64(uint32(s.x[22]) << 2)
+	s.x[23] = uint64(uint32(s.x[21]) ^ uint32(s.x[4]))
+	s.x[22] = uint64(uint32(s.x[23]) & uint32(s.x[22]))
+	s.x[21] = uint64(uint32(s.x[21]) & uint32(s.x[5]))
+	s.x[21] = uint64(uint32(s.x[21]) ^ uint32(s.x[6]))
+	s.x[21] = uint64(uint32(s.x[21]) ^ uint32(s.x[22]))
+	s.x[21] = uint64(uint32(s.x[21]) & uint32(s.x[20]<<4))
+	s.x[20] = uint64(uint32(s.x[21]) ^ uint32(s.x[20]))
+	s.x[20] = uint64(uint32(s.x[12]) ^ uint32(s.x[20]<<1))
+	s.x[20] = uint64(uint32(s.x[20]) ^ uint32(s.x[7]))
+	s.x[21] = uint64(uint32(s.x[12]) + 0xe2)
+	s.x[20] = uint64(uint32(s.x[20]) * uint32(s.x[21]))
+	if err := s.storeValue(s.x[9]+position, uint64(byte(s.x[20])), 1); err != nil {
+		return 0, fmt.Errorf("bootstrap nonlinear-byte output: %w", err)
+	}
+	s.x[12]++
+	savedPosition, err := s.load(s.sp+0x280, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap nonlinear-byte saved position: %w", err)
+	}
+	s.x[20] = savedPosition
+	s.compare64(s.x[20], s.x[14])
+	dispatchIndex := uint32(boolValue(s.condition("hi")))*uint32(s.x[19]) ^ uint32(s.x[10])
+	next, err := loadBootstrapPointer(s, s.x[30], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap nonlinear-byte dispatch: %w", err)
+	}
+	s.x[17] = 0x9465
+	s.x[21] = next
+	return next, nil
+}
+
+func runBootstrapByteStatePass(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runBootstrapByteStateStep(s)
+		if err != nil || next != bootstrapByteStatePass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap byte-state pass exceeded %d bytes", maximumBytes)
+}
+
+func runBootstrapByteStateStep(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap byte-state state is unavailable")
+	}
+	s.traceBlock(bootstrapByteStatePass)
+	s.x[10] = 0xadf89487
+	s.compare32(uint32(s.x[11]), uint32(s.x[10]))
+	firstBound := uint32(boolValue(s.condition("lo")))
+	s.x[12] = uint64(firstBound)
+	s.x[10] = 0x1eda
+	value, err := s.load(s.x[20]+uint64(uint32(s.x[9])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-state input: %w", err)
+	}
+	s.x[13] = uint64(byte(value))
+	s.x[14] = uint64(uint32(s.x[9]) + 1)
+	s.x[15] = 0x21dd12bf
+	s.x[8] = uint64(uint32(s.x[8]) ^ uint32(s.x[15]))
+	s.x[15] = 0xffffff1b
+	s.x[15] = uint64(uint32(s.x[13]) ^ uint32(s.x[15]))
+	s.x[8] = uint64(uint32(s.x[15]) & uint32(s.x[8]))
+	s.x[13] = uint64(uint32(s.x[13]) & 0xffffffbf)
+	s.x[15] = 0x21dd121f
+	s.x[13] = uint64(uint32(s.x[13]) | uint32(s.x[15]))
+	s.x[8] = uint64(uint32(s.x[13]) ^ uint32(s.x[8]))
+	s.x[13] = 0xadf80939
+	s.x[10] = uint64(uint32(s.x[24]) + uint32(s.x[10]))
+	s.x[13] = uint64(uint32(s.x[10]) ^ uint32(s.x[13]))
+	s.x[15] = 0x52076b78
+	s.compare32(uint32(s.x[14]), uint32(s.x[15]))
+	selector := firstBound ^ uint32(boolValue(s.condition("hi")))
+	s.x[9] = uint64(uint32(s.x[9]) + uint32(s.x[13]))
+	s.compare32(uint32(s.x[9]), uint32(s.x[11]))
+	secondBound := uint32(boolValue(s.condition("lo")))
+	s.compare32(selector, 0)
+	dispatchBit := secondBound
+	if s.condition("ne") {
+		dispatchBit = firstBound
+	}
+	s.x[12] = uint64(dispatchBit << 1)
+	dispatchIndex := ((dispatchBit << 1) | (dispatchBit << 5)) ^ uint32(s.x[24])
+	next, err := loadBootstrapPointer(s, s.x[30], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-state dispatch: %w", err)
+	}
+	s.x[9] = s.x[14]
+	s.x[12] = next
+	s.x[17] = 0x37fb
 	return next, nil
 }
 

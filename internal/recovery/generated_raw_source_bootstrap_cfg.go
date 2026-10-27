@@ -135,6 +135,22 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapNonlinearBytePass && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapNonlinearBytePass(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapByteStatePass && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapByteStatePass(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if block, ok := recoveryBlock(s, pc, profile.bootstrapBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
