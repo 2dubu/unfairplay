@@ -1,7 +1,7 @@
-// Code generated from the proved digest recurrence circuit; DO NOT EDIT.
+// Generated digest recurrence retained only for differential tests.
 package recovery
 
-func applyOuterDigestStep(
+func applyOuterDigestStepCircuit(
 	state *outerDigestState, hardwareBytes *[6]byte, codecBytes *[33]byte,
 	hardwareBase, codecPhase uint32,
 ) bool {
