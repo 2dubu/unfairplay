@@ -1223,40 +1223,29 @@ func runAccountEntryWordMixer(s *state) (uint64, error) {
 
 func runAccountEntryWordMixerStep(s *state) (uint64, error) {
 	s.traceBlock(accountEntryWordMixerPass)
-	s.x[9] = uint64(uint32(s.x[15]) + 0xd458908a)
-	s.x[11] = s.x[20] << 2
-	addresses := [...]uint64{
-		0xffffffff5160f1c8,
-		0xffffffff5160f1b4,
-		0xffffffff5160f19c,
-		0xffffffff5160f194,
+	remaining := uint32(s.x[15]) - uint32(s.x[20])
+	if remaining == 0 || remaining > accountSHA1ExpandedWords {
+		return 0, fmt.Errorf("account SHA-1 schedule counter %#x is outside the expansion", uint32(s.x[20]))
 	}
-	registers := [...]int{12, 13, 16, 17}
-	for index, offset := range addresses {
-		value, err := s.load(s.x[10]+s.x[11]+offset, 4)
+	outputAddress := s.x[10] + s.x[6] + (s.x[20] << 2)
+	var previous [4]uint32
+	for index, distance := range [...]uint64{3, 8, 14, 16} {
+		value, err := s.load(outputAddress-distance*4, 4)
 		if err != nil {
-			return 0, fmt.Errorf("account-entry word mixer input %d: %w", index, err)
+			return 0, fmt.Errorf("account SHA-1 schedule input t-%d: %w", distance, err)
 		}
-		s.x[registers[index]] = uint64(uint32(value))
+		previous[index] = uint32(value) ^ accountSHA1ScheduleMask
 	}
-	s.x[12] = uint64(uint32(s.x[13]) ^ uint32(s.x[12]))
-	s.x[13] = uint64(uint32(s.x[16]) ^ uint32(s.x[17]))
-	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[13]))
-	s.x[12] = uint64(uint32(s.x[9]) ^ uint32(rotateRight(s.x[12], 31, 32)))
-	s.x[13] = 0xce752fa0
-	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[13]))
-	s.x[11] += s.x[6]
-	if err := s.storeValue(s.x[10]+s.x[11], uint64(uint32(s.x[12])), 4); err != nil {
+	encodedWord := accountSHA1ExpandWord(previous) ^ accountSHA1ScheduleMask
+	if err := s.storeValue(outputAddress, uint64(encodedWord), 4); err != nil {
 		return 0, fmt.Errorf("account-entry word mixer output: %w", err)
 	}
+
 	s.x[20]++
-	s.x[11] = s.x[20] - s.x[15]
-	s.x[12] = s.x[15] - s.x[20]
-	s.x[11] |= s.x[12]
-	s.x[11] >>= 63
-	s.x[11] = uint64(uint32(s.x[11]) * 0x72)
-	s.x[12] = uint64(uint32(s.x[15]) + 0xd4589955)
-	dispatchIndex := uint32(s.x[11]) ^ uint32(s.x[12])
+	dispatchIndex := uint32(0x5d30)
+	if uint32(s.x[20]) != uint32(s.x[15]) {
+		dispatchIndex ^= 0x72
+	}
 	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
 	if err != nil {
 		return 0, fmt.Errorf("account-entry word mixer dispatch: %w", err)
@@ -1267,10 +1256,11 @@ func runAccountEntryWordMixerStep(s *state) (uint64, error) {
 	}
 	s.x[4] = next
 	s.x[7] = s.x[0]
+	s.x[9] = 0x5465
 	s.x[11] = s.x[3]
 	s.x[12] = s.x[26]
 	s.x[13] = s.x[22]
-	s.x[16] = 0x2ba7c38b
+	s.x[16] = uint64(uint32(s.x[15]) - accountSHA1Rounds)
 	s.x[17] = 0x3601
 	s.x[19] = uint64(uint32(limit))
 	return next, nil

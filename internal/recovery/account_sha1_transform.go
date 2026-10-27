@@ -6,14 +6,16 @@ import (
 )
 
 const (
-	accountHotMixFront      = uint64(0x100026bfc)
-	accountHotMixTail       = uint64(0x100026c00)
-	accountHotMixSecond     = uint64(0x10002dcd8)
-	accountHotMixThirdFront = uint64(0x100065320)
-	accountHotMixThirdTail  = uint64(0x100065400)
-	accountHotMixFourth     = uint64(0x100088c14)
-	accountSHA1StateMask    = uint32(0x0b1fcdbd)
-	accountSHA1ScheduleMask = uint32(0xce757bc5)
+	accountHotMixFront       = uint64(0x100026bfc)
+	accountHotMixTail        = uint64(0x100026c00)
+	accountHotMixSecond      = uint64(0x10002dcd8)
+	accountHotMixThirdFront  = uint64(0x100065320)
+	accountHotMixThirdTail   = uint64(0x100065400)
+	accountHotMixFourth      = uint64(0x100088c14)
+	accountSHA1StateMask     = uint32(0x0b1fcdbd)
+	accountSHA1ScheduleMask  = uint32(0xce757bc5)
+	accountSHA1Rounds        = uint32(80)
+	accountSHA1ExpandedWords = uint32(64)
 )
 
 type accountSHA1Phase uint8
@@ -27,6 +29,12 @@ const (
 
 type accountSHA1State struct {
 	A, B, C, D, E uint32
+}
+
+// accountSHA1ExpandWord is the standard SHA-1 message-schedule recurrence for
+// W[t], with previous ordered as W[t-3], W[t-8], W[t-14], and W[t-16].
+func accountSHA1ExpandWord(previous [4]uint32) uint32 {
+	return bits.RotateLeft32(previous[0]^previous[1]^previous[2]^previous[3], 1)
 }
 
 // accountSHA1Round is one standard SHA-1 compression round. The native
