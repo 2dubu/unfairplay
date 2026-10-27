@@ -45,8 +45,12 @@ Bootstrap
 Selection
   192/224-byte enrollment source -> candidate 16-byte states and frames
 
+SIDB validation
+  candidate frame -> enrollment-bound SIDB decoder key
+  SIDB container + decoder key -> decoded registry
+
 SINF validation
-  candidates + personalized SINF -> exactly one accepted precursor
+  decoded SIDB registry + personalized SINF -> accepted precursor
 
 Model output
   precursor -> current SINF key/tables -> portable enrollment model
@@ -65,7 +69,8 @@ flattened native selector.
 | Account entry | SHA-1 and the dominant copy, projection, schedule, and encoding loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Bootstrap | Montgomery arithmetic and the dominant table/byte loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
-| SINF | Portable AES/model decoding exists. Directly treating a candidate state or frame as the final precursor was tested and rejected; the typed frame-to-precursor codec still has to be recovered. |
+| SIDB | Container projection and the 59-block AES consumer are typed. The candidate-frame-to-SIDB-key producer is still inside the legacy path. |
+| SINF | Portable AES/model decoding exists. Directly treating a candidate state or frame as the final precursor was tested and rejected because SIDB registry decoding comes first. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
@@ -99,17 +104,18 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Recover the typed frame-to-precursor SINF codec. Candidate states and frames
-   alone do not validate as the final model key.
-2. Connect the codec output to personalized SINF validation and remove native
-   selection when exactly one candidate matches.
-3. Express account entry and bootstrap as typed stage functions rather than
+1. Recover the typed candidate-frame-to-SIDB-decoder-key transform.
+2. Parse the decoded SIDB registry structurally and recover its typed
+   registry-to-current-SINF-precursor transform.
+3. Connect the precursor to personalized SINF validation and remove native
+   selection when exactly one candidate reaches a valid SINF.
+4. Express account entry and bootstrap as typed stage functions rather than
    register-state adapters.
-4. Discover required inputs from SIDB/SINF/object structure, removing the
+5. Discover required inputs from SIDB/SINF/object structure, removing the
    remaining memory offsets.
-5. Delete generated CFG and compact-interpreter production paths after typed
+6. Delete generated CFG and compact-interpreter production paths after typed
    stage parity is proven.
-6. Validate the same algorithms across at least five independent builds and
+7. Validate the same algorithms across at least five independent builds and
    multiple enrollment layouts.
 
 Update this file whenever a stage becomes typed, an offset is removed, a
