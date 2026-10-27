@@ -5,6 +5,10 @@ import "fmt"
 const (
 	sinfPrecursorCodecPass = uint64(0x10015320c)
 	sinfMaterialWriterPass = uint64(0x10005fde4)
+	sinfParitySelector     = uint64(0x100143d6c)
+	sinfModuloSelector     = uint64(0x10015a3c8)
+	sinfWordSelector       = uint64(0x100803454)
+	sinfByteSelector       = uint64(0x100605b18)
 )
 
 func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -15,9 +19,109 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sinfMaterialWriterPass:
 		next, err := runSINFMaterialWriter(s)
 		return next, true, err
+	case sinfParitySelector:
+		next, err := runSINFParitySelector(s)
+		return next, true, err
+	case sinfModuloSelector:
+		next, err := runSINFModuloSelector(s)
+		return next, true, err
+	case sinfWordSelector:
+		next, err := runSINFWordSelector(s)
+		return next, true, err
+	case sinfByteSelector:
+		next, err := runSINFByteSelector(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSINFParitySelector(s *state) (uint64, error) {
+	s.traceBlock(sinfParitySelector)
+	s.x[10] = 0xe9b
+	s.x[14] = uint64(uint32(s.x[11]) ^ uint32(s.x[10]))
+	s.test32(uint32(s.x[9]) & 1)
+	selected := uint32(boolValue(s.condition("eq")))
+	s.x[15] = uint64(uint32(s.x[14]) + 0xffffa5d7)
+	dispatchIndex := selected*uint32(s.x[15]) ^ uint32(s.x[11])
+	next, err := loadBootstrapPointer(s, s.x[8], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("SINF parity-selector dispatch: %w", err)
+	}
+	s.x[10] = next
+	s.x[17] = 0xaee1
+	return next, nil
+}
+
+func runSINFModuloSelector(s *state) (uint64, error) {
+	s.traceBlock(sinfModuloSelector)
+	s.x[10] = uint64(uint32(s.x[11]) - 0x199)
+	s.x[14] = uint64(uint32(s.x[10]) | 0x800)
+	s.x[10] = uint64(uint32(s.x[12]) * uint32(s.x[13]))
+	s.x[13] = uint64(uint32(s.x[14]) ^ 0x257e)
+	divisor := uint32(s.x[13])
+	quotient := uint32(0)
+	if divisor != 0 {
+		quotient = uint32(s.x[10]) / divisor
+	}
+	s.x[15] = uint64(quotient)
+	s.x[13] = uint64(uint32(s.x[10]) - quotient*divisor)
+	next, err := loadBootstrapPointer(s, s.x[8], uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("SINF modulo-selector dispatch: %w", err)
+	}
+	s.x[10] = next
+	s.x[17] = 0xaee1
+	return next, nil
+}
+
+func runSINFWordSelector(s *state) (uint64, error) {
+	s.traceBlock(sinfWordSelector)
+	s.x[0] = s.x[11] & 0xff
+	word, err := s.load(s.x[10]+shiftLeft(s.x[0], 2, 64), 4)
+	if err != nil {
+		return 0, fmt.Errorf("SINF word-selector input: %w", err)
+	}
+	s.x[11] = uint64(uint32(s.x[8]) - uint32(word))
+	s.compare32(uint32(s.x[11]), uint32(s.x[14]))
+	matched := uint32(boolValue(s.condition("eq")))
+	s.x[11] = uint64(uint32(s.x[9]) ^ matched)
+	s.x[17] = s.x[11] & 1
+	s.x[11] = uint64(uint32(s.x[9]) + uint32(s.x[12]))
+	s.x[1] = uint64(uint32(s.x[11]) ^ uint32(s.x[15]))
+	dispatchIndex := uint32(s.x[17])*uint32(s.x[1]) ^ uint32(s.x[9])
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF word-selector table: %w", err)
+	}
+	next, err := loadBootstrapPointer(s, dispatchTable, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("SINF word-selector dispatch: %w", err)
+	}
+	s.x[1] = next
+	s.x[17] = 0xe3da
+	return next, nil
+}
+
+func runSINFByteSelector(s *state) (uint64, error) {
+	s.traceBlock(sinfByteSelector)
+	s.x[17] = uint64(uint32(s.x[9]) ^ uint32(s.x[13]))
+	s.x[9] = uint64(uint32(s.x[17]) ^ uint32(s.x[13]))
+	s.x[11] = uint64(uint32(s.x[0]) + 1)
+	s.x[1] = uint64(uint32(s.x[9]) - 0x16)
+	s.compare32(uint32(s.x[0]), uint32(byte(s.x[1])))
+	dispatchIndex := uint32(boolValue(s.condition("lo")))*uint32(s.x[16]) ^ uint32(s.x[17])
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF byte-selector table: %w", err)
+	}
+	next, err := loadBootstrapPointer(s, dispatchTable, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("SINF byte-selector dispatch: %w", err)
+	}
+	s.x[0] = next
+	s.x[17] = 0x38bd
+	return next, nil
 }
 
 // runSINFPrecursorCodec applies the position-dependent byte codec used for the
