@@ -281,6 +281,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountRangeRoute:
 		next, err := runAccountRangeRoute(s)
 		return next, true, err
+	case accountByteShiftRoute:
+		next, err := runAccountByteShiftRoute(s)
+		return next, true, err
+	case accountByteWriteRoute:
+		next, err := runAccountByteWriteRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
