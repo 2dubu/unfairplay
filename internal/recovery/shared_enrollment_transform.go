@@ -98,8 +98,7 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 		next, err := runSharedMBASemantic(s)
 		return next, true, err
 	case sharedMBATail:
-		next, err := runSharedMBATail(s)
-		return next, true, err
+		return 0, true, fmt.Errorf("unsupported partial entry into shared MBA tail")
 	default:
 		return pc, false, nil
 	}
