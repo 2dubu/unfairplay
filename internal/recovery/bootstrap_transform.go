@@ -35,6 +35,10 @@ const (
 	bootstrapAccumulatorCyclePrep = uint64(0x1009f458c)
 	bootstrapAccumulatorCycleKey  = uint64(0x1009839e4)
 	bootstrapAccumulatorCycleTail = uint64(0x10080f1a8)
+	bootstrapByteWriterControl    = uint64(0x10024d828)
+	bootstrapByteWriterMix        = uint64(0x100272950)
+	bootstrapByteWriterLoad       = uint64(0x1003a5a8c)
+	bootstrapByteWriterStore      = uint64(0x1003076e4)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -1625,6 +1629,136 @@ func runBootstrapAccumulatorCycleTailBlock(s *state) (uint64, error) {
 	s.x[14] = 0xb4109e42
 	s.x[17] = 0x902d
 	s.x[24] = 0x449d4676
+	return next, nil
+}
+
+func runBootstrapByteWriterCycle(s *state) (uint64, error) {
+	pc := bootstrapByteWriterControl
+	const maximumBlocks = 8192
+	for count := 0; count < maximumBlocks; count++ {
+		var next uint64
+		var err error
+		switch pc {
+		case bootstrapByteWriterControl:
+			next, err = runBootstrapByteWriterControl(s)
+		case bootstrapByteWriterMix:
+			next, err = runBootstrapByteWriterMix(s)
+		case bootstrapByteWriterLoad:
+			next, err = runBootstrapByteWriterLoad(s)
+		case bootstrapByteWriterStore:
+			next, err = runBootstrapByteWriterStore(s)
+		default:
+			return pc, nil
+		}
+		if err != nil {
+			return pc, err
+		}
+		pc = next
+	}
+	return 0, fmt.Errorf("bootstrap byte-writer cycle exceeded %d blocks", maximumBlocks)
+}
+
+func runBootstrapByteWriterControl(s *state) (uint64, error) {
+	s.traceBlock(bootstrapByteWriterControl)
+	s.x[17] = uint64(uint32(s.x[6]) + uint32(s.x[14]))
+	s.x[26] = uint64(uint32(s.x[17]) & uint32(s.x[16]))
+	s.x[17] = uint64(uint32(s.x[26]) + uint32(s.x[1]))
+	s.compare32(uint32(s.x[15]), uint32(s.x[17]))
+	dispatchIndex := uint32(boolValue(s.condition("eq")))*uint32(s.x[2]) ^ uint32(s.x[6])
+	next, err := loadBootstrapPointer(s, s.x[11], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer control dispatch: %w", err)
+	}
+	s.x[17] = 0x4989
+	s.x[28] = next
+	return next, nil
+}
+
+func runBootstrapByteWriterMix(s *state) (uint64, error) {
+	s.traceBlock(bootstrapByteWriterMix)
+	s.x[15] = 0
+	s.x[17] = uint64(uint32(s.x[6]) + uint32(s.x[3]))
+	s.x[26] = uint64(uint32(s.x[17]) & uint32(s.x[4]))
+	s.x[17] = uint64(uint32(s.x[12]) ^ uint32(s.x[9]))
+	s.x[27] = uint64(uint32(s.x[12]) - uint32(s.x[9]))
+	s.x[27] = uint64(uint32(s.x[27]) &^ uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[12]) & uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[17]) | uint32(s.x[27]))
+	s.x[17] = uint64(uint32(s.x[17]) >> 31)
+	s.x[27] = uint64(uint32(s.x[26]) ^ uint32(s.x[5]))
+	s.x[17] = uint64(uint32(s.x[27]) * uint32(s.x[17]))
+	dispatchIndex := uint32(s.x[17]) ^ uint32(s.x[6])
+	next, err := loadBootstrapPointer(s, s.x[11], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer mix dispatch: %w", err)
+	}
+	s.x[17] = 0x4989
+	s.x[27] = 0x224ea33b
+	s.x[28] = next
+	return next, nil
+}
+
+func runBootstrapByteWriterLoad(s *state) (uint64, error) {
+	s.traceBlock(bootstrapByteWriterLoad)
+	s.x[15] = 0
+	s.x[17] = uint64(uint32(s.x[6]) + uint32(s.x[7]))
+	s.x[26] = uint64(uint32(s.x[17]) & uint32(s.x[19]))
+	table, err := s.load(s.x[8]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer input table: %w", err)
+	}
+	s.x[17] = table
+	s.x[28] = uint64(uint32(s.x[26]) ^ uint32(s.x[20]))
+	word, err := loadBootstrapWord(s, table, uint32(s.x[12]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer input: %w", err)
+	}
+	s.x[27] = word
+	s.x[12] = uint64(uint32(s.x[28]) + uint32(s.x[12]))
+	next, err := loadBootstrapPointer(s, s.x[11], uint32(s.x[6]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer load dispatch: %w", err)
+	}
+	s.x[6] = next
+	s.x[17] = 0x4989
+	return next, nil
+}
+
+func runBootstrapByteWriterStore(s *state) (uint64, error) {
+	s.traceBlock(bootstrapByteWriterStore)
+	output, err := s.load(s.x[0]+0x18, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer output: %w", err)
+	}
+	s.x[17] = output
+	s.x[6] = uint64(uint32(s.x[26]) + uint32(s.x[21]))
+	s.x[6] = uint64(uint32(s.x[6]) & uint32(s.x[22]))
+	s.x[28] = uint64(uint32(s.x[27]) ^ uint32(s.x[13]))
+	s.x[28] = uint64(uint32(shiftRight(s.x[28], int(s.x[15]), 32)))
+	s.x[30] = uint64(uint32(s.x[23]) & uint32(s.x[28]<<1))
+	s.x[28] = uint64(uint32(s.x[28]) - uint32(s.x[30]))
+	s.x[28] = uint64(uint32(s.x[28]) - 0x1b)
+	s.x[28] = uint64(uint32(s.x[28]) ^ 0xfe)
+	s.x[30] = uint64(uint32(s.x[10]) - 1)
+	s.x[10] = uint64(uint32(s.x[10]) + uint32(s.x[24]))
+	s.x[10] = uint64(uint32(s.x[10]) + uint32(s.x[6]))
+	if err := s.storeValue(output+uint64(uint32(s.x[10])), uint64(byte(s.x[28])), 1); err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer output byte: %w", err)
+	}
+	s.x[15] = uint64(uint32(s.x[15]) + 8)
+	s.compare32(uint32(s.x[30]), uint32(s.x[25]))
+	more := uint32(boolValue(s.condition("ne")))
+	s.x[17] = uint64(more << 8)
+	s.x[10] = uint64(uint32(s.x[17]) - (more << 3))
+	dispatchIndex := uint32(s.x[26]) ^ uint32(s.x[10])
+	next, err := loadBootstrapPointer(s, s.x[11], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer store dispatch: %w", err)
+	}
+	s.x[10] = s.x[30]
+	s.x[17] = 0x320d
+	s.x[26] = 0xce757bc5
+	s.x[28] = next
 	return next, nil
 }
 
