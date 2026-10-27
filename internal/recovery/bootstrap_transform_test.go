@@ -141,6 +141,129 @@ func TestBootstrapWordStepsMatchLiftedBlocks(t *testing.T) {
 	}
 }
 
+func TestDecodeBootstrapWords(t *testing.T) {
+	random := rand.New(rand.NewSource(0x100b4dea0))
+	for trial := 0; trial < 512; trial++ {
+		count := 1 + random.Intn(512)
+		companion := make([]uint32, count)
+		encoded := make([]uint32, count)
+		for index := range companion {
+			companion[index] = random.Uint32()
+			encoded[index] = random.Uint32()
+		}
+		correction := [2]uint32{random.Uint32(), random.Uint32()}
+		previous := random.Uint32()
+		shift := uint(random.Intn(32))
+		feedbackDistance := random.Intn(count + 1)
+		originalCompanion := append([]uint32(nil), companion...)
+		got, last := decodeBootstrapWords(companion, encoded, correction, previous, shift, feedbackDistance)
+		for index := range got {
+			folded := (encoded[index] & 0x7ffffffe) | (previous & 0x80000000)
+			want := originalCompanion[index] ^ correction[encoded[index]&1] ^ (folded >> shift)
+			if got[index] != want {
+				t.Fatalf("trial %d word %d: got %#x want %#x", trial, index, got[index], want)
+			}
+			if feedbackDistance > 0 && index+feedbackDistance < len(originalCompanion) {
+				originalCompanion[index+feedbackDistance] = want
+			}
+			previous = encoded[index]
+		}
+		if last.Output != got[count-1] || last.Encoded != encoded[count-1] ||
+			last.Companion != companion[count-1] || last.Correction != correction[encoded[count-1]&1] {
+			t.Fatalf("trial %d returned wrong final state", trial)
+		}
+	}
+}
+
+func TestBootstrapWordPassesMatchSteps(t *testing.T) {
+	tests := []struct {
+		name  string
+		pc    uint64
+		steps int
+		setup func(*state, uint32, uint32)
+		step  func(*state) (uint64, error)
+	}{
+		{
+			name: "short", pc: bootstrapShortWordPass, steps: 227, step: runBootstrapShortWordStep,
+			setup: func(s *state, loop, exit uint32) {
+				s.x[0], s.x[19], s.x[21] = 0x100400, 0x200000, 0x300100
+				s.x[1], s.x[9], s.x[8] = uint64(loop^exit), uint64(loop), 0
+				s.x[10], s.x[12] = 0x80000000, 7
+			},
+		},
+		{
+			name: "long", pc: bootstrapLongWordPass, steps: 396, step: runBootstrapLongWordStep,
+			setup: func(s *state, loop, exit uint32) {
+				s.x[0], s.x[19], s.x[21] = 0x100400, 0x200000, 0x300100
+				s.x[11] = s.x[21] + 0x38c
+				s.x[1], s.x[10], s.x[9] = uint64(loop^exit), uint64(loop), 0
+				s.x[12] = 0x80000000
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			random := rand.New(rand.NewSource(int64(test.pc)))
+			for trial := 0; trial < 32; trial++ {
+				const loopIndex = uint32(0x20)
+				const exitIndex = uint32(0x24)
+				pages := map[uint64][]byte{
+					0x100000: make([]byte, pageSize),
+					0x200000: make([]byte, pageSize),
+					0x300000: make([]byte, pageSize),
+					0x400000: make([]byte, pageSize),
+				}
+				for _, page := range pages {
+					if _, err := random.Read(page); err != nil {
+						t.Fatal(err)
+					}
+				}
+				base := newState(&model{pages: clonePages(pages)})
+				for register := range base.x {
+					base.x[register] = random.Uint64()
+				}
+				test.setup(base, loopIndex, exitIndex)
+				if err := base.storeValue(0x200000+uint64(loopIndex)*8, test.pc, 8); err != nil {
+					t.Fatal(err)
+				}
+				if err := base.storeValue(0x200000+uint64(exitIndex)*8, 0x123456789, 8); err != nil {
+					t.Fatal(err)
+				}
+				repeated := newState(base.model)
+				bulk := newState(base.model)
+				for _, item := range []*state{repeated, bulk} {
+					item.x = base.x
+					item.n, item.z, item.c, item.v = base.n, base.z, base.c, base.v
+					item.writable = clonePages(base.writable)
+					item.dirty = make(map[uint64]bool, len(item.writable))
+					for page := range item.writable {
+						item.dirty[page] = true
+					}
+				}
+				var repeatedNext uint64
+				for step := 0; step < test.steps; step++ {
+					var err error
+					repeatedNext, err = test.step(repeated)
+					if err != nil {
+						t.Fatalf("trial %d step %d: %v", trial, step, err)
+					}
+				}
+				bulkNext, err := runBootstrapWordPass(bulk, test.pc)
+				if err != nil {
+					t.Fatalf("trial %d bulk: %v", trial, err)
+				}
+				if repeatedNext != bulkNext || repeated.x != bulk.x ||
+					repeated.n != bulk.n || repeated.z != bulk.z || repeated.c != bulk.c || repeated.v != bulk.v {
+					t.Fatalf("trial %d state differs: repeated=%#v bulk=%#v", trial, repeated.x, bulk.x)
+				}
+				if !reflect.DeepEqual(repeated.writable, bulk.writable) {
+					t.Fatalf("trial %d writes differ", trial)
+				}
+			}
+		})
+	}
+}
+
 func TestBootstrapAccumulatorStepsMatchLiftedBlocks(t *testing.T) {
 	tests := []struct {
 		name    string

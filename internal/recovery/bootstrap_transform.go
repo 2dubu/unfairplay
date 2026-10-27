@@ -342,23 +342,140 @@ func runBootstrapMixerContinueBlock(s *state) (uint64, error) {
 // used by the bootstrap finalizer. Their native handlers dispatch back to
 // themselves once per word; this direct loop makes the real bounds explicit.
 func runBootstrapWordPass(s *state, pc uint64) (uint64, error) {
-	const maximumWords = 1024
-	for word := 0; word < maximumWords; word++ {
-		var next uint64
-		var err error
-		switch pc {
-		case bootstrapShortWordPass:
-			next, err = runBootstrapShortWordStep(s)
-		case bootstrapLongWordPass:
-			next, err = runBootstrapLongWordStep(s)
-		default:
-			return pc, fmt.Errorf("unknown bootstrap word pass %#x", pc)
+	switch pc {
+	case bootstrapShortWordPass:
+		return runBootstrapShortWordDecode(s)
+	case bootstrapLongWordPass:
+		return runBootstrapLongWordDecode(s)
+	default:
+		return pc, fmt.Errorf("unknown bootstrap word pass %#x", pc)
+	}
+}
+
+type bootstrapWordDecodeResult struct {
+	Output, Encoded, Companion, Correction uint32
+}
+
+// decodeBootstrapWords removes the protected two-stream word representation
+// used for RSA operands. One bit selects a correction word; the remaining bits
+// form a shifted stream whose high bit is carried from the previous word.
+func decodeBootstrapWords(companion, encoded []uint32, correction [2]uint32, previous uint32, shift uint, feedbackDistance int) ([]uint32, bootstrapWordDecodeResult) {
+	output := make([]uint32, len(encoded))
+	var result bootstrapWordDecodeResult
+	for index, encodedWord := range encoded {
+		folded := (encodedWord & 0x7ffffffe) | (previous & 0x80000000)
+		correctionWord := correction[encodedWord&1]
+		decoded := companion[index] ^ correctionWord ^ (folded >> shift)
+		output[index] = decoded
+		result = bootstrapWordDecodeResult{
+			Output: decoded, Encoded: encodedWord,
+			Companion: companion[index], Correction: correctionWord,
 		}
-		if err != nil || next != pc {
-			return next, err
+		if feedbackDistance > 0 && index+feedbackDistance < len(companion) {
+			companion[index+feedbackDistance] = decoded
+		}
+		previous = encodedWord
+	}
+	return output, result
+}
+
+func runBootstrapShortWordDecode(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap short-word state is unavailable")
+	}
+	start := uint32(s.x[8])
+	if start > 0x388 || start&3 != 0 {
+		return 0, fmt.Errorf("unsupported bootstrap short-word offset %#x", start)
+	}
+	count := int((0x388-start)/4 + 1)
+	base := s.x[21] + uint64(start)
+	companion, encoded, correction, err := loadBootstrapEncodedWordStreams(s, base+0x634, base+4, s.x[0], count)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap short-word streams: %w", err)
+	}
+	output, last := decodeBootstrapWords(companion, encoded, correction, uint32(s.x[10]), uint(s.x[12])&31, 0)
+	for index, word := range output {
+		if err := s.storeValue(base+uint64(index*4), uint64(word), 4); err != nil {
+			return 0, fmt.Errorf("bootstrap short-word output %d: %w", index, err)
 		}
 	}
-	return 0, fmt.Errorf("bootstrap word pass %#x exceeded %d words", pc, maximumWords)
+	next, err := loadBootstrapPointer(s, s.x[19], uint32(s.x[1])^uint32(s.x[9]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap short-word dispatch: %w", err)
+	}
+	s.x[8] = 0x38c
+	s.x[10] = uint64(last.Encoded)
+	s.x[13] = next
+	s.x[14] = uint64(last.Output)
+	s.x[15] = uint64(last.Companion)
+	s.x[16] = uint64(last.Correction)
+	s.x[17] = 0x67ab
+	s.compare64(0x388, 0x388)
+	return next, nil
+}
+
+func runBootstrapLongWordDecode(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap long-word state is unavailable")
+	}
+	start := uint32(s.x[9])
+	if start > 0x62c || start&3 != 0 {
+		return 0, fmt.Errorf("unsupported bootstrap long-word offset %#x", start)
+	}
+	count := int((0x62c-start)/4 + 1)
+	companion, encoded, correction, err := loadBootstrapEncodedWordStreams(s, s.x[21]+uint64(start), s.x[21]+uint64(start)+0x390, s.x[0], count)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap long-word streams: %w", err)
+	}
+	feedbackBytes := int64(s.x[11]) - int64(s.x[21])
+	if feedbackBytes < 0 || feedbackBytes%4 != 0 || feedbackBytes/4 > int64(count) {
+		return 0, fmt.Errorf("unsupported bootstrap long-word feedback distance %d", feedbackBytes)
+	}
+	output, last := decodeBootstrapWords(companion, encoded, correction, uint32(s.x[12]), 1, int(feedbackBytes/4))
+	for index, word := range output {
+		if err := s.storeValue(s.x[11]+uint64(start)+uint64(index*4), uint64(word), 4); err != nil {
+			return 0, fmt.Errorf("bootstrap long-word output %d: %w", index, err)
+		}
+	}
+	next, err := loadBootstrapPointer(s, s.x[19], uint32(s.x[1])^uint32(s.x[10]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap long-word dispatch: %w", err)
+	}
+	s.x[9] = 0x630
+	s.x[12] = uint64(last.Encoded)
+	s.x[13] = next
+	s.x[14] = uint64(last.Output)
+	s.x[15] = uint64(last.Companion ^ last.Correction)
+	s.x[16] = uint64(last.Correction)
+	s.x[17] = 0x1028
+	s.compare64(0x62c, 0x62c)
+	return next, nil
+}
+
+func loadBootstrapEncodedWordStreams(s *state, companionBase, encodedBase, correctionBase uint64, count int) ([]uint32, []uint32, [2]uint32, error) {
+	companion := make([]uint32, count)
+	encoded := make([]uint32, count)
+	for index := 0; index < count; index++ {
+		value, err := s.load(companionBase+uint64(index*4), 4)
+		if err != nil {
+			return nil, nil, [2]uint32{}, fmt.Errorf("companion %d: %w", index, err)
+		}
+		companion[index] = uint32(value)
+		value, err = s.load(encodedBase+uint64(index*4), 4)
+		if err != nil {
+			return nil, nil, [2]uint32{}, fmt.Errorf("encoded %d: %w", index, err)
+		}
+		encoded[index] = uint32(value)
+	}
+	var correction [2]uint32
+	for index := range correction {
+		value, err := s.load(correctionBase+uint64(index*4), 4)
+		if err != nil {
+			return nil, nil, [2]uint32{}, fmt.Errorf("correction %d: %w", index, err)
+		}
+		correction[index] = uint32(value)
+	}
+	return companion, encoded, correction, nil
 }
 
 // runBootstrapShortWordStep decodes one of 227 words. Bit zero selects a
