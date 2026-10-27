@@ -180,13 +180,63 @@ func runSelectionPackedWordIteration(s *state) (uint64, error) {
 // encoded payload. The four lookup lanes are build-global byte encodings.
 func runSelectionSIDBProjection(s *state) (uint64, error) {
 	const maximumBytes = 2048
-	for index := 0; index < maximumBytes; index++ {
-		next, err := runSelectionSIDBProjectionStep(s)
-		if err != nil || next != selectionSIDBProjectionPass {
-			return next, err
+	if s == nil {
+		return 0, fmt.Errorf("selection SIDB projection state is unavailable")
+	}
+	boundary := uint64(uint32(s.x[10])+uint32(s.x[13])) ^ s.x[0]
+	if boundary >= s.x[12] || s.x[12]-boundary > maximumBytes {
+		return 0, fmt.Errorf("unsupported selection SIDB projection range %#x..%#x", boundary, s.x[12])
+	}
+	dispatchTable, err := s.load(addOffset(s.x[29], -0x90), 8)
+	if err != nil {
+		return 0, fmt.Errorf("selection SIDB projection dispatch table: %w", err)
+	}
+	continueTarget, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[10])^0x14)
+	if err != nil {
+		return 0, fmt.Errorf("selection SIDB projection continuation: %w", err)
+	}
+	if s.x[12]-boundary > 1 && continueTarget != selectionSIDBProjectionPass {
+		return 0, fmt.Errorf("unsupported selection SIDB projection continuation %#x", continueTarget)
+	}
+	for position := s.x[12] - 1; ; position-- {
+		s.traceBlock(selectionSIDBProjectionPass)
+		input, err := s.load(s.x[9]+position, 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection SIDB projection input: %w", err)
+		}
+		lane := position & 0xf
+		first, err := s.load(s.x[14]+lane, 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection SIDB projection first lane: %w", err)
+		}
+		second, err := s.load(s.x[16]+lane+3, 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection SIDB projection second lane: %w", err)
+		}
+		third, err := s.load(s.x[11]+lane+2, 1)
+		if err != nil {
+			return 0, fmt.Errorf("selection SIDB projection third lane: %w", err)
+		}
+		output := byte(input) ^ byte(first) ^ byte(second) ^ byte(third) ^ byte(uint32(lane)*uint32(s.x[15])) ^ 0x99
+		if err := s.storeValue(s.x[20]+position, uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("selection SIDB projection output: %w", err)
+		}
+		if position == boundary {
+			s.x[2] = uint64(byte(first))
+			s.x[3] = uint64(uint32(s.x[10]) + uint32(s.x[13]))
+			s.x[4] = uint64(byte(third))
+			break
 		}
 	}
-	return 0, fmt.Errorf("selection SIDB projection exceeded %d bytes", maximumBytes)
+	next, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[10]))
+	if err != nil {
+		return 0, fmt.Errorf("selection SIDB projection dispatch: %w", err)
+	}
+	s.x[1] = next
+	s.x[12] = boundary
+	s.x[17] = 0x4b2b
+	s.compare64(boundary, boundary)
+	return next, nil
 }
 
 func runSelectionSIDBProjectionStep(s *state) (uint64, error) {
