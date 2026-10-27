@@ -7,6 +7,7 @@ const (
 	selectionPackedWordSeed     = uint64(0x10072c394)
 	selectionPackedWordStep     = uint64(0x10072c400)
 	selectionByteWriter         = uint64(0x10087c89c)
+	selectionMixTail            = uint64(0x100450400)
 )
 
 func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -20,9 +21,43 @@ func runSelectionSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case selectionByteWriter:
 		next, err := runSelectionByteWriter(s)
 		return next, true, err
+	case selectionMixTail:
+		next, err := runSelectionMixTail(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSelectionMixTail(s *state) (uint64, error) {
+	s.traceBlock(selectionMixTail)
+	s.x[0] = uint64(uint32(s.x[13]) ^ uint32(s.x[0]))
+	s.x[13] = uint64(uint32(s.x[13]) ^ uint32(s.x[22]))
+	s.x[17] = uint64(uint32(s.x[0]) ^ uint32(s.x[17]))
+	s.x[13] = uint64(uint32(s.x[13]) + uint32(s.x[23]))
+	s.x[13] = uint64(uint32(s.x[13]) ^ uint32(s.x[24]))
+	s.x[13] = uint64(uint32(s.x[17]) ^ uint32(s.x[13]))
+	s.compare32(uint32(s.x[5]), 0x1f)
+	gate := uint32(boolValue(s.condition("hi")))
+	s.x[17] = uint64(gate)
+	s.x[0] = uint64(gate << 7)
+	s.x[17] = uint64(uint32(s.x[0]) - gate<<4)
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[1]))
+	table, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("selection mix-tail table: %w", err)
+	}
+	s.x[0] = table
+	next, err := loadBootstrapPointer(s, table, uint32(s.x[17]))
+	if err != nil {
+		return 0, fmt.Errorf("selection mix-tail target: %w", err)
+	}
+	s.x[25] = next
+	s.x[2]++
+	s.x[5] = uint64(uint32(s.x[5]) + 1)
+	s.x[0] = s.x[16]
+	s.x[17] = 0x6202
+	return next, nil
 }
 
 func runSelectionByteWriter(s *state) (uint64, error) {
