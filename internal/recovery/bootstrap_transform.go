@@ -2106,42 +2106,98 @@ func runBootstrapByteWriterCycle(s *state) (uint64, error) {
 	if s == nil {
 		return 0, fmt.Errorf("bootstrap byte-writer state is unavailable")
 	}
-	const maximumBytes = 4096
-	for count := 0; count < maximumBytes; count++ {
-		next, err := runBootstrapByteWriterControl(s)
-		if err != nil {
-			return 0, err
-		}
-		switch next {
-		case bootstrapByteWriterMix:
-			next, err = runBootstrapByteWriterMix(s)
-			if err != nil {
-				return 0, err
-			}
-			if next != bootstrapByteWriterLoad {
-				return next, nil
-			}
-			next, err = runBootstrapByteWriterLoad(s)
-			if err != nil {
-				return 0, err
-			}
-			if next != bootstrapByteWriterStore {
-				return next, nil
-			}
-		case bootstrapByteWriterStore:
-		default:
-			return next, nil
-		}
+	const maximumBytes = uint32(4096)
+	wordBoundary := uint32((uint32(s.x[6])+uint32(s.x[14]))&uint32(s.x[16])) + uint32(s.x[1])
+	wordAdvance := (uint32(s.x[6])+uint32(s.x[7]))&uint32(s.x[19]) ^ uint32(s.x[20])
+	storeSelector := (uint32(s.x[6]) + uint32(s.x[14])) & uint32(s.x[16])
+	storeOffset := (storeSelector+uint32(s.x[21]))&uint32(s.x[22]) + uint32(s.x[24])
+	if wordBoundary != 32 || wordAdvance != 1 || uint32(s.x[23]) != 0xca {
+		return 0, fmt.Errorf("unsupported bootstrap byte-writer geometry")
+	}
+	wordLimit := uint32(s.x[9])
+	wordIndex := uint32(s.x[12])
+	if wordIndex >= wordLimit || wordLimit-wordIndex > maximumBytes/4 {
+		return 0, fmt.Errorf("bootstrap byte-writer word range %d..%d is invalid", wordIndex, wordLimit)
+	}
+	byteCount := (wordLimit - wordIndex) * 4
+	outputCounter := uint32(s.x[10])
+	terminalCounter := uint32(s.x[25])
+	if outputCounter-terminalCounter != byteCount {
+		return 0, fmt.Errorf("bootstrap byte-writer output range %d..%d does not match %d bytes", terminalCounter, outputCounter, byteCount)
+	}
+	dispatch := s.x[11]
+	controlMix, err := loadBootstrapPointer(s, dispatch, uint32(s.x[6])^uint32(s.x[2]))
+	if err != nil || controlMix != bootstrapByteWriterMix {
+		return 0, fmt.Errorf("bootstrap byte-writer mix route: target=%#x err=%v", controlMix, err)
+	}
+	controlStore, err := loadBootstrapPointer(s, dispatch, uint32(s.x[6]))
+	if err != nil || controlStore != bootstrapByteWriterStore {
+		return 0, fmt.Errorf("bootstrap byte-writer store route: target=%#x err=%v", controlStore, err)
+	}
+	mixSelector := ((uint32(s.x[6])+uint32(s.x[3]))&uint32(s.x[4]) ^ uint32(s.x[5])) ^ uint32(s.x[6])
+	mixLoad, err := loadBootstrapPointer(s, dispatch, mixSelector)
+	if err != nil || mixLoad != bootstrapByteWriterLoad {
+		return 0, fmt.Errorf("bootstrap byte-writer load route: target=%#x err=%v", mixLoad, err)
+	}
+	moreSelector := storeSelector ^ 0xf8
+	moreTarget, err := loadBootstrapPointer(s, dispatch, moreSelector)
+	if err != nil || moreTarget != bootstrapByteWriterControl {
+		return 0, fmt.Errorf("bootstrap byte-writer continuation: target=%#x err=%v", moreTarget, err)
+	}
+	exitTarget, err := loadBootstrapPointer(s, dispatch, storeSelector)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer exit: %w", err)
+	}
+	if exitTarget == bootstrapByteWriterControl {
+		return 0, fmt.Errorf("bootstrap byte-writer exit loops to itself")
+	}
+	inputTable, err := s.load(s.x[8]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer input table: %w", err)
+	}
+	output, err := s.load(s.x[0]+0x18, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap byte-writer output: %w", err)
+	}
 
-		next, err = runBootstrapByteWriterStore(s)
+	var encodedWord uint32
+	for currentWord := wordIndex; currentWord < wordLimit; currentWord++ {
+		s.traceBlock(bootstrapByteWriterControl)
+		s.traceBlock(bootstrapByteWriterMix)
+		s.traceBlock(bootstrapByteWriterLoad)
+		word, err := loadBootstrapWord(s, inputTable, currentWord)
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("bootstrap byte-writer input: %w", err)
 		}
-		if next != bootstrapByteWriterControl {
-			return next, nil
+		encodedWord = uint32(word)
+		s.x[12] = uint64(currentWord + 1)
+		s.x[15] = 0
+		for octet := uint32(0); octet < 4; octet++ {
+			if octet != 0 {
+				s.traceBlock(bootstrapByteWriterControl)
+			}
+			s.traceBlock(bootstrapByteWriterStore)
+			writeOffset := outputCounter + storeOffset
+			decoded := byte((encodedWord ^ uint32(s.x[13])) >> (octet * 8))
+			decoded ^= 0x1b
+			if err := s.storeValue(output+uint64(writeOffset), uint64(decoded), 1); err != nil {
+				return 0, fmt.Errorf("bootstrap byte-writer output byte: %w", err)
+			}
+			outputCounter--
+			s.x[15] = uint64((octet + 1) * 8)
 		}
 	}
-	return 0, fmt.Errorf("bootstrap byte-writer cycle exceeded %d bytes", maximumBytes)
+
+	s.x[26] = uint64(storeSelector)
+	s.x[27] = uint64(encodedWord)
+	s.x[6] = uint64(storeOffset - uint32(s.x[24]))
+	s.x[30] = uint64(outputCounter)
+	s.x[10] = uint64(outputCounter)
+	s.compare32(outputCounter, terminalCounter)
+	s.x[17] = 0x320d
+	s.x[26] = 0xce757bc5
+	s.x[28] = exitTarget
+	return exitTarget, nil
 }
 
 func runBootstrapByteWriterControl(s *state) (uint64, error) {
