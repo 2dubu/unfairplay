@@ -1,7 +1,7 @@
 // Code generated from proved outer-writer bit-vector formulas; DO NOT EDIT.
 package recovery
 
-func outerTableLane2Mask(pendingS1, pendingS2, pendingS3, s0, s4 uint32) uint32 {
+func outerTableLane2MaskCircuit(pendingS1, pendingS2, pendingS3, s0, s4 uint32) uint32 {
 	t0 := ((s4) >> 27) & 0x1
 	t1 := (^(t0)) & 0x1
 	t2 := ((s4) >> 25) & 0x1
@@ -288,7 +288,7 @@ func outerTableLane7MaskCircuit(s0, s1, s3, s4, tap uint32) uint32 {
 	return t166
 }
 
-func outerTableLane18Mask(s1, s3, s0, s2, tap uint32) uint32 {
+func outerTableLane18MaskCircuit(s1, s3, s0, s2, tap uint32) uint32 {
 	t0 := ((tap) >> 31) & 0x1
 	t1 := ((s0) >> 31) & 0x1
 	t2 := ((s2) >> 31) & 0x1
@@ -739,7 +739,7 @@ func outerTableLane18Mask(s1, s3, s0, s2, tap uint32) uint32 {
 	t447 := uint32((t446)<<0 | (t439)<<1 | (t418)<<4 | (t397)<<5 | (t379)<<6 | (t366)<<7 | (t352)<<8 | (t335)<<9 | (t314)<<10 | (t298)<<11 | (t284)<<12 | (t268)<<13 | (t246)<<16 | (t236)<<17 | (t224)<<18 | (t208)<<19 | (t195)<<20 | (t179)<<21 | (t164)<<24 | (t152)<<25 | (t136)<<26 | (t126)<<27 | (t113)<<28 | (t99)<<29 | (t77)<<31)
 	return t447
 }
-func outerTableLane19Mask(mix, s1, s4, tap2, tap44, tap86 uint32) uint32 {
+func outerTableLane19MaskCircuit(mix, s1, s4, tap2, tap44, tap86 uint32) uint32 {
 	t0 := ((s1) >> 31) & 0x1
 	t1 := (^(t0)) & 0x1
 	t2 := ((s1) >> 27) & 0x1
