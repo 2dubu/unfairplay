@@ -75,10 +75,57 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 
 func runSINFByteProjection(s *state) (uint64, error) {
 	const maximumBytes = 1024
+	if s == nil {
+		return 0, fmt.Errorf("SINF byte-projection state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		next, err := loadBootstrapPointer(s, s.x[8], uint32(s.x[13])^bit*uint32(s.x[19]))
+		if err != nil {
+			return 0, fmt.Errorf("SINF byte-projection target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == sinfByteProjectionPass && targets[1] == sinfByteProjectionPass {
+		return 0, fmt.Errorf("SINF byte projection has no exit target")
+	}
+
 	for index := 0; index < maximumBytes; index++ {
-		next, err := runSINFByteProjectionStep(s)
-		if err != nil || next != sinfByteProjectionPass {
-			return next, err
+		s.traceBlock(sinfByteProjectionPass)
+		s.x[3] = uint64(uint32(s.x[13]) + 0x7ce)
+		s.x[17] = s.x[3] ^ s.x[5]
+		s.x[4] = s.addWithCarry(s.x[17], s.x[4], false, 64)
+		value, err := s.load(s.x[16]+s.x[4], 1)
+		if err != nil {
+			return 0, fmt.Errorf("SINF byte-projection input: %w", err)
+		}
+		position := s.x[4] & 0xf
+		first, err := s.load(s.x[1]+position, 1)
+		if err != nil {
+			return 0, fmt.Errorf("SINF byte-projection first lane: %w", err)
+		}
+		second, err := s.load(s.x[2]+position+3, 1)
+		if err != nil {
+			return 0, fmt.Errorf("SINF byte-projection second lane: %w", err)
+		}
+		third, err := s.load(s.x[0]+position, 1)
+		if err != nil {
+			return 0, fmt.Errorf("SINF byte-projection third lane: %w", err)
+		}
+		s.x[20] = uint64(byte(third))
+		s.x[21] = uint64(byte(first))
+		s.x[22] = uint64(byte(second))
+		s.x[23] = uint64(uint32(position) * uint32(s.x[6]))
+		output := byte(value) ^ byte(first) ^ byte(second) ^ byte(third) ^ byte(uint32(position)*uint32(s.x[6])) ^ byte(s.x[7])
+		if err := s.storeValue(s.x[12]+s.x[4], uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("SINF byte-projection output: %w", err)
+		}
+		dispatchBit := uint32(boolValue(s.condition("eq")))
+		next := targets[dispatchBit]
+		s.x[17] = 0x1743
+		s.x[20] = next
+		if next != sinfByteProjectionPass {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("SINF byte projection exceeded %d bytes", maximumBytes)
