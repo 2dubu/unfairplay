@@ -18,29 +18,71 @@ func runCrossStageSemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 }
 
 func runCrossStageBitCycle(s *state) (uint64, error) {
-	pc := crossStageBitCycleStart
-	const maximumBlocks = 16384
-	for count := 0; count < maximumBlocks; count++ {
-		var next uint64
-		var err error
-		switch pc {
-		case crossStageBitCycleStart:
-			next, err = runCrossStageBitCycleStart(s)
-		case crossStageBitCyclePlace:
-			next, err = runCrossStageBitCyclePlace(s)
-		case crossStageBitCycleTest:
-			next, err = runCrossStageBitCycleTest(s)
-		case crossStageBitCycleWrite:
-			next, err = runCrossStageBitCycleWrite(s)
-		default:
-			return pc, nil
-		}
-		if err != nil {
-			return pc, err
-		}
-		pc = next
+	if s == nil {
+		return 0, fmt.Errorf("cross-stage bit-cycle state is unavailable")
 	}
-	return 0, fmt.Errorf("cross-stage bit cycle exceeded %d blocks", maximumBlocks)
+	next, err := runCrossStageBitCycleStart(s)
+	if err != nil {
+		return 0, err
+	}
+	if next != crossStageBitCyclePlace {
+		return next, nil
+	}
+
+	const maximumWords = 4096
+	for word := 0; word < maximumWords; word++ {
+	restartWord:
+		for byteIndex := 0; byteIndex < 4; byteIndex++ {
+			next, err = runCrossStageBitCyclePlace(s)
+			if err != nil {
+				return 0, err
+			}
+			if next == crossStageBitCycleWrite {
+				if byteIndex != 3 {
+					return 0, fmt.Errorf("cross-stage bit cycle completed after %d bytes", byteIndex+1)
+				}
+				break
+			}
+			if next != crossStageBitCycleTest {
+				return next, nil
+			}
+			next, err = runCrossStageBitCycleTest(s)
+			if err != nil {
+				return 0, err
+			}
+			switch next {
+			case crossStageBitCyclePlace:
+				continue
+			case crossStageBitCycleStart:
+				next, err = runCrossStageBitCycleStart(s)
+				if err != nil {
+					return 0, err
+				}
+				if next != crossStageBitCyclePlace {
+					return next, nil
+				}
+				goto restartWord
+			default:
+				return next, nil
+			}
+		}
+
+		next, err = runCrossStageBitCycleWrite(s)
+		if err != nil {
+			return 0, err
+		}
+		if next != crossStageBitCycleStart {
+			return next, nil
+		}
+		next, err = runCrossStageBitCycleStart(s)
+		if err != nil {
+			return 0, err
+		}
+		if next != crossStageBitCyclePlace {
+			return next, nil
+		}
+	}
+	return 0, fmt.Errorf("cross-stage bit cycle exceeded %d words", maximumWords)
 }
 
 func runCrossStageBitCycleStart(s *state) (uint64, error) {
