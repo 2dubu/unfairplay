@@ -72,6 +72,13 @@ func accountSHA1CompressBlock(initial accountSHA1State, block [64]byte, inputByt
 		})
 	}
 
+	compressed := accountSHA1CompressSchedule(initial, schedule)
+	return accountSHA1Compression{
+		State: accountSHA1FeedForward(initial, compressed), Compressed: compressed, Schedule: schedule,
+	}
+}
+
+func accountSHA1CompressSchedule(initial accountSHA1State, schedule [80]uint32) accountSHA1State {
 	compressed := initial
 	for index, word := range schedule {
 		phase := accountSHA1Choose
@@ -87,9 +94,7 @@ func accountSHA1CompressBlock(initial accountSHA1State, block [64]byte, inputByt
 		}
 		compressed = accountSHA1Round(compressed, word, phase)
 	}
-	return accountSHA1Compression{
-		State: accountSHA1FeedForward(initial, compressed), Compressed: compressed, Schedule: schedule,
-	}
+	return compressed
 }
 
 // accountSHA1Round is one standard SHA-1 compression round. The native

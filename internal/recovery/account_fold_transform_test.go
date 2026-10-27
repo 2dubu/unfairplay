@@ -54,7 +54,7 @@ func TestAccountFoldMatchesLiftedLoop(t *testing.T) {
 				t.Fatalf("trial %d lifted tail: next=%#x stopped=%v err=%v", trial, next, stopped, err)
 			}
 		}
-		directNext, err := runAccountFold(direct)
+		directNext, err := runAccountFoldCircuit(direct)
 		if err != nil {
 			t.Fatalf("trial %d direct: %v", trial, err)
 		}

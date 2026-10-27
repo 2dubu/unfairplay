@@ -2,9 +2,7 @@ package recovery
 
 import "fmt"
 
-const accountRoundPermuteB = uint64(0x1001478d0)
-
-func runAccountRoundPermuteB(s *state) (uint64, error) {
+func runAccountRoundPermuteBCircuit(s *state) (uint64, error) {
 	s.traceBlock(accountRoundPermuteB)
 	s.x[7] = s.x[28]
 	s.x[28] = s.x[15]

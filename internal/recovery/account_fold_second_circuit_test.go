@@ -2,16 +2,10 @@ package recovery
 
 import "fmt"
 
-const (
-	accountSecondFoldRound = uint64(0x10021d654)
-	accountSecondFoldTail  = uint64(0x10021d800)
-	accountSecondFoldLimit = uint64(0x1cc848cf)
-)
-
-func runAccountSecondFold(s *state) (uint64, error) {
+func runAccountSecondFoldCircuit(s *state) (uint64, error) {
 	const maximumRounds = 4096
 	for round := 0; round < maximumRounds; round++ {
-		next, err := runAccountSecondFoldRound(s)
+		next, err := runAccountSecondFoldRoundCircuit(s)
 		if err != nil || next != accountSecondFoldRound {
 			return next, err
 		}
@@ -19,7 +13,7 @@ func runAccountSecondFold(s *state) (uint64, error) {
 	return 0, fmt.Errorf("account second fold exceeded %d rounds", maximumRounds)
 }
 
-func runAccountSecondFoldRound(s *state) (uint64, error) {
+func runAccountSecondFoldRoundCircuit(s *state) (uint64, error) {
 	s.traceBlock(accountSecondFoldRound)
 	s.x[16], s.x[28], s.x[1] = s.x[28], s.x[15], s.x[11]
 	s.x[11] = uint64(uint32(rotateRight(s.x[11], 27, 32)))

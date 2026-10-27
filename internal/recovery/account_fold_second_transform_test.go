@@ -47,7 +47,7 @@ func TestAccountSecondFoldMatchesLiftedLoop(t *testing.T) {
 		if err != nil || stopped {
 			t.Fatalf("trial %d lifted tail: next=%#x stopped=%v err=%v", trial, next, stopped, err)
 		}
-		directNext, err := runAccountSecondFold(direct)
+		directNext, err := runAccountSecondFoldCircuit(direct)
 		if err != nil {
 			t.Fatalf("trial %d direct: %v", trial, err)
 		}
