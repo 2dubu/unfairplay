@@ -2246,7 +2246,7 @@ func runBootstrapByteWriterCycle(s *state) (uint64, error) {
 			s.traceBlock(bootstrapByteWriterStore)
 			writeOffset := outputCounter + storeOffset
 			decoded := byte((encodedWord ^ uint32(s.x[13])) >> (octet * 8))
-			decoded ^= 0x1b
+			decoded = applyCurrentFairPlayByteMask(decoded)
 			if err := s.storeValue(output+uint64(writeOffset), uint64(decoded), 1); err != nil {
 				return 0, fmt.Errorf("bootstrap byte-writer output byte: %w", err)
 			}
@@ -2344,7 +2344,7 @@ func runBootstrapByteWriterStore(s *state) (uint64, error) {
 		return 0, fmt.Errorf("unsupported bootstrap byte-writer mask %#x", uint32(s.x[23]))
 	}
 	encoded := uint32(s.x[27]) ^ uint32(s.x[13])
-	s.x[28] = uint64(byte(encoded>>uint32(s.x[15])) ^ 0x1b)
+	s.x[28] = uint64(applyCurrentFairPlayByteMask(byte(encoded >> uint32(s.x[15]))))
 	s.x[30] = uint64(uint32(s.x[10]) - 1)
 	s.x[10] = uint64(uint32(s.x[10]) + uint32(s.x[24]))
 	s.x[10] = uint64(uint32(s.x[10]) + uint32(s.x[6]))

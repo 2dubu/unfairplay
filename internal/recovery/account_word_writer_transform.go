@@ -11,7 +11,6 @@ func runAccountWordWriter(s *state) (uint64, error) {
 	const (
 		firstCounter = uint64(0x1cc84893)
 		wordCount    = uint64(16)
-		wordMask     = uint32(0xd56e60de)
 	)
 	if s == nil {
 		return 0, fmt.Errorf("account word-writer state is unavailable")
@@ -44,7 +43,7 @@ func runAccountWordWriter(s *state) (uint64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("account word-writer input %d: %w", word, err)
 		}
-		encoded := bits.ReverseBytes32(uint32(value)) ^ wordMask
+		encoded := applyCurrentFairPlayWordMask(bits.ReverseBytes32(uint32(value)))
 		if err := s.storeValue(s.x[8]+word*4, uint64(encoded), 4); err != nil {
 			return 0, fmt.Errorf("account word-writer output %d: %w", word, err)
 		}

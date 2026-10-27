@@ -121,7 +121,7 @@ func runSelectionByteWriterPass(s *state) (uint64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("selection byte-writer input: %w", err)
 		}
-		output := byte(value) ^ 0x1b
+		output := applyCurrentFairPlayByteMask(byte(value))
 		if err := s.storeValue(s.x[16], uint64(output), 1); err != nil {
 			return 0, fmt.Errorf("selection byte-writer output: %w", err)
 		}
@@ -250,7 +250,7 @@ func runSelectionPackedWordPass(s *state) (uint64, error) {
 			}
 			packed |= uint32(byte(value)) << (valueIndex * 8)
 		}
-		s.x[9] = uint64(packed ^ 0xd56e60de)
+		s.x[9] = uint64(applyCurrentFairPlayWordMask(packed))
 
 		s.traceBlock(selectionPackedWordStep)
 		s.x[12] = uint64(uint32(s.x[16]) ^ uint32(s.x[19]))
