@@ -9,6 +9,8 @@ type outerTableRoundState struct {
 	Hardware      [6]byte
 	HardwareIndex uint8
 	Codec         [33]byte
+	Source        [224]byte
+	Tail          [140]byte
 }
 
 type outerIterationControl struct {
@@ -98,9 +100,30 @@ func applyOuterSemanticIteration(table *[outerTableWords]uint32, base uint32, st
 }
 
 func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState, control *outerIterationControl) (uint32, bool) {
-	if control == nil || !applyOuterFront(table, base, state, control.X1, control.CounterSeed) {
+	if control == nil {
 		return 0, false
 	}
+	initialSeed := control.CounterSeed
+	var hookSeeds outerHookSeeds
+	if !applyOuterFront(table, base, state, control.X1, control.CounterSeed, &hookSeeds) {
+		return 0, false
+	}
+	evenSeed := advanceOuterSeed(initialSeed, (144*base+5)%outerTableWords)
+	oddSeed := advanceOuterSeed(initialSeed, (144*base+129)%outerTableWords)
+	evenIndex := (evenSeed + 0xf587d089) % outerTableWords
+	oddIndex := (oddSeed + 0xf587d089) % outerTableWords
+	pair, ok := pairTransform26A428(table[:], hookSeeds.Even, hookSeeds.Odd, evenIndex, oddIndex)
+	if !ok {
+		return 0, false
+	}
+	copy(state.Source[32:], pair[:])
+	tailSeed := advanceOuterSeed(initialSeed, (139*base)%outerTableWords)
+	tailIndex := (tailSeed + 0xf587d089) % outerTableWords
+	tail, ok := tailTransform26A428(table[:], hookSeeds.Tail, tailIndex)
+	if !ok {
+		return 0, false
+	}
+	state.Tail = tail
 	if !applyOuterPreRound(table, base, state) {
 		return 0, false
 	}
@@ -108,15 +131,19 @@ func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state 
 	if !ok {
 		return 0, false
 	}
-	seedIterations := (139*base + 29) % outerTableWords
-	for range seedIterations {
-		control.CounterSeed = outerWriterSeedStep(control.CounterSeed)
-	}
+	control.CounterSeed = advanceOuterSeed(control.CounterSeed, (139*base+29)%outerTableWords)
 	if !applyOuterPostRoundWithSeed(table, base, state, &control.CounterSeed) {
 		return 0, false
 	}
 	control.X1 = 0x60319e4b
 	return next, true
+}
+
+func advanceOuterSeed(seed, iterations uint32) uint32 {
+	for range iterations {
+		seed = outerWriterSeedStep(seed)
+	}
+	return seed
 }
 
 func applyOuterNaturalLoop(table *[outerTableWords]uint32, state *outerTableRoundState, control *outerIterationControl) (int, bool) {

@@ -21,14 +21,17 @@ func TestOuterFrontDeterministic(t *testing.T) {
 			10: 0x76, 11: 0x87, 12: 0x98, 13: 0xa9, 14: 0xba, 15: 0xcb, 16: 0xdc,
 		},
 	}
-	if !applyOuterFront(&table, 49, &state, 0x60319e4b, 0x12345678) {
+	if !applyOuterFront(&table, 49, &state, 0x60319e4b, 0x12345678, nil) {
 		t.Fatal("semantic outer front rejected valid input")
 	}
 	var encoded [20]byte
 	for index, value := range state.Words {
 		binary.LittleEndian.PutUint32(encoded[index*4:], value)
 	}
-	if got, want := fmt.Sprintf("%x", sha256.Sum256(encoded[:])), "4a61d08eb6000a16b07da60fce983d91c3cce0b5e0828a477a16f8a770429233"; got != want {
+	hasher := sha256.New()
+	_, _ = hasher.Write(encoded[:])
+	_, _ = hasher.Write(state.Source[:16])
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "f50e1d13b55a7d83a5e54bec29e5624fd2e98b128d58b638d05f64c89f313d1a"; got != want {
 		t.Fatalf("outer front digest = %s, want %s", got, want)
 	}
 }
@@ -36,18 +39,18 @@ func TestOuterFrontDeterministic(t *testing.T) {
 func TestOuterFrontRejectsInvalidInput(t *testing.T) {
 	var table [outerTableWords]uint32
 	var state outerTableRoundState
-	if applyOuterFront(nil, 0, &state, 0x60319d83, 0) || applyOuterFront(&table, 0, nil, 0x60319d83, 0) {
+	if applyOuterFront(nil, 0, &state, 0x60319d83, 0, nil) || applyOuterFront(&table, 0, nil, 0x60319d83, 0, nil) {
 		t.Fatal("accepted a nil outer front input")
 	}
-	if applyOuterFront(&table, outerTableWords, &state, 0x60319d83, 0) {
+	if applyOuterFront(&table, outerTableWords, &state, 0x60319d83, 0, nil) {
 		t.Fatal("accepted an invalid outer front base")
 	}
 	state.HardwareIndex = 6
-	if applyOuterFront(&table, 0, &state, 0x60319d83, 0) {
+	if applyOuterFront(&table, 0, &state, 0x60319d83, 0, nil) {
 		t.Fatal("accepted an invalid hardware index")
 	}
 	state.HardwareIndex = 0
-	if applyOuterFront(&table, 0, &state, 0, 0) {
+	if applyOuterFront(&table, 0, &state, 0, 0, nil) {
 		t.Fatal("accepted a counter state outside the proved natural path")
 	}
 }

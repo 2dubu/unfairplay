@@ -140,7 +140,9 @@ func TestOuterFullIterationDeterministic(t *testing.T) {
 		binary.LittleEndian.PutUint32(word[:], value)
 		_, _ = hasher.Write(word[:])
 	}
-	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "7d75c9b0f553425e8a979606b7eaa48af3415c7ca396aa89f23571890417a8e0"; got != want {
+	_, _ = hasher.Write(state.Source[:])
+	_, _ = hasher.Write(state.Tail[:])
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "c0d589a136794a28ca70932852a52c960736bdc0a62a8561df965c252ea4b8f6"; got != want {
 		t.Fatalf("full iteration digest = %s, want %s", got, want)
 	}
 }
@@ -174,7 +176,9 @@ func TestOuterNaturalLoopDeterministic(t *testing.T) {
 		binary.LittleEndian.PutUint32(word[:], value)
 		_, _ = hasher.Write(word[:])
 	}
-	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "bf7ae79b18e4ec06b6b7d8efe7f4c3500a479e587ff422b8174fce762ce8ac46"; got != want {
+	_, _ = hasher.Write(state.Source[:])
+	_, _ = hasher.Write(state.Tail[:])
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "38c6c595c12a95250012e182d868ffde59fa430a9b419eda5247e32637e117da"; got != want {
 		t.Fatalf("natural loop digest = %s, want %s", got, want)
 	}
 }

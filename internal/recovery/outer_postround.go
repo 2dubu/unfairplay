@@ -217,13 +217,20 @@ func applyOuterPostRoundWithSeed(table *[outerTableWords]uint32, base uint32, st
 		return false
 	}
 	x14, x16 := state.Words[2], state.Words[0]
+	writerSeed := state.Words[4]
+	writerTableIndex := uint32(0)
+	var controls [140]uint32
+	if seed != nil {
+		writerTableIndex = (*seed + 0xf587d089) % outerTableWords
+	}
 	indexes := [4]uint32{
 		(base + 77) % outerTableWords,
 		(base + 36) % outerTableWords,
 		(base + 119) % outerTableWords,
 		(base + 161) % outerTableWords,
 	}
-	for range 140 {
+	for iteration := range 140 {
+		controls[iteration] = x16
 		x14, x16 = outerPostRoundStep(x14, x16, table[indexes[0]], table[indexes[1]], table[indexes[2]], table[indexes[3]])
 		if seed != nil {
 			*seed = outerWriterSeedStep(*seed)
@@ -233,5 +240,12 @@ func applyOuterPostRoundWithSeed(table *[outerTableWords]uint32, base uint32, st
 		}
 	}
 	state.Words[0], state.Words[2] = x16, x14
+	if seed != nil {
+		output, ok := writerTransform26A428(table[:], controls[:], writerSeed, writerTableIndex)
+		if !ok {
+			return false
+		}
+		copy(state.Source[92:], output[:])
+	}
 	return true
 }
