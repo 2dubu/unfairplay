@@ -37,7 +37,7 @@ var outerStage26A428Layout = outerStageLayout{
 	codecEndPointerSlot:  0x6cc8,
 }
 
-func loadOuterStageState(worker *state, profile *executionProfile, layout outerStageLayout) ([outerTableWords]uint32, outerTableRoundState, outerIterationControl, error) {
+func loadOuterStageState(worker *state, profile *semanticBuildProfile, layout outerStageLayout) ([outerTableWords]uint32, outerTableRoundState, outerIterationControl, error) {
 	var table [outerTableWords]uint32
 	var semantic outerTableRoundState
 	var control outerIterationControl
@@ -106,7 +106,7 @@ func loadOuterStageState(worker *state, profile *executionProfile, layout outerS
 	return table, semantic, control, nil
 }
 
-func storeOuterStageState(worker *state, profile *executionProfile, layout outerStageLayout, table *[outerTableWords]uint32, semantic *outerTableRoundState, control *outerIterationControl) error {
+func storeOuterStageState(worker *state, profile *semanticBuildProfile, layout outerStageLayout, table *[outerTableWords]uint32, semantic *outerTableRoundState, control *outerIterationControl) error {
 	if worker == nil || profile == nil || table == nil || semantic == nil || control == nil {
 		return fmt.Errorf("outer stage result is unavailable")
 	}
@@ -216,7 +216,7 @@ func runSemanticNestedOuterStage(worker *state) (int, error) {
 	}
 	layout.codecAddress = codecAddress
 	layout.tableOffset -= 0x20
-	layout.sourceAddress = profile.sourceAddress - 0x20
+	layout.sourceAddress = profile.semantic.sourceAddress - 0x20
 	return runSemanticOuterStageWithLayout(worker, layout)
 }
 
@@ -228,7 +228,10 @@ func runSemanticOuterStageWithLayout(worker *state, layout outerStageLayout) (in
 	if err != nil {
 		return 0, err
 	}
-	table, semantic, control, err := loadOuterStageState(worker, profile, layout)
+	if profile.semantic == nil {
+		return 0, fmt.Errorf("no semantic outer-stage profile for build %q", profile.name)
+	}
+	table, semantic, control, err := loadOuterStageState(worker, profile.semantic, layout)
 	if err != nil {
 		return 0, err
 	}
@@ -236,7 +239,7 @@ func runSemanticOuterStageWithLayout(worker *state, layout outerStageLayout) (in
 	if !ok || iterations != outerNaturalIterationCount {
 		return iterations, fmt.Errorf("semantic outer stage did not reach its natural exit")
 	}
-	if err := storeOuterStageState(worker, profile, layout, &table, &semantic, &control); err != nil {
+	if err := storeOuterStageState(worker, profile.semantic, layout, &table, &semantic, &control); err != nil {
 		return iterations, err
 	}
 	return iterations, nil

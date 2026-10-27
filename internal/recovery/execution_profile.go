@@ -6,6 +6,9 @@ import "fmt"
 // The algorithms consuming it are shared typed Go and must not vary by build.
 type semanticBuildProfile struct {
 	outer            outerStageLayout
+	sourceAddress    uint64
+	frameAddress     uint64
+	selectionStart   uint64
 	currentSINFMask  [16]byte
 	currentSINFWhite [16]byte
 	currentSINFInput [4096]byte
@@ -57,6 +60,9 @@ func embedded26A428ExecutionProfile() *executionProfile {
 		name: "macos26a428", binaryHash: rawSourceBinaryHash,
 		semantic: &semanticBuildProfile{
 			outer:            outerStage26A428Layout,
+			sourceAddress:    0x7000000FB304,
+			frameAddress:     0x7000000FB724,
+			selectionStart:   0x1006b10a0,
 			currentSINFMask:  generatedCurrentSINFKeyMask,
 			currentSINFWhite: generatedCurrentSINFWhitening,
 			currentSINFInput: generatedCurrentSINFInputDecode,

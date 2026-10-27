@@ -287,6 +287,8 @@ func TestEmbeddedExecutionProfileGeometry(t *testing.T) {
 	profile := embedded26A428ExecutionProfile()
 	if profile.name != "macos26a428" || profile.binaryHash != rawSourceBinaryHash || profile.semantic == nil ||
 		profile.semantic.outer != outerStage26A428Layout ||
+		profile.semantic.sourceAddress != profile.sourceAddress || profile.semantic.frameAddress != profile.frameAddress ||
+		profile.semantic.selectionStart != profile.selectionStart ||
 		profile.accountEntryStart != 0x100cd1c18 || profile.accountEntryStop != 0x10057ae74 ||
 		profile.bootstrapStart != 0x10057ae74 || profile.bootstrapStop != 0x1005b7438 ||
 		profile.selectionStart != 0x1006b10a0 || profile.selectionStop != 0x10008a644 || profile.selectionStopHits != 2 ||

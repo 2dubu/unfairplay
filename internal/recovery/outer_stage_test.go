@@ -79,7 +79,7 @@ func testSemanticOuterStageBridge(t *testing.T, buildHash [32]byte) {
 	if err := worker.store(layout.codecAddress, semantic.Codec[4:]); err != nil {
 		t.Fatal(err)
 	}
-	if err := worker.store(profile.sourceAddress, semantic.Source[:]); err != nil {
+	if err := worker.store(profile.semantic.sourceAddress, semantic.Source[:]); err != nil {
 		t.Fatal(err)
 	}
 	if err := worker.storeValue(stack+layout.selectorOffset, uint64(outerSelectorFromHardwareIndex(0)), 4); err != nil {
@@ -107,7 +107,7 @@ func testSemanticOuterStageBridge(t *testing.T, buildHash [32]byte) {
 		t.Fatalf("semantic outer stage=%d/%v", iterations, err)
 	}
 
-	actualTable, actualState, actualControl, err := loadOuterStageState(worker, profile, layout)
+	actualTable, actualState, actualControl, err := loadOuterStageState(worker, profile.semantic, layout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,12 +125,12 @@ func testSemanticOuterStageBridge(t *testing.T, buildHash [32]byte) {
 	copy(expectedSource[192:], expectedState.Tail[:])
 	copy(expectedSource[92:], expectedState.Writer[:])
 	copy(expectedSource[:92], expectedState.Source[:92])
-	actualSource, err := worker.outputBytes(profile.sourceAddress, len(expectedSource))
+	actualSource, err := worker.outputBytes(profile.semantic.sourceAddress, len(expectedSource))
 	if err != nil || !bytes.Equal(actualSource, expectedSource) {
 		t.Fatalf("outer source mismatch: %v", err)
 	}
 	wantRegisters := [5]uint64{worker.x[3], worker.x[7], worker.x[20], worker.x[22], worker.x[27]}
-	if wantRegisters != expectedState.CycleRegisters || worker.x[8] != profile.selectionStart || worker.x[21] != layout.codecAddress || worker.x[29] != value.registers[29] {
+	if wantRegisters != expectedState.CycleRegisters || worker.x[8] != profile.semantic.selectionStart || worker.x[21] != layout.codecAddress || worker.x[29] != value.registers[29] {
 		t.Fatal("selection-entry registers do not match direct transform")
 	}
 	if worker.n || worker.z || worker.c || worker.v {
@@ -138,7 +138,7 @@ func testSemanticOuterStageBridge(t *testing.T, buildHash [32]byte) {
 	}
 	for address, want := range map[uint64]uint64{
 		stack + layout.hardwarePointerSlot: layout.hardwareAddress,
-		stack + layout.framePointerSlot:    profile.frameAddress + 0xb8,
+		stack + layout.framePointerSlot:    profile.semantic.frameAddress + 0xb8,
 		stack + layout.codecEndPointerSlot: layout.codecAddress + 29,
 	} {
 		got, err := worker.load(address, 8)
