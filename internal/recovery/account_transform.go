@@ -497,6 +497,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountFrameByteTarget:
 		next, err := runAccountFrameByteTarget(s)
 		return next, true, err
+	case accountConditionalEpilogue:
+		next, err := runAccountConditionalEpilogue(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
