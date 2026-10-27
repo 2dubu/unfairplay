@@ -4,7 +4,8 @@ import "fmt"
 
 // runAccountSHA1CompressionStage replaces the native flattened byte-pack,
 // schedule expansion, 80 round handlers, and five feed-forward circuits with
-// one typed SHA-1 compression.
+// one typed SHA-1 compression. This family hashes the complete DER certificate
+// and therefore produces its SHA-1 fingerprint.
 func runAccountSHA1CompressionStage(s *state) (uint64, error) {
 	if uint32(s.x[4]) != accountBytePackCounter {
 		return 0, fmt.Errorf("account SHA-1 block counter %#x is unsupported", uint32(s.x[4]))

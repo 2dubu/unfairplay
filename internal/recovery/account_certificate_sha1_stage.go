@@ -32,8 +32,9 @@ func runAccountFold(_ *state) (uint64, error) {
 }
 
 // runAccountCertificateSHA1Rounds replaces a second flattened SHA-1 round
-// family used while hashing the signed certificate bodies. Its schedule has
-// already been prepared by the surrounding certificate parser.
+// family used while hashing RawTBSCertificate for RSA/SHA-1 signature
+// verification. Its schedule has already been prepared by the certificate
+// parser.
 func runAccountCertificateSHA1Rounds(s *state) (uint64, error) {
 	if uint32(s.x[16]) != accountCertificateSHA1Counter || uint32(s.x[10]) != accountSHA1StateMask {
 		return 0, fmt.Errorf("account certificate SHA-1 state is unsupported")

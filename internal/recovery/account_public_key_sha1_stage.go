@@ -30,7 +30,8 @@ func runAccountFourthWordRound(_ *state) (uint64, error) {
 }
 
 // runAccountPublicKeySHA1Rounds replaces the third flattened SHA-1 family,
-// used for the DER-encoded RSA public keys in the certificate chain.
+// used for the PKCS#1 DER-encoded RSA public keys in the certificate chain.
+// The resulting digest is the X.509 Subject Key Identifier.
 func runAccountPublicKeySHA1Rounds(s *state) (uint64, error) {
 	if uint32(s.x[2]) != accountPublicKeySHA1Counter || uint32(s.x[23]) != accountSHA1StateMask {
 		return 0, fmt.Errorf("account public-key SHA-1 state is unsupported")

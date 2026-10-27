@@ -11,6 +11,9 @@ const (
 )
 
 func writeAccountSHA1Digest(s *state, input, output uint64) error {
+	// The native writer serializes the five encoded state words in big-endian
+	// order, removes the state mask, then applies the byte-wise 0x1b transport
+	// mask used by the surrounding certificate code.
 	for wordIndex := uint64(0); wordIndex < 5; wordIndex++ {
 		encoded, err := s.load(input+wordIndex*4, 4)
 		if err != nil {
