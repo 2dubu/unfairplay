@@ -623,6 +623,99 @@ func TestBootstrapLookupCopyIterationMatchesLiftedBlocks(t *testing.T) {
 	}
 }
 
+func TestBootstrapLookupCopyPassMatchesIterations(t *testing.T) {
+	random := rand.New(rand.NewSource(int64(bootstrapLookupCopySeed) ^ 0x1b9))
+	const stack, leftPointer, rightPointer, firstTable, secondTable, sourceDescriptor, sourceTable, output, dispatch = uint64(0x100000), uint64(0x200000), uint64(0x201000), uint64(0x300000), uint64(0x301000), uint64(0x400000), uint64(0x500000), uint64(0x600000), uint64(0x700000)
+	const exitTarget = uint64(0x123456789)
+	for trial := 0; trial < 512; trial++ {
+		length := 1 + random.Intn(256)
+		pages := map[uint64][]byte{
+			stack: make([]byte, pageSize), leftPointer: make([]byte, pageSize), rightPointer: make([]byte, pageSize),
+			firstTable: make([]byte, pageSize), secondTable: make([]byte, pageSize), sourceDescriptor: make([]byte, pageSize),
+			sourceTable: make([]byte, pageSize), output: make([]byte, pageSize), dispatch: make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		model := &model{pages: clonePages(pages)}
+		base := newState(model)
+		for register := range base.x {
+			base.x[register] = random.Uint64()
+		}
+		base.sp = stack
+		base.x[0] = 0
+		base.x[1] = 1
+		base.x[3] = secondTable
+		base.x[4] = firstTable
+		base.x[5] = sourceDescriptor - 0x1b9*8
+		base.x[9] = 0
+		base.x[11] = output
+		base.x[12] = uint64(length)
+		base.x[13] = ^uint64(0)
+		base.x[14] = 0
+		base.x[15] = 1
+		base.x[16] = 0
+		if err := base.storeValue(stack+0xde8, leftPointer, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(stack+0xde0, rightPointer, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(stack+0xdf0, dispatch, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(leftPointer, 0, 4); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(rightPointer, 0, 4); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(firstTable, 0, 1); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(secondTable, 0, 1); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(sourceDescriptor, sourceTable, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch, bootstrapLookupCopySeed, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch+8, exitTarget, 8); err != nil {
+			t.Fatal(err)
+		}
+
+		repeated := newState(model)
+		semantic := newState(model)
+		for _, item := range []*state{repeated, semantic} {
+			item.sp, item.x = base.sp, base.x
+			item.writable = clonePages(base.writable)
+			item.dirty = map[uint64]bool{}
+			for page := range item.writable {
+				item.dirty[page] = true
+			}
+		}
+		var repeatedNext uint64
+		for index := 0; index < length; index++ {
+			var err error
+			repeatedNext, err = runBootstrapLookupCopyIteration(repeated)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		semanticNext, err := runBootstrapLookupCopyPass(semantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
+			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
+
 func TestBootstrapPointerWalkIterationMatchesLiftedBlocks(t *testing.T) {
 	random := rand.New(rand.NewSource(int64(bootstrapPointerWalkSeed)))
 	for trial := 0; trial < 512; trial++ {

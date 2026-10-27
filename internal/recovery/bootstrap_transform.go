@@ -906,10 +906,77 @@ func runBootstrapReverseByteStep(s *state) (uint64, error) {
 // layers, then copies one 32-bit word per iteration to the output table.
 func runBootstrapLookupCopyPass(s *state) (uint64, error) {
 	const maximumWords = 4096
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy state is unavailable")
+	}
+	leftPointer, err := s.load(s.sp+0xde8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy left pointer: %w", err)
+	}
+	left, err := s.load(leftPointer, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy left value: %w", err)
+	}
+	rightPointer, err := s.load(s.sp+0xde0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy right pointer: %w", err)
+	}
+	right, err := s.load(rightPointer, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy right value: %w", err)
+	}
+	selector := (uint32(right) - uint32(left)) ^ uint32(s.x[14])
+	selector *= uint32(s.x[15])
+	first, err := s.load(s.x[4]+uint64(byte(selector)), 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy first table: %w", err)
+	}
+	second, err := s.load(s.x[3]+uint64(uint32(first)^uint32(s.x[16])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy second table: %w", err)
+	}
+	sourceIndex := (selector^uint32(second))&0xff + 0x1b9
+	sourceTable, err := s.load(s.x[5]+uint64(sourceIndex)*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy source table: %w", err)
+	}
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy dispatch table: %w", err)
+	}
+	continueTarget, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[9]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy continuation: %w", err)
+	}
+	if continueTarget != bootstrapLookupCopySeed {
+		return 0, fmt.Errorf("unsupported bootstrap lookup-copy continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[9])^uint32(s.x[1]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap lookup-copy exit: %w", err)
+	}
+
 	for word := 0; word < maximumWords; word++ {
-		next, err := runBootstrapLookupCopyIteration(s)
-		if err != nil || next != bootstrapLookupCopySeed {
-			return next, err
+		s.traceBlock(bootstrapLookupCopySeed)
+		s.traceBlock(bootstrapLookupCopyStep)
+		position := s.addWithCarry(s.x[13], s.x[12], false, 64)
+		source := sourceTable + s.x[0]
+		value, err := s.load(source+shiftLeft(position, 2, 64), 4)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap lookup-copy source word: %w", err)
+		}
+		if err := s.storeValue(s.x[11]+shiftLeft(position, 2, 64), uint64(uint32(value)), 4); err != nil {
+			return 0, fmt.Errorf("bootstrap lookup-copy output word: %w", err)
+		}
+		next := continueTarget
+		if s.condition("eq") {
+			next = exitTarget
+		}
+		s.x[2] = next
+		s.x[12] = position
+		s.x[17] = 0x8085
+		if next != bootstrapLookupCopySeed {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("bootstrap lookup-copy pass exceeded %d words", maximumWords)
