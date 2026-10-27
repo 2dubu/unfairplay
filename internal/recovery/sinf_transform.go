@@ -44,6 +44,12 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sinfReverseWriter:
 		next, err := runSINFReverseWriter(s)
 		return next, true, err
+	case sinfStateSelector:
+		next, err := runSINFStateSelector(s)
+		return next, true, err
+	case sinfBitSelector:
+		next, err := runSINFBitSelector(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
