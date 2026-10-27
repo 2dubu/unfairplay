@@ -626,6 +626,30 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountBooleanPermutation:
 		next, err := runAccountBooleanPermutation(s)
 		return next, true, err
+	case accountExternalCallSetup:
+		next, err := runAccountExternalCallSetup(s)
+		return next, true, err
+	case accountExternalCallResume:
+		next, err := runAccountExternalCallResume(s)
+		return next, true, err
+	case accountRoundStateSetup:
+		next, err := runAccountRoundStateSetup(s)
+		return next, true, err
+	case accountConditionalTableSetup:
+		next, err := runAccountConditionalTableSetup(s)
+		return next, true, err
+	case accountIndexedByteStoreRoute:
+		next, err := runAccountIndexedByteStoreRoute(s)
+		return next, true, err
+	case accountSignedLimitRouteA:
+		next, err := runAccountSignedLimitRouteA(s)
+		return next, true, err
+	case accountSignedLimitRouteB:
+		next, err := runAccountSignedLimitRouteB(s)
+		return next, true, err
+	case accountSignedLimitRouteC:
+		next, err := runAccountSignedLimitRouteC(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
