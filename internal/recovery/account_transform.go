@@ -611,6 +611,21 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountWideWordWriter:
 		next, err := runAccountWideWordWriter(s)
 		return next, true, err
+	case accountCallFrameSetup:
+		next, err := runAccountCallFrameSetup(s)
+		return next, true, err
+	case accountRecordDecodeSetup:
+		next, err := runAccountRecordDecodeSetup(s)
+		return next, true, err
+	case accountEntryWidePrologue:
+		next, err := runAccountEntryWidePrologue(s)
+		return next, true, err
+	case accountEntryWideSetup:
+		next, err := runAccountEntryWideSetup(s)
+		return next, true, err
+	case accountBooleanPermutation:
+		next, err := runAccountBooleanPermutation(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
