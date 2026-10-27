@@ -60,7 +60,7 @@ func embedded26A428ExecutionProfile() *executionProfile {
 		verifiedFallbackBlocks: compact26A428VerifiedFallbackBlocks,
 		sinfEntryBlock:         compact26A428SINFEntryBlock,
 		applyFrame:             applyRecoveredEnrollmentFrame,
-		runBootstrap:           runRawSourceBootstrapKernel,
+		runBootstrap:           runBootstrapRecurrenceStep,
 		runDigestPrologue:      runRawSourceDigestPrologue,
 		runDigest:              runRawSourceDigestKernel,
 		runOptional:            runRawSourceOptionalKernel,
