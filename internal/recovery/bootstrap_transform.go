@@ -2165,14 +2165,12 @@ func runBootstrapByteWriterMix(s *state) (uint64, error) {
 	s.x[15] = 0
 	s.x[17] = uint64(uint32(s.x[6]) + uint32(s.x[3]))
 	s.x[26] = uint64(uint32(s.x[17]) & uint32(s.x[4]))
-	s.x[17] = uint64(uint32(s.x[12]) ^ uint32(s.x[9]))
-	s.x[27] = uint64(uint32(s.x[12]) - uint32(s.x[9]))
-	s.x[27] = uint64(uint32(s.x[27]) &^ uint32(s.x[17]))
-	s.x[17] = uint64(uint32(s.x[12]) & uint32(s.x[17]))
-	s.x[17] = uint64(uint32(s.x[17]) | uint32(s.x[27]))
-	s.x[17] = uint64(uint32(s.x[17]) >> 31)
+	less := uint32(0)
+	if uint32(s.x[12]) < uint32(s.x[9]) {
+		less = 1
+	}
 	s.x[27] = uint64(uint32(s.x[26]) ^ uint32(s.x[5]))
-	s.x[17] = uint64(uint32(s.x[27]) * uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[27]) * less)
 	dispatchIndex := uint32(s.x[17]) ^ uint32(s.x[6])
 	next, err := loadBootstrapPointer(s, s.x[11], dispatchIndex)
 	if err != nil {
@@ -2219,12 +2217,11 @@ func runBootstrapByteWriterStore(s *state) (uint64, error) {
 	s.x[17] = output
 	s.x[6] = uint64(uint32(s.x[26]) + uint32(s.x[21]))
 	s.x[6] = uint64(uint32(s.x[6]) & uint32(s.x[22]))
-	s.x[28] = uint64(uint32(s.x[27]) ^ uint32(s.x[13]))
-	s.x[28] = uint64(uint32(shiftRight(s.x[28], int(s.x[15]), 32)))
-	s.x[30] = uint64(uint32(s.x[23]) & uint32(s.x[28]<<1))
-	s.x[28] = uint64(uint32(s.x[28]) - uint32(s.x[30]))
-	s.x[28] = uint64(uint32(s.x[28]) - 0x1b)
-	s.x[28] = uint64(uint32(s.x[28]) ^ 0xfe)
+	if uint32(s.x[23]) != 0xca {
+		return 0, fmt.Errorf("unsupported bootstrap byte-writer mask %#x", uint32(s.x[23]))
+	}
+	encoded := uint32(s.x[27]) ^ uint32(s.x[13])
+	s.x[28] = uint64(byte(encoded>>uint32(s.x[15])) ^ 0x1b)
 	s.x[30] = uint64(uint32(s.x[10]) - 1)
 	s.x[10] = uint64(uint32(s.x[10]) + uint32(s.x[24]))
 	s.x[10] = uint64(uint32(s.x[10]) + uint32(s.x[6]))

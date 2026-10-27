@@ -75,12 +75,7 @@ func TestBootstrapByteWriterCycleMatchesCircuit(t *testing.T) {
 		base.x[20] = 0
 		base.x[21] = 0
 		base.x[22] = 0
-		base.x[24] = 0
-		base.x[19] = ^uint64(0)
-		base.x[20] = 0
-		base.x[21] = 0
-		base.x[22] = 0
-		base.x[23] = 0
+		base.x[23] = 0xca
 		base.x[24] = 0
 		base.x[25] = ^uint64(0)
 		base.x[27] = uint64(random.Uint32())
@@ -126,6 +121,15 @@ func TestBootstrapByteWriterCycleMatchesCircuit(t *testing.T) {
 		}
 		if circuitNext != semanticNext || circuit.x != semantic.x || circuit.n != semantic.n || circuit.z != semantic.z || circuit.c != semantic.c || circuit.v != semantic.v || !reflect.DeepEqual(circuit.writable, semantic.writable) {
 			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
+
+func TestBootstrapByteWriterDecodeIdentity(t *testing.T) {
+	for value := uint32(0); value < 256; value++ {
+		old := byte((value - (0xca & (value << 1)) - 0x1b) ^ 0xfe)
+		if got, want := byte(value)^0x1b, old; got != want {
+			t.Fatalf("value %#x decoded to %#x, want %#x", value, got, want)
 		}
 	}
 }
