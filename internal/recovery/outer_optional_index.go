@@ -14,7 +14,7 @@ func outerOptionalSelect64(condition bool, yes, no uint64) uint64 {
 	return no
 }
 
-func outerOptionalFirstIndex(seed uint32) uint32 {
+func outerOptionalFirstIndexMBA(seed uint32) uint32 {
 	t0 := uint64(((0x0263747b) >> 0) & 0x1fffffff)
 	t1 := uint64(((0x0)<<0 | (t0)<<3) & 0xffffffff)
 	t2 := uint64(((0xcc3169) + (0x0263747b) + (uint64(seed)) + (t1)) & 0xffffffff)
