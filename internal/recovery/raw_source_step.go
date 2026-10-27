@@ -685,28 +685,16 @@ func currentRawSourceEnrollmentPack() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	const modelBytes = 4184
-	pack := make([]byte, 0, modelBytes)
-	pack = append(pack, []byte("FPSENR2\x00")...)
-	var word [4]byte
-	binary.LittleEndian.PutUint32(word[:], 2)
-	pack = append(pack, word[:]...)
-	binary.LittleEndian.PutUint32(word[:], modelBytes)
-	pack = append(pack, word[:]...)
-	pack = append(pack, profile.binaryHash[:]...)
-	binary.LittleEndian.PutUint32(word[:], user)
-	pack = append(pack, word[:]...)
-	binary.LittleEndian.PutUint32(word[:], keyID)
-	pack = append(pack, word[:]...)
+	if profile.semantic == nil {
+		return nil, fmt.Errorf("semantic enrollment profile is unavailable")
+	}
+	var precursor [16]byte
 	for index, value := range material {
-		pack = append(pack, value^profile.semantic.currentSINFMask[index])
+		precursor[index] = value ^ currentSINFMaterialMask[index]
 	}
-	pack = append(pack, profile.semantic.currentSINFWhite[:]...)
-	pack = append(pack, profile.semantic.currentSINFInput[:]...)
-	if len(pack) != modelBytes {
-		return nil, fmt.Errorf("generated enrollment model has invalid size %d", len(pack))
-	}
-	return pack, nil
+	pack, err := enrollmentPackForPrecursor(profile.semantic, profile.binaryHash, user, keyID, precursor)
+	clear(precursor[:])
+	return pack, err
 }
 
 func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {
