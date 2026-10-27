@@ -10,6 +10,7 @@ import (
 // describes where one fairplayd build keeps its live inputs and outputs.
 type outerStageLayout struct {
 	tableOffset          uint64
+	sourceAddress        uint64
 	wordOffsets          [5]uint64
 	counterSeedOffset    uint64
 	selectorOffset       uint64
@@ -68,7 +69,11 @@ func loadOuterStageState(worker *state, profile *executionProfile, layout outerS
 		return table, semantic, control, fmt.Errorf("load outer codec state: %w", err)
 	}
 	copy(semantic.Codec[4:], codec)
-	source, err := worker.outputBytes(profile.sourceAddress, len(semantic.Source))
+	sourceAddress := layout.sourceAddress
+	if sourceAddress == 0 {
+		sourceAddress = profile.sourceAddress
+	}
+	source, err := worker.outputBytes(sourceAddress, len(semantic.Source))
 	if err != nil {
 		return table, semantic, control, fmt.Errorf("load outer source: %w", err)
 	}
@@ -133,13 +138,17 @@ func storeOuterStageState(worker *state, profile *executionProfile, layout outer
 	// The three recovered writers overlap in this order in the native path.
 	// Preserve the full 332-byte region, including the eight writer bytes that
 	// lie beyond Source and the tail bytes that survive both later writes.
-	if err := worker.store(profile.sourceAddress+192, semantic.Tail[:]); err != nil {
+	sourceAddress := layout.sourceAddress
+	if sourceAddress == 0 {
+		sourceAddress = profile.sourceAddress
+	}
+	if err := worker.store(sourceAddress+192, semantic.Tail[:]); err != nil {
 		return fmt.Errorf("store outer tail: %w", err)
 	}
-	if err := worker.store(profile.sourceAddress+92, semantic.Writer[:]); err != nil {
+	if err := worker.store(sourceAddress+92, semantic.Writer[:]); err != nil {
 		return fmt.Errorf("store outer writer: %w", err)
 	}
-	if err := worker.store(profile.sourceAddress, semantic.Source[:92]); err != nil {
+	if err := worker.store(sourceAddress, semantic.Source[:92]); err != nil {
 		return fmt.Errorf("store outer source: %w", err)
 	}
 	if err := worker.storeValue(worker.sp+layout.hardwarePointerSlot, layout.hardwareAddress, 8); err != nil {
@@ -164,6 +173,7 @@ func storeOuterStageState(worker *state, profile *executionProfile, layout outer
 		0xa70ab7f2, worker.sp + 0x6000, semantic.CycleRegisters[4],
 		0x13b13b13b13b13b2, framePointer, worker.sp + 0x7000,
 	}
+	worker.vectors = [32][16]byte{}
 	worker.n, worker.z, worker.c, worker.v = false, false, false, false
 	return nil
 }
@@ -172,6 +182,32 @@ func storeOuterStageState(worker *state, profile *executionProfile, layout outer
 // fairplayd blocks. Its inputs and outputs are the same stage ABI used by the
 // remaining lifted selection code.
 func runSemanticOuterStage(worker *state) (int, error) {
+	return runSemanticOuterStageWithLayout(worker, outerStage26A428Layout)
+}
+
+func runSemanticNestedOuterStage(worker *state) (int, error) {
+	if worker == nil || worker.model == nil {
+		return 0, fmt.Errorf("outer stage state is unavailable")
+	}
+	profile, err := executionProfileForModel(worker.model)
+	if err != nil {
+		return 0, err
+	}
+	layout := outerStage26A428Layout
+	codecAddress, err := worker.load(worker.sp+layout.codecEndPointerSlot, 8)
+	if err != nil {
+		return 0, fmt.Errorf("load nested outer codec pointer: %w", err)
+	}
+	if codecAddress == 0 {
+		return 0, fmt.Errorf("invalid nested outer codec pointer")
+	}
+	layout.codecAddress = codecAddress
+	layout.tableOffset -= 0x20
+	layout.sourceAddress = profile.sourceAddress - 0x20
+	return runSemanticOuterStageWithLayout(worker, layout)
+}
+
+func runSemanticOuterStageWithLayout(worker *state, layout outerStageLayout) (int, error) {
 	if worker == nil || worker.model == nil {
 		return 0, fmt.Errorf("outer stage state is unavailable")
 	}
@@ -182,7 +218,7 @@ func runSemanticOuterStage(worker *state) (int, error) {
 	if profile.binaryHash != rawSourceBinaryHash {
 		return 0, fmt.Errorf("no semantic outer stage for fairplayd build")
 	}
-	table, semantic, control, err := loadOuterStageState(worker, profile, outerStage26A428Layout)
+	table, semantic, control, err := loadOuterStageState(worker, profile, layout)
 	if err != nil {
 		return 0, err
 	}
@@ -190,7 +226,7 @@ func runSemanticOuterStage(worker *state) (int, error) {
 	if !ok || iterations != outerNaturalIterationCount {
 		return iterations, fmt.Errorf("semantic outer stage did not reach its natural exit")
 	}
-	if err := storeOuterStageState(worker, profile, outerStage26A428Layout, &table, &semantic, &control); err != nil {
+	if err := storeOuterStageState(worker, profile, layout, &table, &semantic, &control); err != nil {
 		return iterations, err
 	}
 	return iterations, nil

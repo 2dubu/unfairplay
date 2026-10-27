@@ -13,6 +13,17 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 	stopHits := 0
 	frameCalls := 0
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
+		if pc == profile.outerStart {
+			iterations, err := runSemanticNestedOuterStage(s)
+			if err != nil {
+				return pc, blockCount, fmt.Errorf("semantic nested outer stage: %w", err)
+			}
+			if iterations != outerNaturalIterationCount || s.x[8] != profile.selectionStart {
+				return pc, blockCount, fmt.Errorf("semantic nested outer stage reached an invalid exit")
+			}
+			pc = s.x[8]
+			continue
+		}
 		if pc == profile.selectionFrameCall {
 			s.traceBlock(pc)
 			frameCalls++

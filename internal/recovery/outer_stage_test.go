@@ -78,6 +78,12 @@ func TestSemanticOuterStageBridge(t *testing.T) {
 	if err := worker.storeValue(stack+layout.counterSeedOffset, uint64(initialSeed), 4); err != nil {
 		t.Fatal(err)
 	}
+	if err := worker.storeValue(stack+layout.hardwarePointerSlot, layout.hardwareAddress, 8); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.storeValue(stack+layout.codecEndPointerSlot, layout.codecAddress+29, 8); err != nil {
+		t.Fatal(err)
+	}
 
 	expectedTable := table
 	expectedState := semantic
@@ -129,6 +135,32 @@ func TestSemanticOuterStageBridge(t *testing.T) {
 			t.Fatalf("pointer %#x=%#x/%v, want %#x", address, got, err, want)
 		}
 	}
+
+	// The selection stage invokes the same transform through a neighboring
+	// stack frame and a new codec allocation. Prove that the compact nested ABI
+	// resolves those runtime differences without another lifted CFG.
+	nestedCodecAddress := layout.codecAddress + 0x100
+	if err := worker.store(nestedCodecAddress, semantic.Codec[4:]); err != nil {
+		t.Fatal(err)
+	}
+	currentTable, err := worker.outputBytes(stack+layout.tableOffset, int(outerTableWords)*4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.store(stack+layout.tableOffset-0x20, currentTable); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.storeValue(stack+layout.codecEndPointerSlot, nestedCodecAddress, 8); err != nil {
+		t.Fatal(err)
+	}
+	worker.x[1] = 0x60319d83
+	iterations, err = runSemanticNestedOuterStage(worker)
+	if err != nil || iterations != outerNaturalIterationCount {
+		t.Fatalf("semantic nested outer stage=%d/%v", iterations, err)
+	}
+	if worker.x[21] != nestedCodecAddress {
+		t.Fatalf("nested codec register=%#x, want %#x", worker.x[21], nestedCodecAddress)
+	}
 }
 
 func TestSemanticOuterStageRejectsUnknownSelector(t *testing.T) {
@@ -143,6 +175,12 @@ func TestSemanticOuterStageRejectsUnknownSelector(t *testing.T) {
 	pages[layout.codecAddress&^(pageSize-1)] = make([]byte, pageSize)
 	worker := newState(&model{binaryHash: rawSourceBinaryHash, profile: profile, sp: stack, pages: pages})
 	worker.reset()
+	if err := worker.storeValue(stack+layout.hardwarePointerSlot, layout.hardwareAddress, 8); err != nil {
+		t.Fatal(err)
+	}
+	if err := worker.storeValue(stack+layout.codecEndPointerSlot, layout.codecAddress+29, 8); err != nil {
+		t.Fatal(err)
+	}
 	if err := worker.storeValue(stack+layout.selectorOffset, 0xdeadbeef, 4); err != nil {
 		t.Fatal(err)
 	}
