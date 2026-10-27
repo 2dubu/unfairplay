@@ -71,7 +71,7 @@ func runAccountWideCallTail(s *state) (uint64, error) {
 	return next, nil
 }
 
-func runAccountDigestStateSetup(s *state) (uint64, error) {
+func runAccountDigestStateSetupCircuit(s *state) (uint64, error) {
 	s.traceBlock(0x100160408)
 	var next uint64
 
