@@ -4,6 +4,11 @@ import "fmt"
 
 const accountBytePackPass = uint64(0x1000ac8f0)
 
+const (
+	accountSHA1InputWords  = uint32(16)
+	accountBytePackCounter = uint32(0x2ba7c38b)
+)
+
 func runAccountBytePack(s *state) (uint64, error) {
 	for index := 0; index < 4096; index++ {
 		next, err := runAccountBytePackStep(s)
@@ -14,115 +19,48 @@ func runAccountBytePack(s *state) (uint64, error) {
 	return 0, fmt.Errorf("account byte-pack exceeded 4096 words")
 }
 
+// runAccountBytePackStep decodes one big-endian input word into the native
+// SHA-1 schedule representation. The native Boolean circuit only hid the word
+// index and the identity (word + mask - 2*(word&mask)) == word XOR mask.
 func runAccountBytePackStep(s *state) (uint64, error) {
 	s.traceBlock(accountBytePackPass)
-	value, err := s.load(s.x[1]+s.x[4]+s.x[14], 1)
-	if err != nil {
-		return 0, fmt.Errorf("account byte-pack first byte: %w", err)
+	delta := uint32(s.x[4]) - accountBytePackCounter
+	if delta&3 != 0 || delta/4 >= accountSHA1InputWords {
+		return 0, fmt.Errorf("account SHA-1 input counter %#x is outside the block", uint32(s.x[4]))
 	}
-	s.x[11] = uint64(uint32(byte(value)) ^ uint32(s.x[8]))
-	s.x[11] = uint64(uint32(s.x[11] << 24))
-	s.x[15] = uint64(uint32(s.x[9]) + 0x2ba76699)
-	s.x[12] = s.x[15] ^ 0xffffffffffffffad
-	s.x[12] += s.x[4]
-	value, err = s.load(s.x[1]+s.x[12], 1)
-	if err != nil {
-		return 0, fmt.Errorf("account byte-pack second byte: %w", err)
+	wordIndex := delta / 4
+	var word uint32
+	for octet := uint32(0); octet < 4; octet++ {
+		value, err := s.load(s.x[1]+uint64(wordIndex*4+octet), 1)
+		if err != nil {
+			return 0, fmt.Errorf("account SHA-1 input word %d byte %d: %w", wordIndex, octet, err)
+		}
+		word = word<<8 | uint32(byte(value)^byte(s.x[8]))
 	}
-	s.x[12] = uint64(uint32(byte(value)) ^ uint32(s.x[8]))
-	value, err = s.load(s.x[1]+s.x[4]+s.x[28], 1)
-	if err != nil {
-		return 0, fmt.Errorf("account byte-pack third byte: %w", err)
+	encodedWord := word ^ accountSHA1ScheduleMask
+	if err := s.storeValue(s.x[10]+uint64(wordIndex*4), uint64(encodedWord), 4); err != nil {
+		return 0, fmt.Errorf("account SHA-1 input word %d: %w", wordIndex, err)
 	}
-	s.x[13] = uint64(byte(value))
-	s.x[11] = uint64(uint32(s.x[11]) | uint32(s.x[12]<<16))
-	s.x[12] = uint64(uint32(s.x[13]) ^ uint32(s.x[8]))
-	s.x[11] = uint64(uint32(s.x[11]) | uint32(s.x[12]<<8))
-	s.x[12] = 0xffffffffd4583c78 + s.x[4]
-	value, err = s.load(s.x[1]+s.x[12], 1)
-	if err != nil {
-		return 0, fmt.Errorf("account byte-pack fourth byte: %w", err)
-	}
-	s.x[12] = uint64(uint32(byte(value)) ^ uint32(s.x[8]))
-	s.x[11] = uint64(uint32(s.x[11]) | uint32(s.x[12]))
-	s.x[13] = uint64(uint32(s.x[11]) & 0x4e757bd5)
-	s.x[12] = uint64(uint32(s.x[12]) & 0x10)
-	s.x[12] = uint64(uint32(s.x[13]) ^ uint32(s.x[12]))
-	s.x[11] = uint64(uint32(s.x[11]) - uint32(s.x[12]<<1))
-	s.x[12] = uint64(uint32(s.x[4]) ^ 0xc1c7a744)
-	s.x[13] = uint64(uint32(s.x[4]) & 0x75)
-	s.x[16] = uint64(uint32(s.x[13] << 1))
-	s.x[2] = 0x140e1300
-	s.x[17] = uint64(uint32(s.x[16]) | uint32(s.x[2]))
-	s.x[17] = uint64(uint32(s.x[17]) & uint32(s.x[12]))
-	s.x[16] = uint64(uint32(s.x[16]) & 0x20)
-	s.x[13] = uint64(uint32(s.x[16]) ^ uint32(s.x[13]))
-	s.x[13] = uint64(uint32(s.x[13]) ^ uint32(s.x[17]))
-	s.x[16] = uint64(uint32(s.x[12] << 1))
-	s.x[17] = uint64(uint32(s.x[16]) ^ 0x3f312562)
-	s.x[12] = uint64(uint32(s.x[17]) & uint32(s.x[12]))
-	s.x[16] = uint64(uint32(s.x[16]) & 0x00808830)
-	s.x[16] = uint64(uint32(s.x[16]) ^ 0x00808811)
-	s.x[12] = uint64(uint32(s.x[16]) ^ uint32(s.x[12]))
-	s.x[16] = uint64(uint32(s.x[13] << 2))
-	s.x[17] = uint64(uint32(s.x[16]) ^ uint32(s.x[2]))
-	s.x[17] = uint64(uint32(s.x[17]) & uint32(s.x[12]))
-	s.x[16] = uint64(uint32(s.x[16]) & 0x10180b30)
-	s.x[13] = uint64(uint32(s.x[16]) ^ uint32(s.x[13]))
-	s.x[13] = uint64(uint32(s.x[13]) ^ uint32(s.x[17]))
-	s.x[16] = uint64(uint32(s.x[12] << 2))
-	s.x[17] = uint64(uint32(s.x[16]) ^ 0x42707fc4)
-	s.x[12] = uint64(uint32(s.x[17]) & uint32(s.x[12]))
-	s.x[16] = uint64(uint32(s.x[16]) & 0x159f9b30)
-	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[16]))
-	s.x[16] = uint64(uint32(s.x[12]) ^ 0x01819331)
-	s.x[12] = uint64(uint32(s.x[12]) ^ 0x141e0801)
-	s.x[12] = uint64(uint32(s.x[12]) & uint32(s.x[13]<<4))
-	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[13]))
-	s.x[13] = uint64(uint32(s.x[16] << 4))
-	s.x[17] = uint64(uint32(s.x[13]) ^ 0x59f9b310)
-	s.x[16] = uint64(uint32(s.x[17]) & uint32(s.x[16]))
-	s.x[13] = uint64(uint32(s.x[13]) & 0x159f9b10)
-	s.x[13] = uint64(uint32(s.x[16]) ^ uint32(s.x[13]))
-	s.x[16] = uint64(uint32(s.x[13]) ^ 0x04060821)
-	s.x[13] = uint64(uint32(s.x[13]) ^ 0x11999321)
-	s.x[13] = uint64(uint32(s.x[13]) & uint32(s.x[12]<<8))
-	s.x[12] = uint64(uint32(s.x[12]) ^ 0x159f9b31)
-	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[13]))
-	s.x[13] = uint64(uint32(s.x[16] << 8))
-	s.x[17] = uint64(uint32(s.x[13]) ^ 0x1f9b0000)
-	s.x[16] = uint64(uint32(s.x[17]) & uint32(s.x[16]))
+
+	// Preserve the native dispatcher ABI until the enclosing account loop is
+	// replaced. These are scratch live-outs, not part of SHA-1.
 	s.x[2] = 0x159f0000
-	s.x[13] = uint64(uint32(s.x[13]) & uint32(s.x[2]))
-	s.x[13] = uint64(uint32(s.x[13]) ^ uint32(s.x[16]))
-	s.x[13] = uint64(uint32(s.x[13]) ^ 0x00040000)
-	s.x[16] = uint64(uint32(s.x[12] << 16))
-	s.x[17] = uint64(uint32(s.x[16]) ^ 0x1b310000)
-	s.x[13] = uint64(uint32(s.x[17]) & uint32(s.x[13]))
-	s.x[16] = uint64(uint32(s.x[16]) & uint32(s.x[2]))
-	s.x[12] = uint64(uint32(s.x[16]) ^ uint32(s.x[12]))
-	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[13]))
-	s.x[13] = 0xce757bc5
-	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[13]))
-	s.x[12] = uint64(uint32(s.x[4]) ^ uint32(s.x[12]<<1))
-	s.x[13] = 0x37514285
-	s.x[12] = uint64(uint32(s.x[13]) ^ (uint32(s.x[12]) >> 2))
-	if err := s.storeValue(s.x[10]+uint64(uint32(s.x[12]))*4, uint64(uint32(s.x[11])), 4); err != nil {
-		return 0, fmt.Errorf("account byte-pack output: %w", err)
-	}
-	s.x[11] = 0xffffffffd4583c79 + s.x[4]
-	s.x[4] += 4
-	s.compare64(s.x[11], 0x40)
-	gate := uint32(boolValue(s.condition("lo")))
 	s.x[12] = 0xc285
-	s.x[11] = uint64(gate * uint32(s.x[12]))
-	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[9]))
-	next, err := loadBootstrapPointer(s, s.x[21], uint32(s.x[11]))
+	s.x[13] = 0x37514285
+	s.x[16] = uint64([4]uint32{0x048e0000, 0x04860000, 0x048e0000, 0x04960000}[(wordIndex>>1)&3])
+	s.x[15] = uint64(accountBytePackCounter + 80)
+	s.x[4] += 4
+	s.compare64(uint64((wordIndex+1)*4), 0x40)
+	dispatchIndex := uint32(s.x[9])
+	if wordIndex+1 < accountSHA1InputWords {
+		dispatchIndex ^= 0xc285
+	}
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
 	if err != nil {
 		return 0, fmt.Errorf("account byte-pack dispatch: %w", err)
 	}
 	s.x[11] = next
-	s.x[20] = 0x2ba7c39b
+	s.x[20] = uint64(accountBytePackCounter + accountSHA1InputWords)
 	s.x[17] = 0x3601
 	return next, nil
 }
