@@ -206,6 +206,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountConditionalPick:
 		next, err := runAccountConditionalPick(s)
 		return next, true, err
+	case accountBitPermuteWriter:
+		next, err := runAccountBitPermuteWriter(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
