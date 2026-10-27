@@ -5,7 +5,92 @@ import "fmt"
 const (
 	bootstrapCounterSelector = uint64(0x1009b2174)
 	bootstrapByteSelector    = uint64(0x1009f1804)
+	bootstrapStackSelector   = uint64(0x1008a9500)
+	bootstrapScaledSelector  = uint64(0x1008efca8)
 )
+
+func runBootstrapStackSelector(s *state) (uint64, error) {
+	s.traceBlock(bootstrapStackSelector)
+	first, err := s.load(s.sp+8, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap stack-selector first input: %w", err)
+	}
+	second, err := s.load(s.sp+12, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap stack-selector second input: %w", err)
+	}
+	s.x[10], s.x[9] = uint64(uint32(first)), uint64(uint32(second))
+	s.x[9] = uint64(uint32(s.x[10]) + uint32(s.x[9]))
+	s.x[10] = 0x7ff05135
+	s.x[11] = 0xffffd156
+	s.x[12] = 0x302
+	s.x[11] = uint64(uint32(s.x[19]) + uint32(s.x[11]))
+	s.x[15] = uint64(uint32(s.x[11]) | uint32(s.x[12]))
+	s.x[11] = 0x800faef4
+	s.x[10] = uint64(uint32(s.x[19]) + uint32(s.x[10]))
+	s.x[10] = uint64(uint32(s.x[10]) & uint32(s.x[11]))
+	s.x[11] = 0x32c7ace6
+	s.x[12] = 0x47d041fc
+	s.x[13] = uint64(uint32(s.x[15]) ^ 0xc7d016f2)
+	s.x[11] = uint64(uint32(s.x[28]) + uint32(s.x[11]))
+	s.compare32(uint32(s.x[11]), uint32(s.x[13]))
+	firstGate := uint32(boolValue(s.condition("lt")))
+	s.x[13] = uint64(firstGate)
+	s.x[14] = uint64(uint32(s.x[10]) ^ 0x382f3ce3)
+	if err := s.storeValue(s.sp+0x80, uint64(uint32(s.x[14])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap stack-selector first state: %w", err)
+	}
+	s.compare32(uint32(s.x[8]), uint32(s.x[14]))
+	secondGate := uint32(boolValue(s.condition("gt")))
+	s.x[14] = uint64(secondGate)
+	s.x[13] = uint64(firstGate ^ secondGate)
+	s.x[12] = uint64(uint32(s.x[8]) + uint32(s.x[12]))
+	if err := s.storeValue(s.sp+0x78, uint64(uint32(s.x[12])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap stack-selector second state: %w", err)
+	}
+	s.compare32(uint32(s.x[11]), uint32(s.x[12]))
+	thirdGate := uint32(boolValue(s.condition("lt")))
+	s.x[11] = uint64(thirdGate)
+	s.compare32(uint32(s.x[13]), 0)
+	dispatchGate := thirdGate
+	if s.condition("ne") {
+		dispatchGate = secondGate
+	}
+	s.x[11] = uint64(dispatchGate * 0x344f)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[19]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap stack-selector target: %w", err)
+	}
+	s.x[11] = next
+	s.x[17] = 0x7bf6
+	return next, nil
+}
+
+func runBootstrapScaledSelector(s *state) (uint64, error) {
+	s.traceBlock(bootstrapScaledSelector)
+	s.x[8] = uint64(uint32(s.x[15]) ^ 0x5924)
+	s.x[8] = uint64(uint32(s.x[8]) + uint32(s.x[8]<<2))
+	s.x[19] = uint64(uint32(s.x[8] << 1))
+	s.x[8] = uint64(uint32(s.x[15]) + 0xe462081d)
+	s.x[8] = uint64(uint32(s.x[8]) & 0x1b9df7ff)
+	s.x[10] = uint64(uint32(s.x[9]) + 0xa9a2d523)
+	s.x[10] = uint64(uint32(s.x[10]) + uint32(s.x[19]))
+	s.x[11] = 0x7ffffffe
+	s.compare32(uint32(s.x[10]), uint32(s.x[11]))
+	dispatchGate := uint32(boolValue(s.condition("hi")))
+	s.x[10] = uint64(dispatchGate)
+	s.x[11] = uint64(uint32(s.x[8]) ^ 0x570e)
+	s.x[10] = uint64(dispatchGate * uint32(s.x[11]))
+	s.x[10] = uint64(uint32(s.x[10]) ^ uint32(s.x[15]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[10]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap scaled-selector target: %w", err)
+	}
+	s.x[10] = next
+	s.x[17] = 0xe52e
+	return next, nil
+}
 
 func runBootstrapCounterSelector(s *state) (uint64, error) {
 	s.traceBlock(bootstrapCounterSelector)

@@ -359,6 +359,22 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapStackSelector && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapStackSelector(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapScaledSelector && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapScaledSelector(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if pc == bootstrapDescriptorReturn && (runtime == nil || runtime.stopPC == 0) {
 			next, err := runBootstrapDescriptorReturn(s)
 			if err != nil {
