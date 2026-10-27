@@ -20,7 +20,171 @@ const (
 	bootstrapRangeDispatchB    = uint64(0x100040340)
 	bootstrapStateDispatch     = uint64(0x100187d9c)
 	bootstrapWordDispatch      = uint64(0x1000f4834)
+	bootstrapScalarRoundStart  = uint64(0x10092d608)
+	bootstrapScalarRoundTail   = uint64(0x10092d800)
 )
+
+func runBootstrapScalarRound(s *state) (uint64, error) {
+	roundDone, err := runBootstrapScalarRoundFront(s)
+	if err != nil {
+		return 0, err
+	}
+	return runBootstrapScalarRoundFinish(s, roundDone)
+}
+
+func runBootstrapScalarRoundFront(s *state) (bool, error) {
+	s.traceBlock(bootstrapScalarRoundStart)
+	s.x[17], s.x[6], s.x[13], s.x[24] = s.x[6], s.x[13], s.x[24], s.x[4]
+	s.x[14] = 0x7a1df463
+	s.x[3] = uint64(uint32(s.x[6]) ^ uint32(s.x[14]))
+	s.x[14] = uint64(uint32(s.x[3]) ^ uint32(s.x[13]))
+	s.x[4] = uint64(uint32(s.x[4]) ^ uint32(s.x[30]))
+	s.x[26] = uint64((uint32(s.x[24]) ^ 0xdf956bdd) + 0x206a9423)
+	s.x[27] = uint64((uint32(s.x[24]) ^ uint32(s.x[19])) + 0xea05010a)
+	s.x[26] = uint64(uint32(s.x[26]) ^ uint32(s.x[27]))
+	s.x[4] = uint64(uint32(s.x[4]) + 0xb0726149)
+	s.x[4] = uint64(uint32(s.x[4]) ^ uint32(s.x[26]))
+	s.x[1] = 0x1e877d19
+	s.compare32(uint32(s.x[1]), uint32(s.x[4])>>2)
+	if s.condition("eq") {
+		s.x[1] = uint64(uint32(s.x[13]))
+	} else {
+		s.x[1] = uint64(uint32(s.x[14]))
+	}
+	s.x[4] = uint64(uint32(s.x[25]) * 0x8f)
+	s.x[14] = uint64(uint32(s.x[4]) & 0xffff)
+	s.x[14] = uint64(uint32(s.x[14]) * uint32(s.x[21]))
+	s.x[14] = uint64(uint32(s.x[14]) >> 23)
+	s.x[14] = uint64(uint32(s.x[4]) - uint32(s.x[14])*uint32(s.x[22]))
+	s.x[26] = uint64(uint32(s.x[6]) ^ 0x9cfc962f)
+	s.x[27] = uint64(uint32(s.x[1]) ^ 0x85e20b9c)
+	s.x[2] = uint64(uint32(s.x[27]) & uint32(s.x[26]))
+	s.x[4] = uint64(uint32(s.x[4]) + 0x2838)
+	s.x[26] = uint64(uint32(s.x[4]) & 0xffff)
+	s.x[26] = uint64(uint32(s.x[26]) * uint32(s.x[21]))
+	s.x[26] = uint64(uint32(s.x[26]) >> 23)
+	s.x[4] = uint64(uint32(s.x[4]) - uint32(s.x[26])*uint32(s.x[22]))
+	s.x[26] = uint64(uint32(s.x[13]) ^ 0x3ff4b9cb)
+	s.x[3] = uint64(uint32(s.x[3]) & uint32(s.x[26]))
+	s.x[26] = uint64(uint32(s.x[6]) & 0x45e94da8)
+	s.x[3] = uint64(uint32(s.x[3]) ^ uint32(s.x[26]))
+	s.x[26] = uint64(uint32(s.x[24]) ^ uint32(s.x[12]))
+	s.x[27] = uint64(uint32(s.x[3]) ^ 0xbff6bbdf)
+	s.x[26] = uint64(uint32(s.x[27]) & uint32(s.x[26]))
+	s.x[3] = uint64(uint32(s.x[3]) & 0xc811fec0)
+	s.x[3] = uint64(uint32(s.x[26]) ^ uint32(s.x[3]))
+	s.x[27], s.x[26], s.x[0] = s.x[0], s.x[16], s.x[11]
+	s.x[11] = uint64(uint32(s.x[1]) & uint32(s.x[28]))
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[15]))
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[2]))
+	s.x[16] = uint64(uint32(s.x[3]) ^ 0x77ef453f)
+	s.x[11] = uint64(uint32(s.x[11]) & uint32(s.x[16]))
+	s.x[16] = uint64(uint32(s.x[3]) & 0x133cf0b7)
+	s.x[16] = uint64(uint32(s.x[16]) ^ uint32(s.x[5]))
+	s.x[11] = uint64(uint32(s.x[16]) ^ uint32(s.x[11]))
+	s.x[16] = uint64(uint32(s.x[0]) ^ uint32(s.x[27]))
+	s.x[16] = uint64(uint32(s.x[16]) ^ uint32(s.x[8]))
+	s.x[1] = uint64(uint32(s.x[26]) ^ uint32(s.x[20]))
+	s.x[16] = uint64(uint32(s.x[16]) & uint32(s.x[1]))
+	s.x[1] = uint64(uint32(s.x[26]) & uint32(s.x[8]))
+	s.x[1] = uint64(uint32(s.x[1]) | 0xf0825106)
+	s.x[1] = uint64(uint32(s.x[27]) ^ uint32(s.x[1]))
+	s.x[16] = uint64(uint32(s.x[1]) ^ uint32(s.x[16]))
+	s.x[1] = uint64(uint32(rotateRight(s.x[26], 6, 32)))
+	s.x[1] = uint64(uint32(s.x[1]) ^ uint32(s.x[26]<<21))
+	s.x[1] = uint64(uint32(s.x[1]) ^ uint32(s.x[26])>>11)
+	s.x[1] = uint64(uint32(s.x[1]) ^ uint32(rotateRight(s.x[26], 25, 32)))
+	s.x[1] = uint64(uint32(s.x[1]) ^ 0xfce9c4ea)
+	s.x[2] = uint64(uint32(s.x[7]) ^ uint32(s.x[20]))
+	s.x[16] = uint64(uint32(s.x[2]) + uint32(s.x[16]))
+	s.x[2] = uint64(uint32(s.x[17]) ^ 0x0a8e3c74)
+	s.x[3] = (s.x[4] & 0xffff) << 2
+	value, err := s.load(s.x[9]+s.x[3], 4)
+	if err != nil {
+		return false, fmt.Errorf("bootstrap scalar-round first lookup: %w", err)
+	}
+	s.x[3] = uint64(uint32(value))
+	s.x[16] = uint64(uint32(s.x[1]) + uint32(s.x[16]))
+	s.x[1] = uint64(uint32(s.x[16]) & uint32(s.x[3]))
+	s.x[16] = uint64(uint32(s.x[16]) ^ uint32(s.x[3]))
+	s.x[3] = uint64(uint32(s.x[17]) ^ 0x40edb29d)
+	s.x[4] = 0xcf818575
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[4]))
+	s.x[14] = (s.x[14] & 0xffff) << 2
+	value, err = s.load(s.x[9]+s.x[14], 4)
+	if err != nil {
+		return false, fmt.Errorf("bootstrap scalar-round second lookup: %w", err)
+	}
+	s.x[14] = uint64(uint32(value))
+	s.x[14] = uint64(uint32(s.x[14]) + uint32(s.x[16]))
+	s.x[16] = uint64(uint32(rotateRight(s.x[24], 2, 32)))
+	s.x[16] = uint64(uint32(s.x[16]) ^ uint32(rotateRight(s.x[24], 13, 32)))
+	s.x[16] = uint64(uint32(s.x[16]) ^ uint32(rotateRight(s.x[24], 22, 32)))
+	s.x[16] = uint64(uint32(s.x[16]) ^ uint32(s.x[10]))
+	s.compare32(uint32(s.x[25]), 0x3f)
+	roundDone := s.condition("eq")
+	s.x[25] = uint64(uint32(s.x[25]) + 1)
+	s.x[14] = uint64(uint32(s.x[14]) + uint32(s.x[1]<<1))
+	s.x[11] = uint64(uint32(s.x[16]) + uint32(s.x[11]))
+	s.x[16] = 0x53a8b866
+	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[16]))
+	return roundDone, nil
+}
+
+func runBootstrapScalarRoundFinish(s *state, roundDone bool) (uint64, error) {
+	s.traceBlock(bootstrapScalarRoundTail)
+	s.x[16] = uint64(uint32(s.x[14]) + 0x71c34584)
+	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[16]))
+	s.x[14] = uint64((uint32(s.x[11]) ^ 0x0abde130) + 0x4d76a8a6)
+	s.x[1] = uint64((uint32(s.x[11]) ^ 0x7da68b4d) + 0x3a6dc2d9)
+	s.x[14] = uint64(uint32(s.x[14]) ^ uint32(s.x[1]))
+	s.x[1] = uint64((uint32(s.x[11]) ^ 0x10f023e8) + 0x573b6a7e)
+	s.x[1] = uint64(uint32(s.x[1]) ^ uint32(s.x[11]))
+	s.x[4] = 0xdfdfffff
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[4]))
+	s.x[14] = uint64(uint32(s.x[1]) ^ uint32(s.x[14]))
+	s.x[11] = uint64(uint32(s.x[11]) + 0x9814b66b)
+	s.x[14] = uint64(uint32(s.x[14]) ^ uint32(s.x[11]))
+	s.x[11] = uint64(uint32(s.x[14]) ^ 0x3dd6bdf6)
+	s.x[4] = s.x[11]
+	s.x[11] = uint64(uint32(s.x[2]) + 0xf571c38c)
+	s.x[1] = uint64(uint32(s.x[3]) + 0xbf124d63)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[1]))
+	s.x[17] = uint64(uint32(s.x[17]) + 0x307e7a8b)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[17]))
+	s.x[17] = 0x31b4e36b
+	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[17]))
+	s.x[11] = uint64(uint32(s.x[11]) + uint32(s.x[16]))
+	s.x[16] = uint64(uint32(s.x[11]) ^ 0x997804c8)
+	s.x[17] = uint64(uint32(s.x[11]) ^ 0x62d57dbb)
+	s.x[17] = uint64(uint32(s.x[17]) + 0x8d745798)
+	s.x[1] = uint64(uint32(s.x[11]) ^ 0x940c935f)
+	s.x[2] = uint64(uint32(s.x[11]) ^ 0x7fff3fff)
+	s.x[16] = uint64(uint32(s.x[16]) + 0x76d92ee5)
+	s.x[11] = uint64(uint32(s.x[16]) ^ uint32(s.x[11]))
+	s.x[16] = uint64(uint32(s.x[1]) + 0x7badb974)
+	s.x[16] = uint64(uint32(s.x[17]) ^ uint32(s.x[16]))
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[16]))
+	s.x[16] = uint64(uint32(s.x[2]) + 0x905e15d4)
+	s.x[3] = uint64(uint32(s.x[11]) ^ uint32(s.x[16]))
+	s.x[16] = uint64(uint32(s.x[3]) ^ 0xe2dd2ee5)
+	s.x[11] = uint64(uint32(boolValue(roundDone)) * 0x16)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[23]))
+	dispatchTable, err := s.load(s.sp+0x208, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap scalar-round dispatch table: %w", err)
+	}
+	s.x[17] = dispatchTable
+	next, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap scalar-round dispatch: %w", err)
+	}
+	s.x[1] = next
+	s.x[11] = s.x[26]
+	s.x[7] = s.x[27]
+	s.x[17] = 0x5a72
+	return next, nil
+}
 
 func runBootstrapStateDispatch(s *state) (uint64, error) {
 	s.traceBlock(bootstrapStateDispatch)
