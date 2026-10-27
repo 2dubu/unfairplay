@@ -518,6 +518,18 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountFrameCompareTarget:
 		next, err := runAccountFrameCompareTarget(s)
 		return next, true, err
+	case accountMaskSideTarget:
+		next, err := runAccountMaskSideTarget(s)
+		return next, true, err
+	case accountSavedWordTarget:
+		next, err := runAccountSavedWordTarget(s)
+		return next, true, err
+	case accountArithmeticTarget:
+		next, err := runAccountArithmeticTarget(s)
+		return next, true, err
+	case accountSavedPairTarget:
+		next, err := runAccountSavedPairTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
