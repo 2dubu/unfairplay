@@ -36,19 +36,26 @@ func (decoder selectionSIDBRoundKeyDecoder) decoderKey(encoded [16]byte) ([16]by
 		}
 		round10[position] = byteDecoder.apply(encoded[position])
 	}
-	return reverseSelectionSIDBAES128Schedule(round10), nil
+	return reverseSelectionSIDBAES128RoundKey(round10, 10)
 }
 
-func reverseSelectionSIDBAES128Schedule(round10 [16]byte) (result [16]byte) {
+func reverseSelectionSIDBAES128RoundKey(roundKey [16]byte, round int) (result [16]byte, err error) {
+	if round < 0 || round > 10 {
+		return result, fmt.Errorf("SIDB AES round %d is outside 0..10", round)
+	}
+	if round == 0 {
+		return roundKey, nil
+	}
 	var words [44][4]byte
 	for index := range 4 {
-		copy(words[40+index][:], round10[index*4:index*4+4])
+		copy(words[round*4+index][:], roundKey[index*4:index*4+4])
 	}
 
-	// AES-128 round ten uses 0x36. Moving backward applies inverse xtime to
-	// reach the preceding round constants.
-	rcon := byte(0x36)
-	for word := 43; word >= 4; word-- {
+	rcon := byte(1)
+	for index := 1; index < round; index++ {
+		rcon = frameGFMul(rcon, 2)
+	}
+	for word := round*4 + 3; word >= 4; word-- {
 		if word%4 != 0 {
 			for index := range 4 {
 				words[word-4][index] = words[word][index] ^ words[word-1][index]
@@ -74,5 +81,5 @@ func reverseSelectionSIDBAES128Schedule(round10 [16]byte) (result [16]byte) {
 	for index := range 4 {
 		copy(result[index*4:index*4+4], words[index][:])
 	}
-	return result
+	return result, nil
 }

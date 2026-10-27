@@ -77,6 +77,31 @@ func TestSelectionSIDBRoundKeyDecoder(t *testing.T) {
 	}
 }
 
+func TestReverseSelectionSIDBAES128RoundKey(t *testing.T) {
+	for test := range 64 {
+		digest := sha256.Sum256([]byte{0xa5, byte(test), 0x53, 0x49, 0x44, 0x42})
+		var key [16]byte
+		copy(key[:], digest[:16])
+		expanded := expandSelectionSIDBAES128Key(key)
+		for round := 0; round <= 10; round++ {
+			var roundKey [16]byte
+			copy(roundKey[:], expanded[round*16:(round+1)*16])
+			got, err := reverseSelectionSIDBAES128RoundKey(roundKey, round)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != key {
+				t.Fatalf("test %d round %d key = %x, want %x", test, round, got, key)
+			}
+		}
+	}
+	for _, round := range []int{-1, 11} {
+		if _, err := reverseSelectionSIDBAES128RoundKey([16]byte{}, round); err == nil {
+			t.Fatalf("invalid AES round %d was accepted", round)
+		}
+	}
+}
+
 func TestSelectionSIDBRoundKeyDecoderRejectsNonBijectiveEncoding(t *testing.T) {
 	decoder := selectionSIDBTestRoundKeyDecoder
 	decoder[7] = selectionSIDBAffineByteDecoder{}

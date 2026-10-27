@@ -84,6 +84,13 @@ key. This was derived from 64 chosen-frame controls and then matched 17
 independent recovered keys exactly. The affine byte encodings are still
 26A428 oracle evidence until they are normalized across other builds.
 
+The protected producer's latter half is also typed: one-byte differential
+masks match the ordinary AES-128 schedule for rounds 6, 7, 8, and 9 exactly.
+The Go schedule reversal now accepts any round from 0 through 10. No separate
+round-specific white box or DFA is required after a semantic round key has
+been recovered. The remaining unknown is the earlier frame-to-round-key
+producer and its protected byte representation.
+
 ## Cross-build evidence
 
 Local binaries already show that CFG identity is not a useful definition of
@@ -111,9 +118,9 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Recover the remaining typed candidate-frame-to-encoded-round-key producer.
-   The encoded round key to SIDB decoder key stage is complete and must not be
-   replaced by another DFA implementation.
+1. Recover the remaining typed candidate-frame-to-earliest-round-key producer.
+   AES schedule rounds 6 through 10 and the round-key-to-SIDB-key stage are
+   complete and must not be replaced by another DFA implementation.
 2. Parse the decoded SIDB registry structurally and recover its typed
    registry-to-current-SINF-precursor transform.
 3. Connect the precursor to personalized SINF validation and remove native
