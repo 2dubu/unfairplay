@@ -3,11 +3,13 @@ package recovery
 import "fmt"
 
 const (
-	sharedEnrollmentClassify = uint64(0x1005419b4)
-	sharedEnrollmentBranch   = uint64(0x1005649c4)
-	sharedEnrollmentWrite    = uint64(0x1003f63b0)
-	sharedEnrollmentAdvance  = uint64(0x1003f6400)
-	sharedEnrollmentByteFill = uint64(0x10051c16c)
+	sharedEnrollmentClassify  = uint64(0x1005419b4)
+	sharedEnrollmentBranch    = uint64(0x1005649c4)
+	sharedEnrollmentWrite     = uint64(0x1003f63b0)
+	sharedEnrollmentAdvance   = uint64(0x1003f6400)
+	sharedEnrollmentByteFill  = uint64(0x10051c16c)
+	sharedEnrollmentLeftPath  = uint64(0x1005456ac)
+	sharedEnrollmentRightPath = uint64(0x1003d3294)
 )
 
 // runSharedEnrollmentBlock replaces the small protected dispatcher core that
@@ -33,9 +35,56 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentByteFill:
 		next, err := runSharedEnrollmentByteFill(s)
 		return next, true, err
+	case sharedEnrollmentLeftPath:
+		next, err := runSharedEnrollmentLeftPath(s)
+		return next, true, err
+	case sharedEnrollmentRightPath:
+		next, err := runSharedEnrollmentRightPath(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSharedEnrollmentLeftPath(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentLeftPath)
+	s.x[17] = uint64(uint32(s.x[24]) + 0xdd472f56)
+	s.x[1] = 0x22b83dd7
+	s.x[2] = uint64(uint32(s.x[17]) & uint32(s.x[1]))
+	s.x[17] = 0xffff6d2e
+	s.x[19] = uint64(uint32(s.x[24]) + uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[19]) ^ uint32(s.x[2]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ 0xfffffff7)
+	s.compare32(uint32(s.x[23]), uint32(int32(int8(s.x[17]))))
+	dispatchBit := uint32(boolValue(s.condition("lt")))
+	dispatchIndex := dispatchBit*0x49 ^ uint32(s.x[24])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment left-path dispatch: %w", err)
+	}
+	s.x[1] = next
+	s.x[17] = 0x60e8
+	return next, nil
+}
+
+func runSharedEnrollmentRightPath(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentRightPath)
+	s.x[17] = uint64(uint32(s.x[25]) + 0xffffce15)
+	s.x[1] = uint64(uint32(s.x[17]) | 0x3200)
+	s.x[17] = 0xffffa626
+	s.x[2] = uint64(uint32(s.x[1]) + uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[25]) + 0xffff745a)
+	s.x[22] = uint64(uint32(s.x[23]) & 0xff)
+	s.compare32(uint32(s.x[22]), uint32(byte(s.x[17])))
+	dispatchBit := uint32(boolValue(s.condition("ne")))
+	dispatchIndex := dispatchBit*0x2b ^ uint32(s.x[25])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment right-path dispatch: %w", err)
+	}
+	s.x[17] = 0xbf5f
+	s.x[22] = next
+	return next, nil
 }
 
 func runSharedEnrollmentByteFill(s *state) (uint64, error) {
