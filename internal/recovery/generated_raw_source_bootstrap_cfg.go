@@ -799,6 +799,62 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapArithmeticDispatch && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapArithmeticDispatch(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapRangeStart && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapRange(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapStoreSelector && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapStoreSelector(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapPreparedSelector && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapPreparedSelector(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapBooleanFront && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapBoolean(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapPointerTailB && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapPointerTailB(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapRegisterSetup && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapRegisterSetup(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if runtime == nil || runtime.stopPC == 0 {
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {
