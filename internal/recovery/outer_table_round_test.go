@@ -14,8 +14,8 @@ func TestOuterTableRoundDeterministic(t *testing.T) {
 	}
 	state := outerTableRoundState{
 		Words:     [5]uint32{0x01234567, 0x89abcdef, 0x0f1e2d3c, 0x4b5a6978, 0xdeadbeef},
-		PendingS1: 0x50607080, PendingS2: 0x90a0b0c0, PendingS3: 0xd0e0f000,
-		Source: [3]uint32{0x12, 0x34, 0x56}, Codec: [3]uint32{0x78, 0x9a, 0xbc},
+		PendingS2: 0x90a0b0c0,
+		Source:    [3]uint32{0x12, 0x34, 0x56}, Codec: [3]uint32{0x78, 0x9a, 0xbc},
 	}
 	next, ok := applyOuterTableRound(&table, outerTableInitialBase, &state)
 	if !ok || next != 11 {
@@ -31,7 +31,7 @@ func TestOuterTableRoundDeterministic(t *testing.T) {
 		binary.LittleEndian.PutUint32(word[:], value)
 		_, _ = hasher.Write(word[:])
 	}
-	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "fec7faf889b8706a530a5dc21294ce43c618eb2e0d3df375bc73bc9a2ef103f3"; got != want {
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "841bf53005aa983ad3ebcffe0fba2ac7a6977fe1f9d67ab274051c6ac3e6c7cd"; got != want {
 		t.Fatalf("semantic round digest = %s, want %s", got, want)
 	}
 }

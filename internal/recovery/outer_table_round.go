@@ -1,14 +1,13 @@
 package recovery
 
 // outerTableRoundState is the compact semantic state consumed by the 21
-// protected table writers. Pending words and mix values are produced by the
-// preceding outer-state step; Source and Codec are the three byte pairs used
-// while updating state word 2.
+// protected table writers. PendingS2 is produced by the preceding outer-state
+// step; Source and Codec are the three byte pairs used while updating state
+// word 2.
 type outerTableRoundState struct {
-	Words                [5]uint32
-	PendingS1, PendingS2 uint32
-	PendingS3            uint32
-	Source, Codec        [3]uint32
+	Words         [5]uint32
+	PendingS2     uint32
+	Source, Codec [3]uint32
 }
 
 func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
@@ -18,22 +17,24 @@ func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *ou
 	}
 	s0, s1, s2, s3, s4 := state.Words[0], state.Words[1], state.Words[2], state.Words[3], state.Words[4]
 	tap := func(offset uint32) uint32 { return table[(base+offset)%outerTableWords] }
+	pendingS1 := outerTableLane0PendingS1(state.PendingS2, s0, s1, s3, tap(27), tap(69), tap(111), tap(152))
+	pendingS3 := outerTableLane0PendingS3(state.PendingS2, s0, s3, s4)
 
 	table[indexes[0]] ^= outerTableLane0Mask(state.PendingS2, s0, s1, s3, s4, tap(27), tap(69), tap(111))
-	table[indexes[1]] ^= outerTableLane1Mask(state.PendingS1, state.PendingS2, state.PendingS3, s4)
+	table[indexes[1]] ^= outerTableLane1Mask(pendingS1, state.PendingS2, pendingS3, s4)
 	s2 = state.PendingS2
-	table[indexes[2]] ^= outerTableLane2Mask(state.PendingS1, state.PendingS2, state.PendingS3, s0, s4)
-	s0 = outerTableLane2NextS0(state.PendingS2, state.PendingS1, state.PendingS3, s0)
-	table[indexes[3]] ^= outerTableLane3Mask(s0, state.PendingS3)
-	s3 = state.PendingS3
+	table[indexes[2]] ^= outerTableLane2Mask(pendingS1, state.PendingS2, pendingS3, s0, s4)
+	s0 = outerTableLane2NextS0(state.PendingS2, pendingS1, pendingS3, s0)
+	table[indexes[3]] ^= outerTableLane3Mask(s0, pendingS3)
+	s3 = pendingS3
 	table[indexes[4]] ^= outerTableLane4Mask(table[4], table[101], table[115], table[119])
-	table[indexes[5]] ^= outerTableLane5Mask(state.PendingS1, s3, s0)
-	s1 = state.PendingS1
+	table[indexes[5]] ^= outerTableLane5Mask(pendingS1, s3, s0)
+	s1 = pendingS1
 	s2 = outerTableLane5NextS2(
 		s2, state.Source[0], state.Source[1], state.Source[2],
 		state.Codec[0], state.Codec[1], state.Codec[2],
 	)
-	pendingS4 := outerTableLane5PendingS4(s4, s0, state.PendingS1, s3)
+	pendingS4 := outerTableLane5PendingS4(s4, s0, pendingS1, s3)
 	table[indexes[6]] ^= outerTableLane6Mask(s1, pendingS4, s0)
 	s4 = pendingS4
 	table[indexes[7]] ^= outerTableLane7Mask(s0, s1, s3, s4, table[indexes[7]])
