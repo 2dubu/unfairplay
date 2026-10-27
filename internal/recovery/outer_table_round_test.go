@@ -66,6 +66,9 @@ func TestOuterSemanticIterationRejectsInvalidInput(t *testing.T) {
 	if _, ok := applyOuterSemanticIteration(&table, 0, nil); ok {
 		t.Fatal("accepted nil semantic state")
 	}
+	if _, ok := applyOuterFullIteration(&table, 0, &state, nil); ok {
+		t.Fatal("accepted nil full-iteration control state")
+	}
 }
 
 func TestOuterSemanticIterationDeterministic(t *testing.T) {
@@ -115,7 +118,8 @@ func TestOuterFullIterationDeterministic(t *testing.T) {
 			10: 0x76, 11: 0x87, 12: 0x98, 13: 0xa9, 14: 0xba, 15: 0xcb, 16: 0xdc,
 		},
 	}
-	next, ok := applyOuterFullIteration(&table, outerTableInitialBase, &state, 0x60319d83, 0x12345678)
+	control := outerIterationControl{X1: 0x60319d83, CounterSeed: 0x12345678}
+	next, ok := applyOuterFullIteration(&table, outerTableInitialBase, &state, &control)
 	if !ok || next != 11 || state.HardwareIndex != 5 {
 		t.Fatalf("full iteration advance = %d/%d/%v, want 11/5/true", next, state.HardwareIndex, ok)
 	}
@@ -129,7 +133,11 @@ func TestOuterFullIterationDeterministic(t *testing.T) {
 		binary.LittleEndian.PutUint32(word[:], value)
 		_, _ = hasher.Write(word[:])
 	}
-	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "915195acf73648d5dcfa0673cbb8718c8529afd2487dce11fef1f355bfb800b5"; got != want {
+	for _, value := range [...]uint32{control.X1, control.CounterSeed} {
+		binary.LittleEndian.PutUint32(word[:], value)
+		_, _ = hasher.Write(word[:])
+	}
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "7d75c9b0f553425e8a979606b7eaa48af3415c7ca396aa89f23571890417a8e0"; got != want {
 		t.Fatalf("full iteration digest = %s, want %s", got, want)
 	}
 }

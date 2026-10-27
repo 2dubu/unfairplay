@@ -11,6 +11,11 @@ type outerTableRoundState struct {
 	Codec         [17]byte
 }
 
+type outerIterationControl struct {
+	X1          uint32
+	CounterSeed uint32
+}
+
 // applyOuterTableRoundReduced preserves the named lane formulas used by the
 // focused unit tests. The complete circuit below is authoritative because a
 // later lane can read a slot written by an earlier lane for some rolling bases.
@@ -90,9 +95,24 @@ func applyOuterSemanticIteration(table *[outerTableWords]uint32, base uint32, st
 	return next, true
 }
 
-func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState, x1, counterSeed uint32) (uint32, bool) {
-	if !applyOuterFront(table, base, state, x1, counterSeed) {
+func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState, control *outerIterationControl) (uint32, bool) {
+	if control == nil || !applyOuterFront(table, base, state, control.X1, control.CounterSeed) {
 		return 0, false
 	}
-	return applyOuterSemanticIteration(table, base, state)
+	if !applyOuterPreRound(table, base, state) {
+		return 0, false
+	}
+	next, ok := applyOuterTableRound(table, base, state)
+	if !ok {
+		return 0, false
+	}
+	seedIterations := (139*base + 29) % outerTableWords
+	for range seedIterations {
+		control.CounterSeed = outerWriterSeedStep(control.CounterSeed)
+	}
+	if !applyOuterPostRoundWithSeed(table, base, state, &control.CounterSeed) {
+		return 0, false
+	}
+	control.X1 = 0x60319e4b
+	return next, true
 }

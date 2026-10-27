@@ -209,6 +209,10 @@ func outerPostRoundStep(x14, x16, tap82, tap41, tap124, tap166 uint32) (uint32, 
 }
 
 func applyOuterPostRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) bool {
+	return applyOuterPostRoundWithSeed(table, base, state, nil)
+}
+
+func applyOuterPostRoundWithSeed(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState, seed *uint32) bool {
 	if table == nil || state == nil || base >= outerTableWords {
 		return false
 	}
@@ -221,6 +225,9 @@ func applyOuterPostRound(table *[outerTableWords]uint32, base uint32, state *out
 	}
 	for range 140 {
 		x14, x16 = outerPostRoundStep(x14, x16, table[indexes[0]], table[indexes[1]], table[indexes[2]], table[indexes[3]])
+		if seed != nil {
+			*seed = outerWriterSeedStep(*seed)
+		}
 		for index := range indexes {
 			indexes[index] = (indexes[index] + 36) % outerTableWords
 		}
