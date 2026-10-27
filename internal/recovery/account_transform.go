@@ -815,6 +815,83 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 }
 
 func runAccountEntryByteStore(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	if s == nil {
+		return 0, fmt.Errorf("account-entry byte-store state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		index := uint32(s.x[8]) ^ bit*uint32(s.x[2])
+		next, err := s.load(s.x[10]+uint64(index)*8, 8)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry byte-store target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == accountEntryByteStoreStart && targets[1] == accountEntryByteStoreStart {
+		return 0, fmt.Errorf("account-entry byte-store has no exit target")
+	}
+
+	s.x[11] = uint64((uint32(s.x[8]) + 0x545dd584) & 0x00025fdf)
+	base, err := s.load(s.x[1]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-store input base: %w", err)
+	}
+	wordValue, err := s.load(s.x[1]+4, 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-store word: %w", err)
+	}
+	word := uint32(wordValue)
+	left := (word ^ uint32(s.x[12])) + uint32(s.x[13])
+	right := (word ^ uint32(s.x[14])) + uint32(s.x[15])
+	mixed := left ^ right
+	rangeEnd := ((word ^ (uint32(s.x[11]) + 0xcd463667)) + uint32(s.x[16])) ^ mixed
+	rangeEnd += 0x13ae9f40
+	const rangeStart = uint32(0x4539237b)
+
+	for index := 0; index < maximumBytes; index++ {
+		s.traceBlock(accountEntryByteStoreStart)
+		counter := uint32(s.x[3])
+		value, err := s.load(base+uint64(counter+0xef50d627), 1)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry byte-store input: %w", err)
+		}
+		s.x[4] = uint64(counter + 1)
+		s.x[5] = s.x[0] + 4
+		if err := s.storeValue(s.x[5]+uint64(uint32(s.x[9])), uint64(byte(value)), 1); err != nil {
+			return 0, fmt.Errorf("account-entry byte-store output: %w", err)
+		}
+		s.x[9] = uint64(uint32(s.x[9]) + 1)
+
+		s.traceBlock(accountEntryByteStoreTail)
+		position := counter + 0x3489f9a3
+		first := uint32(0)
+		if position < rangeStart {
+			first = 1
+		}
+		second := uint32(0)
+		if rangeEnd < rangeStart {
+			second = 1
+		}
+		selected := uint32(0)
+		if position-rangeStart < rangeEnd-rangeStart {
+			selected = 1
+		}
+		s.x[6] = uint64(second)
+		s.x[7] = uint64(rangeStart)
+		s.compare32(first^second, 0)
+		next := targets[selected]
+		s.x[5] = next
+		s.x[3] = s.x[4]
+		s.x[17] = 0x45bc
+		if next != accountEntryByteStoreStart {
+			return next, nil
+		}
+	}
+	return 0, fmt.Errorf("account-entry byte store exceeded %d bytes", maximumBytes)
+}
+
+func runAccountEntryByteStoreStep(s *state) (uint64, error) {
 	s.traceBlock(accountEntryByteStoreStart)
 	s.x[11] = 0x545dd584
 	s.x[17] = 0x00025fdf
