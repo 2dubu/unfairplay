@@ -1060,13 +1060,44 @@ func runAccountEntrySecondaryWordStep(s *state) (uint64, error) {
 
 func runAccountEntryZeroFill(s *state) (uint64, error) {
 	const maximumBytes = 4096
-	for index := 0; index < maximumBytes; index++ {
-		next, err := runAccountEntryZeroFillStep(s)
-		if err != nil || next != accountEntryZeroFillPass {
-			return next, err
+	if s == nil {
+		return 0, fmt.Errorf("account-entry zero-fill state is unavailable")
+	}
+	continueTarget, err := loadBootstrapPointer(s, s.x[30], uint32(s.x[9]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry zero-fill continuation: %w", err)
+	}
+	if continueTarget != accountEntryZeroFillPass {
+		return 0, fmt.Errorf("unsupported account-entry zero-fill continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, s.x[30], uint32(s.x[9])^uint32(s.x[15]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry zero-fill exit: %w", err)
+	}
+	if exitTarget == accountEntryZeroFillPass {
+		return 0, fmt.Errorf("account-entry zero-fill exit loops to itself")
+	}
+
+	start := s.x[10]
+	terminal := (s.x[8] ^ s.x[14]) + 0x48f
+	distance := terminal - start
+	if distance >= maximumBytes {
+		return 0, fmt.Errorf("account-entry zero fill exceeded %d bytes", maximumBytes)
+	}
+	for offset := uint64(0); offset <= distance; offset++ {
+		s.traceBlock(accountEntryZeroFillPass)
+		if err := s.storeValue(s.x[16]+start+offset, 0, 1); err != nil {
+			return 0, fmt.Errorf("account-entry zero-fill output: %w", err)
 		}
 	}
-	return 0, fmt.Errorf("account-entry zero fill exceeded %d bytes", maximumBytes)
+
+	s.x[11] = terminal - 0x48f
+	s.x[13] = s.x[8] ^ s.x[14]
+	s.compare64(s.x[11], s.x[13])
+	s.x[10] = terminal + 1
+	s.x[11] = exitTarget
+	s.x[17] = 0x345f
+	return exitTarget, nil
 }
 
 func runAccountEntryZeroFillStep(s *state) (uint64, error) {
@@ -1268,13 +1299,56 @@ func runAccountEntryWordMixerStep(s *state) (uint64, error) {
 
 func runAccountEntryTableWriter(s *state) (uint64, error) {
 	const maximumBytes = 4096
-	for index := 0; index < maximumBytes; index++ {
-		next, err := runAccountEntryTableWriterStep(s)
-		if err != nil || next != accountEntryTableWriterPass {
-			return next, err
-		}
+	if s == nil {
+		return 0, fmt.Errorf("account-entry table-writer state is unavailable")
 	}
-	return 0, fmt.Errorf("account-entry table writer exceeded %d bytes", maximumBytes)
+	continueTarget, err := loadBootstrapPointer(s, s.x[21], uint32(s.x[15]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry table-writer continuation: %w", err)
+	}
+	if continueTarget != accountEntryTableWriterPass {
+		return 0, fmt.Errorf("unsupported account-entry table-writer continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, s.x[21], uint32(s.x[15])^uint32(s.x[27]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry table-writer exit: %w", err)
+	}
+	if exitTarget == accountEntryTableWriterPass {
+		return 0, fmt.Errorf("account-entry table-writer exit loops to itself")
+	}
+
+	start := s.x[16]
+	count := s.x[26] - start
+	if count == 0 || count > maximumBytes {
+		return 0, fmt.Errorf("account-entry table writer exceeded %d bytes", maximumBytes)
+	}
+	inputOffset := uint32(s.x[9])
+	base := uint64((uint32(s.x[15]) + uint32(s.x[19])) | uint32(s.x[20]))
+	s.x[13] = base
+	for offset := uint64(0); offset < count; offset++ {
+		s.traceBlock(accountEntryTableWriterPass)
+		value, err := s.load(s.x[2]+uint64(inputOffset+uint32(offset)), 1)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry table-writer input: %w", err)
+		}
+		input := uint32(byte(value))
+		masked := uint32(s.x[23]) & (input << 1)
+		output := byte(input - masked + 0x1b)
+		if err := s.storeValue(s.x[24]+s.x[22]+base+start+offset, uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("account-entry table-writer output: %w", err)
+		}
+		s.x[11] = uint64(input)
+		s.x[12] = uint64(masked)
+		s.x[25] = uint64(inputOffset + uint32(offset) + 1)
+	}
+	s.x[16] = start + count
+	s.compare64(s.x[16], s.x[26])
+	s.x[1] = s.x[24]
+	s.x[4] = 0x12d6a942
+	s.x[9] = s.x[25]
+	s.x[11] = exitTarget
+	s.x[17] = 0x71c7
+	return exitTarget, nil
 }
 
 func runAccountEntryTableWriterStep(s *state) (uint64, error) {
@@ -1312,10 +1386,42 @@ func runAccountEntryTableWriterStep(s *state) (uint64, error) {
 
 func runAccountEntryXORCopy(s *state) (uint64, error) {
 	const maximumBytes = 4096
+	if s == nil {
+		return 0, fmt.Errorf("account-entry XOR-copy state is unavailable")
+	}
+	continueTarget, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[10]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry XOR-copy continuation: %w", err)
+	}
+	if continueTarget != accountEntryXORCopyPass {
+		return 0, fmt.Errorf("unsupported account-entry XOR-copy continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, s.x[20], uint32(s.x[10])^uint32(s.x[16]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry XOR-copy exit: %w", err)
+	}
+	if exitTarget == accountEntryXORCopyPass {
+		return 0, fmt.Errorf("account-entry XOR-copy exit loops to itself")
+	}
+
+	s.x[19] = uint64(uint32(s.x[12]) | uint32(s.x[13]))
 	for index := 0; index < maximumBytes; index++ {
-		next, err := runAccountEntryXORCopyStep(s)
-		if err != nil || next != accountEntryXORCopyPass {
-			return next, err
+		s.traceBlock(accountEntryXORCopyPass)
+		s.x[8] = s.x[11] + s.x[14]
+		s.x[11] = s.addWithCarry(s.x[8], s.x[19], false, 64)
+		value, err := s.load(s.x[9]+s.x[11], 1)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry XOR-copy input: %w", err)
+		}
+		s.x[8] = uint64(uint32(value) ^ uint32(s.x[15]))
+		if err := s.storeValue(s.x[0]+s.x[11], uint64(byte(s.x[8])), 1); err != nil {
+			return 0, fmt.Errorf("account-entry XOR-copy output: %w", err)
+		}
+		if s.x[11] == 0 {
+			s.x[1] = exitTarget
+			s.x[8] = 1
+			s.x[17] = 0x56cc
+			return exitTarget, nil
 		}
 	}
 	return 0, fmt.Errorf("account-entry XOR copy exceeded %d bytes", maximumBytes)
@@ -1348,13 +1454,54 @@ func runAccountEntryXORCopyStep(s *state) (uint64, error) {
 
 func runAccountEntryByteRemap(s *state) (uint64, error) {
 	const maximumBytes = 4096
-	for index := 0; index < maximumBytes; index++ {
-		next, err := runAccountEntryByteRemapStep(s)
-		if err != nil || next != accountEntryByteRemapPass {
-			return next, err
-		}
+	if s == nil {
+		return 0, fmt.Errorf("account-entry byte-remap state is unavailable")
 	}
-	return 0, fmt.Errorf("account-entry byte remap exceeded %d bytes", maximumBytes)
+	continueTarget, err := s.load(s.x[20]+uint64(uint32(s.x[9]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-remap continuation: %w", err)
+	}
+	if continueTarget != accountEntryByteRemapPass {
+		return 0, fmt.Errorf("unsupported account-entry byte-remap continuation %#x", continueTarget)
+	}
+	exitTarget, err := s.load(s.x[20]+uint64(uint32(s.x[9])^uint32(s.x[5]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-remap exit: %w", err)
+	}
+	if exitTarget == accountEntryByteRemapPass {
+		return 0, fmt.Errorf("account-entry byte-remap exit loops to itself")
+	}
+
+	start := s.x[13]
+	count := s.x[2] - start
+	if count == 0 || count > maximumBytes {
+		return 0, fmt.Errorf("account-entry byte remap exceeded %d bytes", maximumBytes)
+	}
+	inputOffset := uint32(s.x[11])
+	mask := (uint32(s.x[14]) & uint32(s.x[0])) - 0x1a
+	s.x[19] = uint64(uint32(s.x[14]) & uint32(s.x[0]))
+	for offset := uint64(0); offset < count; offset++ {
+		s.traceBlock(accountEntryByteRemapPass)
+		value, err := s.load(s.x[27]+uint64(inputOffset+uint32(offset)), 1)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry byte-remap input: %w", err)
+		}
+		input := uint32(byte(value))
+		masked := mask & (input << 1)
+		output := byte(input - masked + 0x1b)
+		if err := s.storeValue(s.x[12]+s.x[1]+start+offset, uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("account-entry byte-remap output: %w", err)
+		}
+		s.x[8] = uint64(input)
+		s.x[15] = start + offset + s.x[1]
+		s.x[16] = uint64(masked)
+	}
+	s.x[11] = uint64(inputOffset + uint32(count))
+	s.x[13] = start + count
+	s.compare64(s.x[13], s.x[2])
+	s.x[8] = exitTarget
+	s.x[17] = 0xd90f
+	return exitTarget, nil
 }
 
 func runAccountEntryByteRemapStep(s *state) (uint64, error) {
