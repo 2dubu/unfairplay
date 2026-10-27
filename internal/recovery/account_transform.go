@@ -179,6 +179,33 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountNestedSetupStart:
 		next, err := runAccountNestedSetup(s)
 		return next, true, err
+	case accountByteLimit:
+		next, err := runAccountByteLimit(s)
+		return next, true, err
+	case accountSixByteCopy:
+		next, err := runAccountSixByteCopy(s)
+		return next, true, err
+	case accountBitStore:
+		next, err := runAccountBitStore(s)
+		return next, true, err
+	case accountByteAdvance:
+		next, err := runAccountByteAdvance(s)
+		return next, true, err
+	case accountSumSelect:
+		next, err := runAccountSumSelect(s)
+		return next, true, err
+	case accountOutputByte:
+		next, err := runAccountOutputByte(s)
+		return next, true, err
+	case accountPointerSelect:
+		next, err := runAccountPointerSelect(s)
+		return next, true, err
+	case accountCallReturn:
+		next, err := runAccountCallReturn(s)
+		return next, true, err
+	case accountConditionalPick:
+		next, err := runAccountConditionalPick(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
