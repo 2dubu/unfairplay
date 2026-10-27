@@ -1131,10 +1131,58 @@ func runBootstrapPairCopyStep(s *state) (uint64, error) {
 // sparse stack table, then selects the next continuation from two bounds.
 func runBootstrapConstantFillPass(s *state) (uint64, error) {
 	const maximumWords = 8192
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap constant-fill state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[9])^bit*0x1d4)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap constant-fill target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == bootstrapConstantFillSeed && targets[1] == bootstrapConstantFillSeed {
+		return 0, fmt.Errorf("bootstrap constant-fill has no exit target")
+	}
+
 	for word := 0; word < maximumWords; word++ {
-		next, err := runBootstrapConstantFillIteration(s)
-		if err != nil || next != bootstrapConstantFillSeed {
-			return next, err
+		s.traceBlock(bootstrapConstantFillSeed)
+		s.x[11] = 0x77b16a0c
+		s.compare32(uint32(s.x[8]), uint32(s.x[11]))
+		firstBound := uint32(boolValue(s.condition("gt")))
+		s.x[11] = uint64((uint32(s.x[9]) + 0xffffe51b) | 0x4561)
+		counter := uint32(s.x[15])
+		s.x[16] = uint64(counter + 0xde3d1312 + uint32(s.x[11]))
+		s.x[17] = s.sp + 0x2d0
+		s.x[1] = 0x224ea33b
+		if err := storeBootstrapWord(s, s.x[17], uint32(s.x[16]), uint32(s.x[1])); err != nil {
+			return 0, fmt.Errorf("bootstrap constant-fill output: %w", err)
+		}
+		s.x[16] = uint64(firstBound)
+		s.x[17] = uint64(counter + 1)
+		s.x[1] = 0xe68c1e77
+		s.x[2] = 0x884e95f3
+		s.x[15] = uint64(counter + uint32(s.x[1]))
+		s.compare32(uint32(s.x[15]), uint32(s.x[2]))
+
+		s.traceBlock(bootstrapConstantFillDispatch)
+		secondBound := uint32(boolValue(s.condition("lt")))
+		s.x[16] = uint64(firstBound ^ secondBound)
+		s.compare32(uint32(s.x[15]), uint32(s.x[14]))
+		thirdBound := uint32(boolValue(s.condition("gt")))
+		s.compare32(uint32(s.x[16]), 0)
+		dispatchBit := thirdBound
+		if s.condition("ne") {
+			dispatchBit = secondBound
+		}
+		s.x[16] = 0x1d4
+		next := targets[dispatchBit]
+		s.x[1] = next
+		s.x[15] = s.x[17]
+		s.x[17] = 0x88c4
+		if next != bootstrapConstantFillSeed {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("bootstrap constant-fill pass exceeded %d words", maximumWords)

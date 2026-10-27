@@ -888,3 +888,71 @@ func TestBootstrapConstantFillIterationMatchesLiftedBlocks(t *testing.T) {
 		}
 	}
 }
+
+func TestBootstrapConstantFillPassMatchesIterations(t *testing.T) {
+	const (
+		output     = uint64(0x710000100000)
+		dispatch   = uint64(0x710000200000)
+		exitTarget = uint64(0x123456789)
+	)
+	random := rand.New(rand.NewSource(int64(bootstrapConstantFillSeed) ^ 0x1d4))
+	for trial := 0; trial < 512; trial++ {
+		length := 1 + random.Intn(256)
+		zero := uint32(0)
+		counter := zero - uint32(0xe68c1e77)
+		index := counter + 0xde3d1312 + ((uint32(0) + 0xffffe51b) | 0x4561)
+		stack := addOffset(output-0x2d0, -int64(int32(index))*4)
+		pages := map[uint64][]byte{
+			output:   make([]byte, pageSize),
+			dispatch: make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		model := &model{pages: clonePages(pages)}
+		base := newState(model)
+		for register := range base.x {
+			base.x[register] = random.Uint64()
+		}
+		base.sp = stack
+		base.x[8] = 0
+		base.x[9] = 0
+		base.x[14] = uint64(uint32(length - 2))
+		base.x[15] = uint64(counter)
+		base.x[25] = dispatch
+		if err := base.storeValue(dispatch, bootstrapConstantFillSeed, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch+0x1d4*8, exitTarget, 8); err != nil {
+			t.Fatal(err)
+		}
+
+		repeated := newState(model)
+		semantic := newState(model)
+		for _, item := range []*state{repeated, semantic} {
+			item.sp, item.x = base.sp, base.x
+			item.writable = clonePages(base.writable)
+			item.dirty = map[uint64]bool{}
+			for page := range item.writable {
+				item.dirty[page] = true
+			}
+		}
+		var repeatedNext uint64
+		for index := 0; index < length; index++ {
+			var err error
+			repeatedNext, err = runBootstrapConstantFillIteration(repeated)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		semanticNext, err := runBootstrapConstantFillPass(semantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
+			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
