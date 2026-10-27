@@ -65,6 +65,9 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sinfDualWriter:
 		next, err := runSINFDualWriter(s)
 		return next, true, err
+	case sinfRotatedTableWriter:
+		next, err := runSINFRotatedTableWriter(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
