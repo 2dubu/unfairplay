@@ -15,7 +15,7 @@ func outerWriterSelect64(condition bool, yes, no uint64) uint64 {
 	return no
 }
 
-func outerWriterSeedStep(seed uint32) uint32 {
+func outerWriterSeedStepMBA(seed uint32) uint32 {
 	t0 := uint64(((0x6bbabee0) + (uint64(seed))) & 0xffffffff)
 	t1 := uint64(((t0) >> 31) & 0x1)
 	t2 := uint64((^(t1)) & 0x1)

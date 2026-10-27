@@ -5,6 +5,26 @@ import (
 	"testing"
 )
 
+func TestWriterByteMBAIdentitiesExhaustive(t *testing.T) {
+	for input := uint32(0); input < 256; input++ {
+		encoded := input ^ 0x40
+		pre := byte(encoded - (((encoded & 0xde) ^ (input & 2)) << 1) + 0xdc)
+		if want := byte(input) ^ 0x9c; pre != want {
+			t.Fatalf("pre-map input %#02x: got %#02x, want %#02x", input, pre, want)
+		}
+
+		middle := byte(input - (0x76 & (input << 1)) + 0x3b)
+		if want := byte(input) ^ 0x3b; middle != want {
+			t.Fatalf("middle-map input %#02x: got %#02x, want %#02x", input, middle, want)
+		}
+
+		output := byte(input - (0x36 & (input << 1)) + 0x1b)
+		if want := byte(input) ^ 0x1b; output != want {
+			t.Fatalf("output-map input %#02x: got %#02x, want %#02x", input, output, want)
+		}
+	}
+}
+
 func TestWriterTransform26A428MatchesLiftedHookDomain(t *testing.T) {
 	const (
 		stack       = uint64(0x7000000e0000)

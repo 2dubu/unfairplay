@@ -19,3 +19,16 @@ func TestOuterWriterSeedStep(t *testing.T) {
 		}
 	}
 }
+
+func TestOuterWriterSeedNaturalRecurrenceExhaustive(t *testing.T) {
+	for phase := uint32(0); phase < outerWriterSeedStates; phase++ {
+		seed := outerWriterSeedBase + phase
+		want := outerWriterSeedBase + (phase+outerWriterSeedStride)%outerWriterSeedStates
+		if got := outerWriterSeedStepMBA(seed); got != want {
+			t.Fatalf("phase %d: MBA=%#x, recurrence=%#x", phase, got, want)
+		}
+		if got := outerWriterSeedStep(seed); got != want {
+			t.Fatalf("phase %d: semantic=%#x, want=%#x", phase, got, want)
+		}
+	}
+}
