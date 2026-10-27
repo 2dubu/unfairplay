@@ -398,6 +398,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountCompoundRouteC:
 		next, err := runAccountCompoundRouteC(s)
 		return next, true, err
+	case accountByteDifferenceRoute:
+		next, err := runAccountByteDifferenceRoute(s)
+		return next, true, err
+	case accountByteSubtractRoute:
+		next, err := runAccountByteSubtractRoute(s)
+		return next, true, err
+	case accountByteCCmpRoute:
+		next, err := runAccountByteCCmpRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
