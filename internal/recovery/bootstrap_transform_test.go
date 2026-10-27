@@ -957,6 +957,94 @@ func TestBootstrapConstantFillPassMatchesIterations(t *testing.T) {
 	}
 }
 
+func TestBootstrapTableAccumulatorPassMatchesSteps(t *testing.T) {
+	const (
+		leftDescriptor  = uint64(0x710000100000)
+		rightDescriptor = uint64(0x710000101000)
+		outDescriptor   = uint64(0x710000102000)
+		leftTable       = uint64(0x710000200000)
+		rightTable      = uint64(0x710000201000)
+		outTable        = uint64(0x710000202000)
+		dispatch        = uint64(0x710000300000)
+		exitTarget      = uint64(0x123456789)
+	)
+	random := rand.New(rand.NewSource(int64(bootstrapTableAccumulatorPass)))
+	for trial := 0; trial < 512; trial++ {
+		length := 1 + random.Intn(256)
+		pages := map[uint64][]byte{
+			leftDescriptor:  make([]byte, pageSize),
+			rightDescriptor: make([]byte, pageSize),
+			outDescriptor:   make([]byte, pageSize),
+			leftTable:       make([]byte, pageSize),
+			rightTable:      make([]byte, pageSize),
+			outTable:        make([]byte, pageSize),
+			dispatch:        make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		model := &model{pages: clonePages(pages)}
+		base := newState(model)
+		for register := range base.x {
+			base.x[register] = random.Uint64()
+		}
+		base.x[0] = 0
+		base.x[5] = 1
+		base.x[6] = 1
+		base.x[7] = 0
+		base.x[9] = outDescriptor
+		base.x[12] = 0
+		base.x[13] = 0
+		base.x[15] = uint64(length)
+		base.x[20] = dispatch
+		base.x[21] = rightDescriptor
+		base.x[23] = leftDescriptor
+		if err := base.storeValue(leftDescriptor+8, leftTable, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(rightDescriptor+8, rightTable, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(outDescriptor+8, outTable, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch, exitTarget, 8); err != nil {
+			t.Fatal(err)
+		}
+		if err := base.storeValue(dispatch+8, bootstrapTableAccumulatorPass, 8); err != nil {
+			t.Fatal(err)
+		}
+
+		repeated := newState(model)
+		semantic := newState(model)
+		for _, item := range []*state{repeated, semantic} {
+			item.x = base.x
+			item.writable = clonePages(base.writable)
+			item.dirty = map[uint64]bool{}
+			for page := range item.writable {
+				item.dirty[page] = true
+			}
+		}
+		var repeatedNext uint64
+		for index := 0; index < length; index++ {
+			var err error
+			repeatedNext, err = runBootstrapTableAccumulatorStep(repeated)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		semanticNext, err := runBootstrapTableAccumulatorPass(semantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
+			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
+
 func TestBootstrapPackedBitPassMatchesSteps(t *testing.T) {
 	const (
 		descriptor = uint64(0x710000100000)

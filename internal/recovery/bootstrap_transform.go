@@ -1339,10 +1339,77 @@ func runBootstrapPackedBitStep(s *state) (uint64, error) {
 
 func runBootstrapTableAccumulatorPass(s *state) (uint64, error) {
 	const maximumWords = 8192
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap table-accumulator state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		index := uint32(s.x[13]) ^ bit*uint32(s.x[6])
+		next, err := s.load(s.x[20]+uint64(index)*8, 8)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap table-accumulator target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == bootstrapTableAccumulatorPass && targets[1] == bootstrapTableAccumulatorPass {
+		return 0, fmt.Errorf("bootstrap table accumulator has no exit target")
+	}
+	leftTable, err := s.load(s.x[23]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap table accumulator left pointer: %w", err)
+	}
+	rightTable, err := s.load(s.x[21]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap table accumulator right pointer: %w", err)
+	}
+	destination, err := s.load(s.x[9]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap table accumulator destination: %w", err)
+	}
+
 	for word := 0; word < maximumWords; word++ {
-		next, err := runBootstrapTableAccumulatorStep(s)
-		if err != nil || next != bootstrapTableAccumulatorPass {
-			return next, err
+		s.traceBlock(bootstrapTableAccumulatorPass)
+		s.compare32(uint32(s.x[12]), uint32(s.x[15]))
+		gate := uint32(boolValue(s.condition("lt")))
+		index := uint32(s.x[7]) + uint32(s.x[0])
+		left, err := loadBootstrapWord(s, leftTable, index)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap table accumulator left word: %w", err)
+		}
+		right, err := loadBootstrapWord(s, rightTable, index)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap table accumulator right word: %w", err)
+		}
+		accumulator := s.x[11] + (left ^ s.x[1]) - (right ^ s.x[1]) + s.x[2]
+		s.x[14] = uint64(uint32(s.x[13]) + uint32(s.x[16]))
+		s.x[11] = uint64(uint32(accumulator) + (uint32(s.x[14]) ^ uint32(s.x[4])))
+		s.x[25] = uint64(uint32(s.x[3]) & uint32(accumulator<<1))
+		s.x[11] = uint64(uint32(s.x[11]) - uint32(s.x[25]))
+		s.x[25] = destination
+		if err := storeBootstrapWord(s, destination, index, uint32(s.x[11])); err != nil {
+			return 0, fmt.Errorf("bootstrap table accumulator output: %w", err)
+		}
+		s.x[11] = accumulator >> 32
+		nextCounter := uint32(s.x[7]) + 1
+		branchCounter := uint32(s.x[7]) + uint32(s.x[5])
+		s.compare32(branchCounter, uint32(s.x[15]))
+		firstBound := uint32(boolValue(s.condition("lt")))
+		selector := gate ^ firstBound
+		s.compare32(branchCounter, uint32(s.x[12]))
+		secondBound := uint32(boolValue(s.condition("lt")))
+		s.compare32(selector, 0)
+		dispatchBit := secondBound
+		if s.condition("ne") {
+			dispatchBit = gate
+		}
+		dispatchBit ^= 1
+		next := targets[dispatchBit]
+		s.x[7] = uint64(nextCounter)
+		s.x[10] = uint64(nextCounter)
+		s.x[17] = 0x4c2
+		s.x[19] = next
+		if next != bootstrapTableAccumulatorPass {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("bootstrap table accumulator exceeded %d words", maximumWords)
