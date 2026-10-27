@@ -2,9 +2,7 @@ package recovery
 
 import "fmt"
 
-const accountTripleBooleanTransform = uint64(0x1000912b0)
-
-func runAccountTripleBooleanTransform(s *state) (uint64, error) {
+func runAccountTripleBooleanTransformCircuit(s *state) (uint64, error) {
 	s.traceBlock(0x1000912b0)
 	first0, err := s.load(addOffset(s.sp, 228), 4)
 	if err != nil {

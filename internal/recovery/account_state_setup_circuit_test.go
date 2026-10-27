@@ -2,9 +2,7 @@ package recovery
 
 import "fmt"
 
-const accountStateSetupTransform = uint64(0x1001a8524)
-
-func runAccountStateSetupTransform(s *state) (uint64, error) {
+func runAccountStateSetupTransformCircuit(s *state) (uint64, error) {
 	s.traceBlock(0x1001a8524)
 	s.x[8] = 0x5abc
 	s.x[8] = uint64(uint32(insertBits(uint64(uint32(s.x[8])), 0x77f7, 16, 16, 32)))
