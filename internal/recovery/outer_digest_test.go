@@ -98,3 +98,24 @@ func TestOuterDigestRejectsInvalidInput(t *testing.T) {
 		t.Fatal("accepted an invalid digest input")
 	}
 }
+
+func TestOuterDigestInitialCounter(t *testing.T) {
+	vectors := []struct {
+		x1, seed, want uint32
+	}{
+		{0x60319d83, 0x00000000, 0x62477516},
+		{0x60319d83, 0x00000001, 0x62477517},
+		{0x60319d83, 0x9abcdef0, 0x62477518},
+		{0x60319d83, 0xffffffff, 0x6247751c},
+		{0x60319e4b, 0x12345678, 0x62477517},
+	}
+	for _, vector := range vectors {
+		got, ok := outerDigestInitialCounter(vector.x1, vector.seed)
+		if !ok || got != vector.want {
+			t.Fatalf("counter(%#x, %#x) = %#x/%v, want %#x/true", vector.x1, vector.seed, got, ok, vector.want)
+		}
+	}
+	if _, ok := outerDigestInitialCounter(0, 0); ok {
+		t.Fatal("accepted a counter state outside the proved natural path")
+	}
+}

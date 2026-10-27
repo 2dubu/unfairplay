@@ -29,6 +29,13 @@ func applyOuterDigest(state *outerDigestState, hardware *[6]byte, codec *[17]byt
 		return false
 	}
 	hardwareBase := (state.HardwareSelector + outerDigestHardwareBias) % 6
+	return applyOuterDigestAtHardwareBase(state, hardware, codec, hardwareBase)
+}
+
+func applyOuterDigestAtHardwareBase(state *outerDigestState, hardware *[6]byte, codec *[17]byte, hardwareBase uint32) bool {
+	if state == nil || hardware == nil || codec == nil || hardwareBase >= 6 {
+		return false
+	}
 	for range outerDigestMaximumIterations {
 		codecPhase := (state.CodecSelector + outerDigestCodecBias) % 13
 		exit := applyOuterDigestStep(state, hardware, codec, hardwareBase, codecPhase)
