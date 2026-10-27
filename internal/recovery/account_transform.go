@@ -1388,13 +1388,58 @@ func runAccountEntryByteRemapStep(s *state) (uint64, error) {
 
 func runAccountEntryByteGenerator(s *state) (uint64, error) {
 	const maximumBytes = 4096
-	for index := 0; index < maximumBytes; index++ {
-		next, err := runAccountEntryByteGeneratorStep(s)
-		if err != nil || next != accountEntryByteGeneratorPass {
-			return next, err
+	if s == nil {
+		return 0, fmt.Errorf("account-entry byte-generator state is unavailable")
+	}
+	delta := uint64(uint32(s.x[16])^uint32(s.x[10])) ^ s.x[19]
+	position := s.x[1]
+	iterations := 0
+	for ; iterations < maximumBytes; iterations++ {
+		s.traceBlock(accountEntryByteGeneratorPass)
+		position += delta
+		counter := uint32(s.x[13])
+		mixed := counter ^ uint32(s.x[20])
+		mixed += uint32(s.x[21])
+		mixed ^= counter
+		left := (counter ^ uint32(s.x[23])) + uint32(s.x[26])
+		right := (counter ^ uint32(s.x[27])) + uint32(s.x[28])
+		mixed ^= left ^ right
+		finalTerm := (counter ^ 0xfffffffb) + 0x8f
+		mixed ^= finalTerm ^ 0x30
+		output := byte(mixed * (counter + 0x87))
+		if err := s.storeValue(s.x[6]+position, uint64(output), 1); err != nil {
+			return 0, fmt.Errorf("account-entry byte-generator output: %w", err)
+		}
+		s.x[13]++
+		s.x[2] = uint64(right)
+		s.x[3] = uint64(finalTerm)
+		if position == 0 {
+			break
 		}
 	}
-	return 0, fmt.Errorf("account-entry byte generator exceeded %d bytes", maximumBytes)
+	if position != 0 {
+		return 0, fmt.Errorf("account-entry byte generator exceeded %d bytes", maximumBytes)
+	}
+	if err := s.storeValue(s.sp+0x318, 0, 8); err != nil {
+		return 0, fmt.Errorf("account-entry byte-generator position: %w", err)
+	}
+	continueTarget, err := loadBootstrapPointer(s, s.x[30], uint32(s.x[16]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-generator continuation: %w", err)
+	}
+	if iterations > 0 && continueTarget != accountEntryByteGeneratorPass {
+		return 0, fmt.Errorf("unsupported account-entry byte-generator continuation %#x", continueTarget)
+	}
+	next, err := loadBootstrapPointer(s, s.x[30], uint32(s.x[16])^uint32(s.x[14]))
+	if err != nil {
+		return 0, fmt.Errorf("account-entry byte-generator dispatch: %w", err)
+	}
+	s.x[0] = uint64(uint32(s.x[16]) ^ uint32(s.x[10]))
+	s.x[1] = 0
+	s.x[15] = next
+	s.x[17] = 0x623c
+	s.compare64(0, 0)
+	return next, nil
 }
 
 func runAccountEntryByteGeneratorStep(s *state) (uint64, error) {
