@@ -590,6 +590,9 @@ func currentRawSourceBytes(size int) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if profile.semantic == nil {
+		return nil, fmt.Errorf("no semantic enrollment profile for build %q", profile.name)
+	}
 	return lastRawSourceState.outputBytes(profile.sourceAddress, size)
 }
 
@@ -696,10 +699,10 @@ func currentRawSourceEnrollmentPack() ([]byte, error) {
 	binary.LittleEndian.PutUint32(word[:], keyID)
 	pack = append(pack, word[:]...)
 	for index, value := range material {
-		pack = append(pack, value^profile.currentSINFMask[index])
+		pack = append(pack, value^profile.semantic.currentSINFMask[index])
 	}
-	pack = append(pack, profile.currentSINFWhite[:]...)
-	pack = append(pack, profile.currentSINFInput[:]...)
+	pack = append(pack, profile.semantic.currentSINFWhite[:]...)
+	pack = append(pack, profile.semantic.currentSINFInput[:]...)
 	if len(pack) != modelBytes {
 		return nil, fmt.Errorf("generated enrollment model has invalid size %d", len(pack))
 	}

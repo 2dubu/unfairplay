@@ -5,7 +5,10 @@ import "fmt"
 // semanticBuildProfile contains only genuine per-build ABI and encoding data.
 // The algorithms consuming it are shared typed Go and must not vary by build.
 type semanticBuildProfile struct {
-	outer outerStageLayout
+	outer            outerStageLayout
+	currentSINFMask  [16]byte
+	currentSINFWhite [16]byte
+	currentSINFInput [4096]byte
 }
 
 type executionProfile struct {
@@ -39,23 +42,25 @@ type executionProfile struct {
 	runCycle               func(*state, fault) error
 	runCycleFinal          func(*state, fault) error
 
-	onceTokens       []uint64
-	sourceAddress    uint64
-	frameAddress     uint64
-	sinfFrameOffset  uint64
-	outerStart       uint64
-	outerCycle       uint64
-	cycleFinal       uint64
-	optionalStart    uint64
-	currentSINFMask  [16]byte
-	currentSINFWhite [16]byte
-	currentSINFInput [4096]byte
+	onceTokens      []uint64
+	sourceAddress   uint64
+	frameAddress    uint64
+	sinfFrameOffset uint64
+	outerStart      uint64
+	outerCycle      uint64
+	cycleFinal      uint64
+	optionalStart   uint64
 }
 
 func embedded26A428ExecutionProfile() *executionProfile {
 	return &executionProfile{
 		name: "macos26a428", binaryHash: rawSourceBinaryHash,
-		semantic:          &semanticBuildProfile{outer: outerStage26A428Layout},
+		semantic: &semanticBuildProfile{
+			outer:            outerStage26A428Layout,
+			currentSINFMask:  generatedCurrentSINFKeyMask,
+			currentSINFWhite: generatedCurrentSINFWhitening,
+			currentSINFInput: generatedCurrentSINFInputDecode,
+		},
 		accountEntryStart: 0x100cd1c18, accountEntryStop: 0x10057ae74,
 		bootstrapStart: 0x10057ae74, bootstrapStop: 0x1005b7438,
 		selectionStart: 0x1006b10a0, selectionStop: 0x10008a644, selectionStopHits: 2,
@@ -82,9 +87,6 @@ func embedded26A428ExecutionProfile() *executionProfile {
 		onceTokens:             []uint64{0x1010746B0, 0x101075B48, 0x101081348, 0x101081358},
 		sourceAddress:          0x7000000FB304, frameAddress: 0x7000000FB724, sinfFrameOffset: 0x70,
 		outerStart: 0x1005B7438, outerCycle: 0x1007822CC, cycleFinal: 0x10046119C, optionalStart: 0x1005BA520,
-		currentSINFMask:  generatedCurrentSINFKeyMask,
-		currentSINFWhite: generatedCurrentSINFWhitening,
-		currentSINFInput: generatedCurrentSINFInputDecode,
 	}
 }
 
