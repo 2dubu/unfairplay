@@ -31,6 +31,10 @@ const (
 	bootstrapSparseFillDispatch   = uint64(0x1008a9800)
 	bootstrapNonlinearBytePass    = uint64(0x10094ca9c)
 	bootstrapByteStatePass        = uint64(0x1008eb0a8)
+	bootstrapAccumulatorCycleSeed = uint64(0x1008d0e38)
+	bootstrapAccumulatorCyclePrep = uint64(0x1009f458c)
+	bootstrapAccumulatorCycleKey  = uint64(0x1009839e4)
+	bootstrapAccumulatorCycleTail = uint64(0x10080f1a8)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -1334,6 +1338,293 @@ func runBootstrapByteStateStep(s *state) (uint64, error) {
 	s.x[9] = s.x[14]
 	s.x[12] = next
 	s.x[17] = 0x37fb
+	return next, nil
+}
+
+func runBootstrapAccumulatorCycle(s *state) (uint64, error) {
+	const maximumRounds = 4096
+	for round := 0; round < maximumRounds; round++ {
+		next, err := runBootstrapAccumulatorCycleSeed(s)
+		if err != nil || next != bootstrapAccumulatorCyclePrep {
+			return next, err
+		}
+		next, err = runBootstrapAccumulatorCyclePrepBlock(s)
+		if err != nil || next != bootstrapAccumulatorPassA {
+			return next, err
+		}
+		next, err = runBootstrapAccumulatorPass(s, bootstrapAccumulatorPassA)
+		if err != nil || next != bootstrapAccumulatorCycleKey {
+			return next, err
+		}
+		next, err = runBootstrapAccumulatorCycleKeyBlock(s)
+		if err != nil || next != bootstrapAccumulatorCycleTail {
+			return next, err
+		}
+		next, err = runBootstrapAccumulatorCycleTailBlock(s)
+		if err != nil || next != bootstrapAccumulatorCycleSeed {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap accumulator cycle exceeded %d rounds", maximumRounds)
+}
+
+func runBootstrapAccumulatorCycleSeed(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle state is unavailable")
+	}
+	s.traceBlock(bootstrapAccumulatorCycleSeed)
+	bound, err := s.load(s.sp+0x7c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle bound: %w", err)
+	}
+	s.x[8] = uint64(uint32(bound))
+	s.x[13] = 0x7ffffffe
+	s.compare32(uint32(s.x[8]), uint32(s.x[13]))
+	gate := uint32(boolValue(s.condition("lo")))
+	s.x[17] = uint64(gate)
+	s.x[8] = uint64(uint32(s.x[11]) ^ 0x6797)
+	s.x[13] = 0x8b1
+	s.x[22] = uint64(uint32(s.x[8]) * uint32(s.x[13]))
+	s.x[8] = 0xaa1797c1
+	if err := s.storeValue(s.sp+0x98, uint64(uint32(s.x[4])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle counter: %w", err)
+	}
+	s.x[8] = uint64(uint32(s.x[4]) + uint32(s.x[8]))
+	table, err := s.load(s.sp+0x70, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle table: %w", err)
+	}
+	s.x[13] = table
+	word, err := loadBootstrapWord(s, table, uint32(s.x[8]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle table word: %w", err)
+	}
+	s.x[8] = word
+	s.x[13] = uint64(uint32(s.x[22]) + uint32(s.x[2]))
+	s.x[7] = uint64(uint32(s.x[13]) ^ uint32(s.x[8]))
+	seed, err := s.load(s.sp+0xd8, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle seed: %w", err)
+	}
+	s.x[8] = seed ^ s.x[16]
+	coefficient, err := s.load(s.sp+0x80, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle coefficient: %w", err)
+	}
+	s.x[13] = coefficient
+	s.x[8] = uint64(uint32(coefficient))*uint64(uint32(s.x[7])) + s.x[8]
+	multiplier, err := s.load(s.sp+0x6c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle multiplier: %w", err)
+	}
+	s.x[13] = uint64(uint32(multiplier))
+	s.x[0] = uint64(uint32(s.x[8]) * uint32(multiplier))
+	s.x[4] = uint64(uint32(s.x[11]) + 0x32ce)
+	s.x[13] = s.x[4] ^ uint64(uint32(0xffff65a0))
+	s.x[13] = s.x[8] & s.x[13]
+	s.x[19] = 0x224e6f15
+	wordPointer, err := s.load(s.sp+0x60, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle word pointer: %w", err)
+	}
+	word, err = s.load(wordPointer, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle word: %w", err)
+	}
+	s.x[2] = word ^ s.x[16]
+	s.x[13] += uint64(uint32(s.x[2])) * uint64(uint32(s.x[0]))
+	s.x[2] = uint64(gate << 6)
+	s.x[17] = uint64(uint32(s.x[2]) - (gate << 3))
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[17]))
+	dispatchTable, err := s.load(s.sp+0xa8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle dispatch table: %w", err)
+	}
+	s.x[15] = dispatchTable
+	next, err := loadBootstrapPointer(s, dispatchTable, uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle dispatch: %w", err)
+	}
+	s.x[5] = 0x4bef61bf
+	s.x[11] = next
+	s.x[17] = 0x5bb3
+	s.x[20] = 0x360cf6ff
+	s.x[21] = 0xdca6
+	s.x[25] = 0xe9e5d8f9
+	s.x[28] = 0x1df6773d
+	return next, nil
+}
+
+func runBootstrapAccumulatorCyclePrepBlock(s *state) (uint64, error) {
+	s.traceBlock(bootstrapAccumulatorCyclePrep)
+	s.x[10] = 0xfdce
+	s.x[2] = uint64(uint32(s.x[4]) ^ uint32(s.x[10]))
+	object, err := s.load(s.sp+0x40, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle object: %w", err)
+	}
+	s.x[10] = object
+	s.x[27], err = s.load(object+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle right table: %w", err)
+	}
+	s.x[10], err = s.load(s.sp+0xa0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle left object: %w", err)
+	}
+	s.x[11], err = s.load(s.sp+0xa8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle dispatch: %w", err)
+	}
+	s.x[26], err = s.load(s.x[10]+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle left table: %w", err)
+	}
+	s.x[10], err = s.load(s.sp+0x90, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle source table: %w", err)
+	}
+	s.x[5], err = s.load(s.x[11]+shiftLeft(signExtend32(uint32(s.x[4])), 3, 64), 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle source: %w", err)
+	}
+	s.x[11] = 0x4bef61bf
+	s.x[17] = 0xc9f2d595
+	s.x[4] = uint64(uint32(s.x[2]) + uint32(s.x[17]))
+	s.x[17] = 0x58a9
+	return bootstrapAccumulatorPassA, nil
+}
+
+func runBootstrapAccumulatorCycleKeyBlock(s *state) (uint64, error) {
+	s.traceBlock(bootstrapAccumulatorCycleKey)
+	s.x[4] = 0xf1c88bf3
+	s.compare32(uint32(s.x[10]), uint32(s.x[4]))
+	gate := uint32(boolValue(s.condition("gt")))
+	s.x[17] = uint64(uint32(s.x[22]) ^ 0x34a7)
+	s.x[2] = 0xb7
+	s.x[7] = uint64(uint32(s.x[17]) * uint32(s.x[2]))
+	s.x[17] = uint64(uint32(s.x[22]) + 0xee2e6dd3)
+	s.x[2] = 0x11d1fe4f
+	s.x[27] = uint64(uint32(s.x[17]) & uint32(s.x[2]))
+	s.x[17] = uint64(uint32(s.x[7]) ^ 0x42484e79)
+	s.x[17] = uint64(uint32(s.x[17]) + uint32(s.x[5]))
+	s.x[12] = 0x0e37740c
+	s.compare32(uint32(s.x[17]), uint32(s.x[12]))
+	selector := gate ^ uint32(boolValue(s.condition("lt")))
+	s.compare32(uint32(s.x[17]), uint32(s.x[3]))
+	secondBound := uint32(boolValue(s.condition("lt")))
+	s.compare32(selector, 0)
+	dispatchBit := secondBound
+	if s.condition("ne") {
+		dispatchBit = gate
+	}
+	dispatchBit ^= 1
+	dispatchMultiplier := uint32(s.x[27]) ^ 0xa046
+	dispatchIndex := dispatchBit*dispatchMultiplier ^ uint32(s.x[22])
+	dispatchTable, err := s.load(s.sp+0xa8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle rekey table: %w", err)
+	}
+	s.x[15], s.x[23] = dispatchTable, dispatchTable
+	next, err := loadBootstrapPointer(s, dispatchTable, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle rekey dispatch: %w", err)
+	}
+	s.x[1] = 0x2cfc0ae8a98f89c6
+	s.x[6] = 0xb4109e41
+	s.x[11] = next
+	s.x[12] = 0x449d4676
+	s.x[14] = 0x4248124f
+	s.x[15] = 0x1430e33e4efdacf8
+	s.x[17] = 0xe4e0
+	s.x[19] = 0x446c
+	s.x[20] = 0xfc7e
+	s.x[21] = ^uint64(0x5c16)
+	s.x[24] = 0xd303f5175670763a
+	s.x[25] = 0x38cce9d6c53c8609
+	s.x[26] = 0xc73316293ac379f7
+	s.x[28] = 0xebcf1cc1b1025308
+	return next, nil
+}
+
+func runBootstrapAccumulatorCycleTailBlock(s *state) (uint64, error) {
+	s.traceBlock(bootstrapAccumulatorCycleTail)
+	bound, err := s.load(s.sp+0x8c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail bound: %w", err)
+	}
+	s.x[2] = uint64(uint32(bound))
+	s.x[6] = 0x68ed69f7
+	s.compare32(uint32(s.x[2]), uint32(s.x[6]))
+	gate := uint32(boolValue(s.condition("lt")))
+	s.x[11] = uint64(uint32(s.x[7]) + 0xb5a)
+	s.x[0] = uint64(uint32(s.x[7]) + 0x303c9dc4)
+	s.x[4] = 0xcfc36fbe
+	s.x[0] = uint64(uint32(s.x[0]) & uint32(s.x[4]))
+	s.x[13] >>= 32
+	s.x[8] = s.x[13] + (s.x[8] >> 32)
+	s.x[5], err = s.load(s.sp+0x50, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail output: %w", err)
+	}
+	s.x[4], err = s.load(s.sp+0x58, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail word pointer: %w", err)
+	}
+	word, err := s.load(s.x[4], 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail word: %w", err)
+	}
+	s.x[13] = word ^ s.x[16]
+	s.x[8] += s.x[13]
+	s.x[13] = s.x[0] + 0x00000003bc522814
+	s.x[13] &= s.x[8] << 1
+	s.x[8] -= s.x[13]
+	s.x[8] += 0x64938749de2948e7
+	s.x[13] = uint64(uint32(s.x[8]) ^ 0xfc67ebdc)
+	if err := s.storeValue(s.x[5], uint64(uint32(s.x[13])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail first output: %w", err)
+	}
+	s.x[8] >>= 32
+	s.x[13] = 0x46dd2472
+	s.x[8] = uint64(uint32(s.x[8]) ^ uint32(s.x[13]))
+	if err := s.storeValue(s.x[4], uint64(uint32(s.x[8])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail second output: %w", err)
+	}
+	counter, err := s.load(s.sp+0x98, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail counter: %w", err)
+	}
+	s.x[8] = uint64(uint32(counter))
+	s.x[20] = uint64(uint32(counter) + 1)
+	s.x[13] = 0x930501b9
+	s.x[8] = uint64(uint32(s.x[8]) + uint32(s.x[13]))
+	s.compare32(uint32(s.x[8]), uint32(s.x[6]))
+	firstBound := uint32(boolValue(s.condition("lt")))
+	selector := gate ^ firstBound
+	s.compare32(uint32(s.x[8]), uint32(s.x[2]))
+	secondBound := uint32(boolValue(s.condition("lt")))
+	s.compare32(selector, 0)
+	dispatchBit := secondBound
+	if s.condition("ne") {
+		dispatchBit = gate
+	}
+	dispatchIndex := dispatchBit*0x56 ^ uint32(s.x[7])
+	next, err := loadBootstrapPointer(s, s.x[23], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail dispatch: %w", err)
+	}
+	s.x[1], err = s.load(s.sp+0x4c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap accumulator-cycle tail limit: %w", err)
+	}
+	s.x[2] = 0x224e6f15
+	s.x[4] = s.x[20]
+	s.x[8] = next
+	s.x[12] = 0xb4109e41
+	s.x[14] = 0xb4109e42
+	s.x[17] = 0x902d
+	s.x[24] = 0x449d4676
 	return next, nil
 }
 
