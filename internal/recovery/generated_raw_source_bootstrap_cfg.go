@@ -375,6 +375,30 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapDescriptorCall && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapDescriptorCall(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapNestedCallA && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapNestedCallA(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapNestedCallB && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapNestedCallB(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if pc == bootstrapDescriptorReturn && (runtime == nil || runtime.stopPC == 0) {
 			next, err := runBootstrapDescriptorReturn(s)
 			if err != nil {
