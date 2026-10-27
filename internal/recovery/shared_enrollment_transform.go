@@ -3,17 +3,18 @@ package recovery
 import "fmt"
 
 const (
-	sharedEnrollmentClassify    = uint64(0x1005419b4)
-	sharedEnrollmentBranch      = uint64(0x1005649c4)
-	sharedEnrollmentWrite       = uint64(0x1003f63b0)
-	sharedEnrollmentAdvance     = uint64(0x1003f6400)
-	sharedEnrollmentByteFill    = uint64(0x10051c16c)
-	sharedEnrollmentLeftPath    = uint64(0x1005456ac)
-	sharedEnrollmentRightPath   = uint64(0x1003d3294)
-	sharedEnrollmentWordCompare = uint64(0x10055fb1c)
-	sharedEnrollmentLoopSelect  = uint64(0x10027b7c8)
-	sharedEnrollmentLoopTail    = uint64(0x10027b800)
-	sharedEnrollmentSavedSelect = uint64(0x1003ea090)
+	sharedEnrollmentClassify     = uint64(0x1005419b4)
+	sharedEnrollmentBranch       = uint64(0x1005649c4)
+	sharedEnrollmentWrite        = uint64(0x1003f63b0)
+	sharedEnrollmentAdvance      = uint64(0x1003f6400)
+	sharedEnrollmentByteFill     = uint64(0x10051c16c)
+	sharedEnrollmentLeftPath     = uint64(0x1005456ac)
+	sharedEnrollmentRightPath    = uint64(0x1003d3294)
+	sharedEnrollmentWordCompare  = uint64(0x10055fb1c)
+	sharedEnrollmentLoopSelect   = uint64(0x10027b7c8)
+	sharedEnrollmentLoopTail     = uint64(0x10027b800)
+	sharedEnrollmentSavedSelect  = uint64(0x1003ea090)
+	sharedEnrollmentRegisterJump = uint64(0x100265000)
 )
 
 // runSharedEnrollmentBlock replaces the small protected dispatcher core that
@@ -78,6 +79,9 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentProductSelect:
 		next, err := runSharedEnrollmentProductSelect(s)
 		return next, true, err
+	case sharedEnrollmentRegisterJump:
+		s.traceBlock(sharedEnrollmentRegisterJump)
+		return s.x[2], true, nil
 	default:
 		return pc, false, nil
 	}
