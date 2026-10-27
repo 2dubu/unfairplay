@@ -419,6 +419,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountLimitTargetRoute:
 		next, err := runAccountLimitTargetRoute(s)
 		return next, true, err
+	case accountBooleanTargetRoute:
+		next, err := runAccountBooleanTargetRoute(s)
+		return next, true, err
+	case accountZeroFillRoute:
+		next, err := runAccountZeroFillRoute(s)
+		return next, true, err
+	case accountDirectReturnSecond:
+		next, err := runAccountDirectReturnAt(s, accountDirectReturnSecond)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}

@@ -47,7 +47,11 @@ func runAccountTripleCompareRoute(s *state) (uint64, error) {
 }
 
 func runAccountDirectReturn(s *state) (uint64, error) {
-	s.traceBlock(accountDirectReturn)
+	return runAccountDirectReturnAt(s, accountDirectReturn)
+}
+
+func runAccountDirectReturnAt(s *state, pc uint64) (uint64, error) {
+	s.traceBlock(pc)
 	s.x[0] = s.x[8]
 	s.sp += 0x10
 	return s.x[30], nil
