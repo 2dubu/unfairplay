@@ -9,7 +9,88 @@ const (
 	bootstrapPointerCycleStep  = uint64(0x100066ee0)
 	bootstrapPointerCycleNext  = uint64(0x100087a4c)
 	bootstrapByteClassifyPass  = uint64(0x100065d6c)
+	bootstrapIndexedDispatch   = uint64(0x1005816cc)
+	bootstrapCountdownStart    = uint64(0x1005807e0)
+	bootstrapCountdownDispatch = uint64(0x100580800)
+	bootstrapSmallFrameReturn  = uint64(0x10016e74c)
+	bootstrapSavedFrameReturn  = uint64(0x100147c4c)
 )
+
+func runBootstrapIndexedDispatch(s *state) (uint64, error) {
+	s.traceBlock(bootstrapIndexedDispatch)
+	s.x[10] = uint64(uint32(s.x[8]) + 0x2a79)
+	s.x[19] = uint64(uint32(s.x[10]) | 0xc00)
+	s.x[10] = uint64((uint32(s.x[8]) + 0x3bf7a813) & 0xc40857cf)
+	s.x[11] = uint64((uint32(s.x[10]) ^ 0xa9a335c6) + uint32(s.x[9]))
+	s.x[12] = s.sp + 0x2d0
+	word, err := s.load(s.x[12]+uint64(uint32(s.x[11]))*4, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap indexed-dispatch lookup: %w", err)
+	}
+	s.x[11] = uint64(uint32(word))
+	s.x[12] = uint64(uint32(s.x[19]) ^ 0x224e2e9f)
+	s.compare32(uint32(s.x[11]), uint32(s.x[12]))
+	s.x[11] = uint64(uint32(boolValue(s.condition("eq"))) * 0xc36e)
+	s.x[8] = uint64(uint32(s.x[11]) ^ uint32(s.x[8]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[8]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap indexed-dispatch target: %w", err)
+	}
+	s.x[8] = next
+	s.x[17] = 0xe52e
+	return next, nil
+}
+
+func runBootstrapCountdownDispatch(s *state) (uint64, error) {
+	s.traceBlock(bootstrapCountdownStart)
+	s.x[19] = uint64(uint32(s.x[10]) ^ 0xdaaa)
+	s.x[8] = uint64(uint32(s.x[10]) ^ 0x25)
+	s.x[12] = uint64((uint32(s.x[10]) ^ 0xa9a335c8) + uint32(s.x[9]))
+	s.traceBlock(bootstrapCountdownDispatch)
+	s.x[9] = uint64(uint32(s.x[9]) - 1)
+	s.x[13] = uint64(uint32(s.x[8]) + 0x7fffa8d4)
+	s.compare32(uint32(s.x[12]), uint32(s.x[13]))
+	s.x[12] = uint64(uint32(boolValue(s.condition("hs"))))
+	s.x[11] = uint64(uint32(s.x[12]) * uint32(s.x[11]))
+	s.x[10] = uint64(uint32(s.x[11]) ^ uint32(s.x[10]))
+	next, err := loadBootstrapPointer(s, s.x[25], uint32(s.x[10]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap countdown-dispatch target: %w", err)
+	}
+	s.x[10] = next
+	s.x[17] = 0xe52e
+	return next, nil
+}
+
+func runBootstrapSmallFrameReturn(s *state) (uint64, error) {
+	s.traceBlock(bootstrapSmallFrameReturn)
+	s.sp += 0x10
+	return s.x[30], nil
+}
+
+func runBootstrapSavedFrameReturn(s *state) (uint64, error) {
+	s.traceBlock(bootstrapSavedFrameReturn)
+	if err := s.storeValue(s.x[0]+8, uint64(uint32(s.x[11])), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap saved-frame result: %w", err)
+	}
+	for _, pair := range [...]struct {
+		first, second int
+		offset        uint64
+	}{{29, 30, 0x60}, {20, 19, 0x50}, {22, 21, 0x40}, {24, 23, 0x30}, {26, 25, 0x20}, {28, 27, 0x10}} {
+		first, err := s.load(s.sp+pair.offset, 8)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap saved-frame register %d: %w", pair.first, err)
+		}
+		second, err := s.load(s.sp+pair.offset+8, 8)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap saved-frame register %d: %w", pair.second, err)
+		}
+		s.x[pair.first] = first
+		s.x[pair.second] = second
+	}
+	s.sp += 0x70
+	return s.x[30], nil
+}
 
 func runBootstrapPointerCycle(s *state) (uint64, error) {
 	pc := bootstrapPointerCycleStart
