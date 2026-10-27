@@ -599,6 +599,94 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapStoreWordReturn && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapStoreWordReturn(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapBitLookupDispatch && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapBitLookupDispatch(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapSignedRange && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapSignedRange(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapFrameStatus && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapFrameStatus(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapByteMerge && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapByteMerge(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapBitSelect && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapBitSelect(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapWordLookup && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapWordLookup(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapByteUpdate && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapByteUpdate(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapByteStore && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapByteStore(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapPreparedDispatch && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapPreparedDispatch(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapStackChoice && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapStackChoice(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if runtime == nil || runtime.stopPC == 0 {
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {
