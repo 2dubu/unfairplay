@@ -463,6 +463,70 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapByteCompareSelect && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapByteCompareSelect(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapDistanceSelect && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapDistanceSelect(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapSwapPass && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapSwap(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapReverseWordWrite && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapReverseWordWrite(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapSparseZeroWrite && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapSparseZeroWrite(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapDualZeroWrite && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapDualZeroWrite(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapEqualitySelect && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapEqualitySelect(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapParitySelect && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapParitySelect(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if runtime == nil || runtime.stopPC == 0 {
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {
