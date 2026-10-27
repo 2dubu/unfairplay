@@ -473,6 +473,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountOffsetDispatch:
 		next, err := runAccountOffsetDispatch(s)
 		return next, true, err
+	case accountFrameGuardRoute:
+		next, err := runAccountFrameGuardRoute(s)
+		return next, true, err
+	case accountReverseWriteRoute:
+		next, err := runAccountReverseWriteRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
