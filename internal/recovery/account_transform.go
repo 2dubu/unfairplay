@@ -695,6 +695,57 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountOuterCallSetupB:
 		next, err := runAccountOuterCallSetupB(s)
 		return next, true, err
+	case accountDispatchRoute020410:
+		next, err := runAccountDispatchRoute020410(s)
+		return next, true, err
+	case accountCallSetup0650f0:
+		next, err := runAccountCallSetup0650f0(s)
+		return next, true, err
+	case accountRecordSetup110c30:
+		next, err := runAccountRecordSetup110c30(s)
+		return next, true, err
+	case accountStateSetup150c5c:
+		next, err := runAccountStateSetup150c5c(s)
+		return next, true, err
+	case accountVectorRoute15dcc0:
+		next, err := runAccountVectorRoute15dcc0(s)
+		return next, true, err
+	case accountFrameRoute178eb8:
+		next, err := runAccountFrameRoute178eb8(s)
+		return next, true, err
+	case accountLoopDispatchFront197fa4:
+		next, err := runAccountLoopDispatchFront197fa4(s)
+		return next, true, err
+	case accountLoopDispatchTail198000:
+		next, err := runAccountLoopDispatchTail198000(s)
+		return next, true, err
+	case accountStackReturn1b5db0:
+		next, err := runAccountStackReturn1b5db0(s)
+		return next, true, err
+	case accountStateRoute2413b4:
+		next, err := runAccountStateRoute2413b4(s)
+		return next, true, err
+	case accountTableRoute247b38:
+		next, err := runAccountTableRoute247b38(s)
+		return next, true, err
+	case accountDispatchRoute24b5a8:
+		next, err := runAccountDispatchRoute24b5a8(s)
+		return next, true, err
+	case accountNestedCallSetup24ed8c:
+		next, err := runAccountNestedCallSetup24ed8c(s)
+		return next, true, err
+	case accountNestedCallResume24eef0:
+		next, err := runAccountNestedCallResume24eef0(s)
+		return next, true, err
+	case accountThresholdRoute30e674:
+		next, err := runAccountThresholdRoute30e674(s)
+		return next, true, err
+	case accountDispatchSetup35ea64:
+		next, err := runAccountDispatchSetup35ea64(s)
+		return next, true, err
+	case accountDispatchSetup386528:
+		next, err := runAccountDispatchSetup386528(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
