@@ -539,6 +539,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountByteMaskTarget:
 		next, err := runAccountByteMaskTarget(s)
 		return next, true, err
+	case accountScaledCompareTarget:
+		next, err := runAccountScaledCompareTarget(s)
+		return next, true, err
+	case accountShiftedBitTarget:
+		next, err := runAccountShiftedBitTarget(s)
+		return next, true, err
+	case accountCCmpMaskTarget:
+		next, err := runAccountCCmpMaskTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
