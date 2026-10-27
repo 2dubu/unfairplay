@@ -548,6 +548,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountCCmpMaskTarget:
 		next, err := runAccountCCmpMaskTarget(s)
 		return next, true, err
+	case accountConditionRoute:
+		next, err := runAccountConditionRoute(s)
+		return next, true, err
+	case accountSignedIndexRoute:
+		next, err := runAccountSignedIndexRoute(s)
+		return next, true, err
+	case accountStackCompareRoute:
+		next, err := runAccountStackCompareRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
