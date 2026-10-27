@@ -167,6 +167,16 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if runtime == nil || runtime.stopPC == 0 {
+			next, handled, err := runCrossStageSemanticBlock(s, pc)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			if handled {
+				pc = next
+				continue
+			}
+		}
 		if block, ok := recoveryBlock(s, pc, profile.bootstrapBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {
 			next, stopped, err := runCompactBlock(s, runtime, block)
 			if err != nil {
