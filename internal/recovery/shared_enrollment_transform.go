@@ -56,7 +56,7 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 		next, err := runSharedEnrollmentSavedSelect(s)
 		return next, true, err
 	case sharedEnrollmentBytePermute:
-		next, err := runSharedEnrollmentBytePermute(s)
+		next, err := runSharedEnrollmentBytePermuteSemantic(s)
 		return next, true, err
 	case sharedEnrollmentByteGenerate:
 		next, err := runSharedEnrollmentByteGenerate(s)
