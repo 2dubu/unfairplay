@@ -389,6 +389,42 @@ func (r *rawSourceRuntime) handle(s *state, pc uint64) (uint64, error) {
 	return returnAddress, nil
 }
 
+func runAccountEntryStage(worker *state) error {
+	return withRecoveryStage(worker, "account-entry", func() error {
+		_, _, err := runRawSourceAccountEntryCFG(worker, activeRawSourceRuntime, 1_000_000)
+		return err
+	})
+}
+
+func runBootstrapStage(worker *state) error {
+	return withRecoveryStage(worker, "bootstrap", func() error {
+		_, _, err := runRawSourceBootstrapCFG(worker, activeRawSourceRuntime, 1_000_000)
+		return err
+	})
+}
+
+func runOuterStage(worker *state) (iterations int, err error) {
+	err = withRecoveryStage(worker, "outer", func() error {
+		iterations, err = runRawSourceKernelLoop(worker, "outer")
+		return err
+	})
+	return iterations, err
+}
+
+func runSelectionStage(worker *state) error {
+	return withRecoveryStage(worker, "selection", func() error {
+		_, _, err := runRawSourceSelectionCFG(worker, activeRawSourceRuntime, worker.model.selectionMaxBlocks)
+		return err
+	})
+}
+
+func runSINFEntryStage(worker *state) error {
+	return withRecoveryStage(worker, "sinf-entry", func() error {
+		_, _, err := runRawSourceSINFEntryCFG(worker, activeRawSourceRuntime, 2_000_000)
+		return err
+	})
+}
+
 func runRawSource(value *model, kernel string, loop bool, exactIterations int) (string, int, error) {
 	profile, err := executionProfileForModel(value)
 	if err != nil {
@@ -404,13 +440,13 @@ func runRawSource(value *model, kernel string, loop bool, exactIterations int) (
 		if loop || exactIterations != 0 {
 			return "", 0, fmt.Errorf("enrollment-full owns its complete natural loop")
 		}
-		if _, _, err := runRawSourceAccountEntryCFG(worker, activeRawSourceRuntime, 1_000_000); err != nil {
+		if err := runAccountEntryStage(worker); err != nil {
 			return "", 0, err
 		}
-		if _, _, err := runRawSourceBootstrapCFG(worker, activeRawSourceRuntime, 1_000_000); err != nil {
+		if err := runBootstrapStage(worker); err != nil {
 			return "", 0, err
 		}
-		iterations, err := runRawSourceKernelLoop(worker, "outer")
+		iterations, err := runOuterStage(worker)
 		if err != nil {
 			return "", iterations, err
 		}
@@ -420,17 +456,17 @@ func runRawSource(value *model, kernel string, loop bool, exactIterations int) (
 		if loop || exactIterations != 0 {
 			return "", 0, fmt.Errorf("enrollment-frame owns its complete natural path")
 		}
-		if _, _, err := runRawSourceAccountEntryCFG(worker, activeRawSourceRuntime, 1_000_000); err != nil {
+		if err := runAccountEntryStage(worker); err != nil {
 			return "", 0, err
 		}
-		if _, _, err := runRawSourceBootstrapCFG(worker, activeRawSourceRuntime, 1_000_000); err != nil {
+		if err := runBootstrapStage(worker); err != nil {
 			return "", 0, err
 		}
-		iterations, err := runRawSourceKernelLoop(worker, "outer")
+		iterations, err := runOuterStage(worker)
 		if err != nil {
 			return "", iterations, err
 		}
-		if _, _, err := runRawSourceSelectionCFG(worker, activeRawSourceRuntime, value.selectionMaxBlocks); err != nil {
+		if err := runSelectionStage(worker); err != nil {
 			return "", iterations, err
 		}
 		return worker.digest(), iterations, nil
@@ -439,20 +475,20 @@ func runRawSource(value *model, kernel string, loop bool, exactIterations int) (
 		if loop || exactIterations != 0 {
 			return "", 0, fmt.Errorf("enrollment-sinf owns its complete natural path")
 		}
-		if _, _, err := runRawSourceAccountEntryCFG(worker, activeRawSourceRuntime, 1_000_000); err != nil {
+		if err := runAccountEntryStage(worker); err != nil {
 			return "", 0, err
 		}
-		if _, _, err := runRawSourceBootstrapCFG(worker, activeRawSourceRuntime, 1_000_000); err != nil {
+		if err := runBootstrapStage(worker); err != nil {
 			return "", 0, err
 		}
-		iterations, err := runRawSourceKernelLoop(worker, "outer")
+		iterations, err := runOuterStage(worker)
 		if err != nil {
 			return "", iterations, err
 		}
-		if _, _, err := runRawSourceSelectionCFG(worker, activeRawSourceRuntime, value.selectionMaxBlocks); err != nil {
+		if err := runSelectionStage(worker); err != nil {
 			return "", iterations, err
 		}
-		if _, _, err := runRawSourceSINFEntryCFG(worker, activeRawSourceRuntime, 2_000_000); err != nil {
+		if err := runSINFEntryStage(worker); err != nil {
 			return "", iterations, err
 		}
 		return worker.digest(), iterations, nil
@@ -461,10 +497,10 @@ func runRawSource(value *model, kernel string, loop bool, exactIterations int) (
 		if loop || exactIterations != 0 {
 			return "", 0, fmt.Errorf("bootstrap-full owns its complete natural loop")
 		}
-		if _, _, err := runRawSourceBootstrapCFG(worker, activeRawSourceRuntime, 1_000_000); err != nil {
+		if err := runBootstrapStage(worker); err != nil {
 			return "", 0, err
 		}
-		iterations, err := runRawSourceKernelLoop(worker, "outer")
+		iterations, err := runOuterStage(worker)
 		if err != nil {
 			return "", iterations, err
 		}

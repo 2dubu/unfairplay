@@ -334,25 +334,35 @@ func runCompactHook(s *state, action compactHookAction) error {
 	}
 	switch action {
 	case compactHookDigest:
-		_, err := runRawSourceKernelLoop(s, "digest-natural")
-		return err
+		return withRecoveryStage(s, "outer.digest", func() error {
+			_, err := runRawSourceKernelLoop(s, "digest-natural")
+			return err
+		})
 	case compactHookOptional:
 		if s.x[9] == profile.optionalStart {
-			return profile.runOptional(s, fault{})
+			return withRecoveryStage(s, "outer.optional", func() error { return profile.runOptional(s, fault{}) })
 		}
 		return nil
 	case compactHookEven:
-		_, err := runRawSourceKernelLoop(s, "even")
-		return err
+		return withRecoveryStage(s, "outer.even", func() error {
+			_, err := runRawSourceKernelLoop(s, "even")
+			return err
+		})
 	case compactHookOdd:
-		_, err := runRawSourceKernelLoop(s, "odd")
-		return err
+		return withRecoveryStage(s, "outer.odd", func() error {
+			_, err := runRawSourceKernelLoop(s, "odd")
+			return err
+		})
 	case compactHookTail:
-		_, err := runRawSourceKernelLoop(s, "tail")
-		return err
+		return withRecoveryStage(s, "outer.tail", func() error {
+			_, err := runRawSourceKernelLoop(s, "tail")
+			return err
+		})
 	case compactHookWriter:
-		_, err := runRawSourceKernelLoop(s, "writer")
-		return err
+		return withRecoveryStage(s, "outer.writer", func() error {
+			_, err := runRawSourceKernelLoop(s, "writer")
+			return err
+		})
 	default:
 		return fmt.Errorf("unknown compact kernel hook %d", action)
 	}
@@ -360,11 +370,13 @@ func runCompactHook(s *state, action compactHookAction) error {
 
 func runCompactKernel(s *state, kernel compactKernel) error {
 	pc := kernel.start
+	s.traceBlock(pc)
 	segment := 0
 	hook := 0
 	for index, instruction := range kernel.instructions {
 		if segment < len(kernel.segments) && kernel.segments[segment].index == uint32(index) {
 			pc = kernel.segments[segment].address
+			s.traceBlock(pc)
 			segment++
 		}
 		d, left, right := int(instruction.destination), int(instruction.left), int(instruction.right)

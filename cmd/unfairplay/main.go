@@ -123,6 +123,8 @@ type recoverOptions struct {
 	SelectionMaxBlocks int
 	Capture            string
 	Output             string
+	TraceStages        bool
+	TraceValues        bool
 }
 
 func newRecoverCommand() *cobra.Command {
@@ -138,6 +140,8 @@ func newRecoverCommand() *cobra.Command {
 	command.Flags().IntVar(&options.SelectionMaxBlocks, "selection-max-blocks", 2_000_000, "Selection execution limit (1..20000000)")
 	command.Flags().StringVar(&options.Capture, "capture", "", "Private capture directory")
 	command.Flags().StringVar(&options.Output, "output", "", "New private recovery directory")
+	command.Flags().BoolVar(&options.TraceStages, "trace-stages", false, "Write a private stage-contract trace for algorithm recovery")
+	command.Flags().BoolVar(&options.TraceValues, "trace-values", false, "Include private register and memory values in the stage trace")
 	_ = command.MarkFlagRequired("capture")
 	_ = command.MarkFlagRequired("output")
 	return command
@@ -218,6 +222,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 		recovered, err = recovery.Recover(recovery.Options{
 			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), ExecutablePath: executablePath,
 			ReferencePath: referencePath, SelectionMaxBlocks: options.SelectionMaxBlocks,
+			TraceStages: options.TraceStages || options.TraceValues, TraceValues: options.TraceValues,
 		})
 		if err == nil {
 			selectedProfile = inputProfile.name
@@ -246,6 +251,19 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	if err := os.Rename(candidate, enrollment); err != nil {
 		return outcome, err
 	}
+	traceReport := ""
+	if options.TraceStages || options.TraceValues {
+		traceDocument, marshalErr := json.MarshalIndent(map[string]any{
+			"schema": "unfairplay-recovery-stage-trace-v1", "stages": recovered.StageTraces,
+		}, "", "  ")
+		if marshalErr != nil {
+			return outcome, marshalErr
+		}
+		traceReport = filepath.Join(options.Output, "stage-trace.json")
+		if err := writePrivateFile(traceReport, append(traceDocument, '\n')); err != nil {
+			return outcome, err
+		}
+	}
 	summary := map[string]any{
 		"schema": "unfairplay-enrollment-recovery-v1", "success": true,
 		"selector": manifest.App.SelectorID, "fairplayd_sha256": manifest.FairPlayd.SHA256,
@@ -260,6 +278,10 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 		"exact_extracted_block_hits": recovered.ExtractedBlockHits,
 		"promotion_gate":             "complete-sinf-and-ipa-validation",
 		"reference_code_source":      referenceSource,
+	}
+	if traceReport != "" {
+		summary["stage_trace"] = traceReport
+		summary["stage_trace_count"] = len(recovered.StageTraces)
 	}
 	document, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {

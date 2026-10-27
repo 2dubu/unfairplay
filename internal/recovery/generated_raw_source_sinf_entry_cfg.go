@@ -12,6 +12,7 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 	stopHits := 0
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
 		if pc == profile.sinfEntryStop {
+			s.traceBlock(pc)
 			stopHits++
 			if stopHits == 1 {
 				return pc, blockCount, nil
@@ -21,6 +22,7 @@ func runRawSourceSINFEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			return pc, blockCount, nil
 		}
 		if pc >= 0xf000000000000000 || pc == 0x720000000000 {
+			s.traceBlock(pc)
 			if runtime == nil {
 				return pc, blockCount, fmt.Errorf("sinf-entry runtime is unavailable")
 			}

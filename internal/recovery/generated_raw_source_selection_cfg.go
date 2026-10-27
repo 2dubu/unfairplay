@@ -14,6 +14,7 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 	frameCalls := 0
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
 		if pc == profile.selectionFrameCall {
+			s.traceBlock(pc)
 			frameCalls++
 			if frameCalls == 1 {
 				// The first invocation materializes neighboring dispatcher state.
@@ -29,6 +30,7 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			}
 		}
 		if pc == profile.selectionStop {
+			s.traceBlock(pc)
 			stopHits++
 			if stopHits == profile.selectionStopHits {
 				return pc, blockCount, nil
@@ -38,6 +40,7 @@ func runRawSourceSelectionCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			return pc, blockCount, nil
 		}
 		if pc >= 0xf000000000000000 || pc == 0x720000000000 {
+			s.traceBlock(pc)
 			if runtime == nil {
 				return pc, blockCount, fmt.Errorf("selection runtime is unavailable")
 			}

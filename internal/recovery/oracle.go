@@ -20,6 +20,8 @@ const (
 
 type model struct {
 	allowDestinationPages bool
+	traceStages           bool
+	traceValues           bool
 	exactExtractedBlocks  map[uint64]compactBlock
 	selectionMaxBlocks    int
 	profile               *executionProfile
@@ -191,14 +193,19 @@ type state struct {
 	mapped             map[uint64][]byte
 	destinationPages   map[uint64]bool
 	extractedBlockHits int
+	tracer             *recoveryTraceRecorder
 }
 
 func newState(value *model) *state {
-	return &state{
+	result := &state{
 		model: value, writable: make(map[uint64][]byte),
 		dirty: make(map[uint64]bool), accessed: make(map[uint64]bool), initialized: make(map[uint64][]bool),
 		mapped: make(map[uint64][]byte), destinationPages: capturedDestinationPages(value),
 	}
+	if value.traceStages {
+		result.tracer = &recoveryTraceRecorder{includeValues: value.traceValues}
+	}
+	return result
 }
 
 // capturedDestinationPages identifies snapshot holes that are bounded by the
@@ -570,6 +577,7 @@ func (s *state) load(address uint64, size int) (uint64, error) {
 	if size != 1 && size != 2 && size != 4 && size != 8 {
 		return 0, fmt.Errorf("unsupported oracle load size %d", size)
 	}
+	s.traceAccess(address, size, false)
 	if address&(pageSize-1)+uint64(size) <= pageSize {
 		page, err := s.page(address, false)
 		if err != nil {
@@ -606,6 +614,7 @@ func (s *state) load(address uint64, size int) (uint64, error) {
 }
 
 func (s *state) store(address uint64, value []byte) error {
+	s.traceAccess(address, len(value), true)
 	for len(value) != 0 {
 		page, err := s.page(address, true)
 		if err != nil {

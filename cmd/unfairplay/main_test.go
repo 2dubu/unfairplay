@@ -123,6 +123,13 @@ func TestCollectExposesArchivedExecutablePath(t *testing.T) {
 	}
 }
 
+func TestRecoverExposesPrivateStageTrace(t *testing.T) {
+	command := newRecoverCommand()
+	if command.Flags().Lookup("trace-stages") == nil || command.Flags().Lookup("trace-values") == nil {
+		t.Fatal("recover has incomplete stage-trace flags")
+	}
+}
+
 func TestRecoveryReferenceSelection(t *testing.T) {
 	exact := fairplay.EnrollmentCaptureManifest{
 		FairPlayd: fairplay.EnrollmentCaptureFile{Path: "fairplayd/fairplayd.arm64e", SHA256: fairplay.FairPlayBuild26A428Hash},

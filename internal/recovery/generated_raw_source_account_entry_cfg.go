@@ -12,6 +12,7 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 	stopHits := 0
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
 		if pc == profile.accountEntryStop {
+			s.traceBlock(pc)
 			stopHits++
 			if stopHits == 1 {
 				return pc, blockCount, nil
@@ -21,6 +22,7 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 			return pc, blockCount, nil
 		}
 		if pc >= 0xf000000000000000 || pc == 0x720000000000 {
+			s.traceBlock(pc)
 			if runtime == nil {
 				return pc, blockCount, fmt.Errorf("account-entry runtime is unavailable")
 			}

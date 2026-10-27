@@ -14,6 +14,8 @@ type Options struct {
 	ExecutablePath     string
 	ReferencePath      string
 	SelectionMaxBlocks int
+	TraceStages        bool
+	TraceValues        bool
 }
 
 // Result is the output of one bounded enrollment recovery.
@@ -22,6 +24,7 @@ type Result struct {
 	StateSHA256        string
 	Iterations         int
 	ExtractedBlockHits int
+	StageTraces        []RecoveryStageTrace
 }
 
 var recoveryMu sync.Mutex
@@ -63,6 +66,8 @@ func Recover(options Options) (Result, error) {
 		return Result{}, err
 	}
 	value.selectionMaxBlocks = limit
+	value.traceStages = options.TraceStages || options.TraceValues
+	value.traceValues = options.TraceValues
 	if err := addReferencePages(value, options.ReferencePath); err != nil {
 		return Result{}, err
 	}
@@ -82,7 +87,14 @@ func Recover(options Options) (Result, error) {
 	if lastRawSourceState != nil {
 		hits = lastRawSourceState.extractedBlockHits
 	}
-	return Result{EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations, ExtractedBlockHits: hits}, nil
+	var traces []RecoveryStageTrace
+	if lastRawSourceState != nil && lastRawSourceState.tracer != nil {
+		traces = lastRawSourceState.tracer.completedResults()
+	}
+	return Result{
+		EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations,
+		ExtractedBlockHits: hits, StageTraces: traces,
+	}, nil
 }
 
 const defaultSelectionMaxBlocks = 2_000_000

@@ -11,12 +11,14 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 	pc := profile.bootstrapStart
 	for blockCount := 0; blockCount < maxBlocks; blockCount++ {
 		if pc == profile.bootstrapStop {
+			s.traceBlock(pc)
 			return pc, blockCount, nil
 		}
 		if runtime != nil && runtime.stopPC != 0 && pc == runtime.stopPC {
 			return pc, blockCount, nil
 		}
 		if pc >= 0xf000000000000000 || pc == 0x720000000000 {
+			s.traceBlock(pc)
 			if runtime == nil {
 				return pc, blockCount, fmt.Errorf("bootstrap runtime is unavailable")
 			}
