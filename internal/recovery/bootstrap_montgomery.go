@@ -10,8 +10,113 @@ type montgomeryWordResult struct {
 	Carry uint32
 }
 
+const bootstrapAccumulatorCycleExit = uint64(0x1007f70c4)
+
 func runBootstrapMixer(s *state, _ *rawSourceRuntime, _ *executionProfile) (uint64, error) {
 	return runBootstrapMontgomerySquare(s)
+}
+
+func runBootstrapAccumulatorCycle(s *state) (uint64, error) {
+	// The one-round form is a final correction rather than a complete
+	// multiplication; retain its already-verified semantic controller.
+	if uint32(s.x[25]) != 0xb5 {
+		return runBootstrapAccumulatorCycleCircuit(s)
+	}
+	return runBootstrapMontgomeryMultiply(s)
+}
+
+// runBootstrapMontgomeryMultiply replaces one complete accumulator cycle with
+// a typed CIOS Montgomery multiplication. The cycle's operand descriptors are
+// stack-resident; its output uses the same masked 32-bit limb format as the
+// recovered square path.
+func runBootstrapMontgomeryMultiply(s *state) (uint64, error) {
+	limbs := int(uint32(s.x[10]))
+	if limbs != 32 && limbs != 64 || uint32(s.x[16]) != 0x224ea33b {
+		return 0, fmt.Errorf("unsupported bootstrap Montgomery multiply ABI")
+	}
+	leftPointer, err := s.load(s.sp+0x70, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery left operand: %w", err)
+	}
+	rightObject, err := s.load(s.sp+0x40, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery right object: %w", err)
+	}
+	rightPointer, err := s.load(rightObject+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery right operand: %w", err)
+	}
+	modulusObject, err := s.load(s.sp+0xa0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery modulus object: %w", err)
+	}
+	modulusPointer, err := s.load(modulusObject+8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery modulus: %w", err)
+	}
+	lastPointer, err := s.load(s.sp+0x50, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery last-word pointer: %w", err)
+	}
+	carryPointer, err := s.load(s.sp+0x58, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery carry pointer: %w", err)
+	}
+	if lastPointer != s.x[9]+uint64((limbs-1)*4) || carryPointer != s.x[9]+uint64(limbs*4) {
+		return 0, fmt.Errorf("unsupported bootstrap Montgomery output geometry")
+	}
+	mask := uint32(s.x[16])
+	left, err := loadMontgomeryWords(s, leftPointer, limbs, mask, "left operand")
+	if err != nil {
+		return 0, err
+	}
+	right, err := loadMontgomeryWords(s, rightPointer, limbs, mask, "right operand")
+	if err != nil {
+		return 0, err
+	}
+	modulus, err := loadMontgomeryWords(s, modulusPointer, limbs, mask, "modulus")
+	if err != nil {
+		return 0, err
+	}
+	inverse, err := s.load(s.sp+0x6c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery multiply inverse: %w", err)
+	}
+	result, err := montgomeryCIOSMultiply(left, right, modulus, uint32(inverse))
+	if err != nil {
+		return 0, err
+	}
+	for index, word := range result.Words {
+		if err := s.storeValue(s.x[9]+uint64(index*4), uint64(word^mask), 4); err != nil {
+			return 0, fmt.Errorf("bootstrap Montgomery multiply output %d: %w", index, err)
+		}
+	}
+	if err := s.storeValue(carryPointer, uint64(result.Carry^mask), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery multiply carry: %w", err)
+	}
+	finalCounter := uint32(s.x[4]) + uint32(limbs)
+	if err := s.storeValue(s.sp+0x98, uint64(finalCounter-1), 4); err != nil {
+		return 0, fmt.Errorf("bootstrap Montgomery multiply counter: %w", err)
+	}
+
+	s.x[4] = uint64(finalCounter)
+	s.x[5] = lastPointer
+	s.x[6] = 0x68ed69f7
+	s.x[7] = 0x5c37
+	s.x[8] = bootstrapAccumulatorCycleExit
+	s.x[13] = 0x930501b9
+	s.x[15] = 0x1430e33e4efdacf8
+	s.x[17] = 0x902d
+	s.x[19] = 0x446c
+	s.x[20] = uint64(finalCounter)
+	s.x[21] = ^uint64(0x5c16)
+	s.x[22] = 0x3426
+	s.x[23] = 0x100ff1ef0
+	s.x[25] = 0x38cce9d6c53c8609
+	s.x[26] = 0xc73316293ac379f7
+	s.x[27] = 0xa049
+	s.x[28] = 0xebcf1cc1b1025308
+	return bootstrapAccumulatorCycleExit, nil
 }
 
 // runBootstrapMontgomerySquare replaces one complete flattened bootstrap
@@ -31,19 +136,13 @@ func runBootstrapMontgomerySquare(s *state) (uint64, error) {
 		return 0, fmt.Errorf("unsupported bootstrap Montgomery ABI")
 	}
 	mask := uint32(s.x[24])
-	input := make([]uint32, limbs)
-	modulus := make([]uint32, limbs)
-	for index := 0; index < limbs; index++ {
-		word, err := s.load(s.x[5]+uint64(index*4), 4)
-		if err != nil {
-			return 0, fmt.Errorf("bootstrap Montgomery input word %d: %w", index, err)
-		}
-		input[index] = uint32(word) ^ mask
-		word, err = s.load(s.x[22]+uint64(index*4), 4)
-		if err != nil {
-			return 0, fmt.Errorf("bootstrap Montgomery modulus word %d: %w", index, err)
-		}
-		modulus[index] = uint32(word) ^ mask
+	input, err := loadMontgomeryWords(s, s.x[5], limbs, mask, "square input")
+	if err != nil {
+		return 0, err
+	}
+	modulus, err := loadMontgomeryWords(s, s.x[22], limbs, mask, "modulus")
+	if err != nil {
+		return 0, err
 	}
 	inverse, err := s.load(s.sp+0x5c, 4)
 	if err != nil {
@@ -94,6 +193,18 @@ func runBootstrapMontgomerySquare(s *state) (uint64, error) {
 	s.x[27] = 0xa9292112
 	s.x[28] = uint64(finalCounter)
 	return bootstrapStackSelector, nil
+}
+
+func loadMontgomeryWords(s *state, address uint64, count int, mask uint32, name string) ([]uint32, error) {
+	words := make([]uint32, count)
+	for index := range words {
+		word, err := s.load(address+uint64(index*4), 4)
+		if err != nil {
+			return nil, fmt.Errorf("bootstrap Montgomery %s word %d: %w", name, index, err)
+		}
+		words[index] = uint32(word) ^ mask
+	}
+	return words, nil
 }
 
 // montgomeryCIOSSquare performs coarsely integrated operand scanning (CIOS)

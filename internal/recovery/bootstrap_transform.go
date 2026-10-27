@@ -1345,7 +1345,7 @@ func runBootstrapByteStateStep(s *state) (uint64, error) {
 	return next, nil
 }
 
-func runBootstrapAccumulatorCycle(s *state) (uint64, error) {
+func runBootstrapAccumulatorCycleCircuit(s *state) (uint64, error) {
 	const maximumRounds = 4096
 	for round := 0; round < maximumRounds; round++ {
 		next, err := runBootstrapAccumulatorCycleSeed(s)
