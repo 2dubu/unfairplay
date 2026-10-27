@@ -31,13 +31,20 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 		// The entry block is the bootstrap's hot recurrence. Keep partial-block
 		// diagnostic stops on the lifted block, but use its recovered direct Go
 		// form for normal execution.
-		bootstrapEnd := profile.bootstrapStart + uint64(len(compact26A428BootstrapKernel.instructions))*4
-		partialStop := runtime != nil && runtime.stopPC > profile.bootstrapStart && runtime.stopPC <= bootstrapEnd
-		if pc == profile.bootstrapStart && !partialStop {
-			if err := profile.runBootstrap(s, fault{}); err != nil {
+		if pc == profile.bootstrapStart && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapMixer(s, runtime, profile)
+			if err != nil {
 				return pc, blockCount, err
 			}
-			pc = s.x[3]
+			pc = next
+			continue
+		}
+		if (pc == bootstrapShortWordPass || pc == bootstrapLongWordPass) && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapWordPass(s, pc)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
 			continue
 		}
 		if block, ok := recoveryBlock(s, pc, profile.bootstrapBlocks, profile.supplementalBlocks, profile.verifiedFallbackBlocks); ok {

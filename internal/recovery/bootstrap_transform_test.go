@@ -76,3 +76,66 @@ func TestBootstrapRecurrenceRejectsMissingMemory(t *testing.T) {
 		t.Fatal("bootstrap recurrence accepted missing tables")
 	}
 }
+
+func TestBootstrapWordStepsMatchLiftedBlocks(t *testing.T) {
+	tests := []struct {
+		name    string
+		address uint64
+		direct  func(*state) (uint64, error)
+	}{
+		{"short", bootstrapShortWordPass, runBootstrapShortWordStep},
+		{"long", bootstrapLongWordPass, runBootstrapLongWordStep},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			random := rand.New(rand.NewSource(int64(test.address)))
+			for trial := 0; trial < 256; trial++ {
+				pages := map[uint64][]byte{
+					0x100000: make([]byte, pageSize),
+					0x200000: make([]byte, pageSize),
+					0x300000: make([]byte, pageSize),
+					0x400000: make([]byte, pageSize),
+				}
+				for _, page := range pages {
+					if _, err := random.Read(page); err != nil {
+						t.Fatal(err)
+					}
+				}
+				lifted := newState(&model{pages: clonePages(pages)})
+				direct := newState(&model{pages: clonePages(pages)})
+				for register := range lifted.x {
+					lifted.x[register] = random.Uint64()
+				}
+				lifted.x[0] = 0x100400
+				lifted.x[1] = 0
+				lifted.x[8] = uint64(uint32(random.Intn(32)) * 4)
+				lifted.x[9] = uint64(uint32(random.Intn(32)) * 4)
+				lifted.x[10] = uint64(uint32(random.Intn(32) - 16))
+				lifted.x[11] = 0x300100
+				lifted.x[19] = 0x200800
+				lifted.x[21] = 0x400100
+				direct.x = lifted.x
+				direct.n, direct.z, direct.c, direct.v = lifted.n, lifted.z, lifted.c, lifted.v
+
+				block := compact26A428BootstrapBlocks[test.address]
+				nextLifted, stopped, err := runCompactBlock(lifted, nil, block)
+				if err != nil || stopped {
+					t.Fatalf("trial %d lifted block: next=%#x stopped=%v err=%v", trial, nextLifted, stopped, err)
+				}
+				nextDirect, err := test.direct(direct)
+				if err != nil {
+					t.Fatalf("trial %d direct step: %v", trial, err)
+				}
+				if nextLifted != nextDirect || lifted.x != direct.x {
+					t.Fatalf("trial %d state differs: next lifted=%#x direct=%#x\nlifted=%#v\ndirect=%#v", trial, nextLifted, nextDirect, lifted.x, direct.x)
+				}
+				if lifted.n != direct.n || lifted.z != direct.z || lifted.c != direct.c || lifted.v != direct.v {
+					t.Fatalf("trial %d flags differ", trial)
+				}
+				if !reflect.DeepEqual(lifted.writable, direct.writable) {
+					t.Fatalf("trial %d writes differ", trial)
+				}
+			}
+		})
+	}
+}
