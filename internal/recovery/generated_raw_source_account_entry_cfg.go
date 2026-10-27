@@ -34,6 +34,14 @@ func runRawSourceAccountEntryCFG(s *state, runtime *rawSourceRuntime, maxBlocks 
 			continue
 		}
 		if runtime == nil || runtime.stopPC == 0 {
+			if pc == accountFoldRound {
+				next, err := runAccountFold(s)
+				if err != nil {
+					return pc, blockCount, err
+				}
+				pc = next
+				continue
+			}
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {
 				return pc, blockCount, err
