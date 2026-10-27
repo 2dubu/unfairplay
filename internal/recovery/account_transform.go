@@ -491,6 +491,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountRuntimeByteSetup:
 		next, err := runAccountRuntimeByteSetup(s)
 		return next, true, err
+	case accountMultiplyTarget:
+		next, err := runAccountMultiplyTarget(s)
+		return next, true, err
+	case accountFrameByteTarget:
+		next, err := runAccountFrameByteTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
