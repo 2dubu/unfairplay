@@ -536,6 +536,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountPairCompareDispatch:
 		next, err := runAccountPairCompareDispatch(s)
 		return next, true, err
+	case accountByteMaskTarget:
+		next, err := runAccountByteMaskTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
