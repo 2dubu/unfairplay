@@ -273,16 +273,38 @@ func runSINFByteSelector(s *state) (uint64, error) {
 // loop counter and protected continuation are carried between iterations.
 func runSINFPrecursorCodec(s *state) (uint64, error) {
 	const maximumBytes = 1024
-	for index := 0; index < maximumBytes; index++ {
-		next, err := runSINFPrecursorCodecStep(s)
-		if err != nil || next != sinfPrecursorCodecPass {
+	if s == nil || s.x[11] == 0 || s.x[11] > maximumBytes {
+		return 0, fmt.Errorf("unsupported SINF precursor length %d", s.x[11])
+	}
+	targets := [2]uint64{}
+	for last := uint32(0); last < 2; last++ {
+		next, err := loadBootstrapPointer(s, s.x[27], uint32(s.x[13])^last*uint32(s.x[19]))
+		if err != nil {
+			return 0, fmt.Errorf("SINF precursor target %d: %w", last, err)
+		}
+		targets[last] = next
+	}
+	if s.x[11] > 1 && targets[0] != sinfPrecursorCodecPass {
+		return 0, fmt.Errorf("unsupported SINF precursor continuation %#x", targets[0])
+	}
+	length := int(s.x[11])
+	for index := 0; index < length; index++ {
+		next, err := runSINFPrecursorCodecIteration(s, &targets)
+		if err != nil {
 			return next, err
 		}
+		if next != sinfPrecursorCodecPass {
+			return next, nil
+		}
 	}
-	return 0, fmt.Errorf("SINF precursor codec exceeded %d bytes", maximumBytes)
+	return 0, fmt.Errorf("SINF precursor codec did not exit after %d bytes", length)
 }
 
 func runSINFPrecursorCodecStep(s *state) (uint64, error) {
+	return runSINFPrecursorCodecIteration(s, nil)
+}
+
+func runSINFPrecursorCodecIteration(s *state, targets *[2]uint64) (uint64, error) {
 	if s == nil {
 		return 0, fmt.Errorf("SINF precursor codec state is unavailable")
 	}
@@ -423,10 +445,15 @@ func runSINFPrecursorCodecStep(s *state) (uint64, error) {
 		return 0, fmt.Errorf("SINF precursor output: %w", err)
 	}
 	last := uint32(boolValue(s.condition("eq")))
-	dispatchIndex := last*uint32(s.x[19]) ^ uint32(s.x[13])
-	next, err := loadBootstrapPointer(s, s.x[27], dispatchIndex)
-	if err != nil {
-		return 0, fmt.Errorf("SINF precursor dispatch: %w", err)
+	var next uint64
+	if targets != nil {
+		next = targets[last]
+	} else {
+		dispatchIndex := last*uint32(s.x[19]) ^ uint32(s.x[13])
+		next, err = loadBootstrapPointer(s, s.x[27], dispatchIndex)
+		if err != nil {
+			return 0, fmt.Errorf("SINF precursor dispatch: %w", err)
+		}
 	}
 	s.x[10] = next
 	s.x[17] = 0x1840
