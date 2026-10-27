@@ -15,13 +15,26 @@ import (
 
 func macOSTestCurrentSINF(t *testing.T, credential []byte, mode uint32) []byte {
 	t.Helper()
-	rights := make([]byte, 88)
-	for index, typ := range []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32"} {
+	return macOSTestCurrentSINFLayout(t, credential, mode, false)
+}
+
+func macOSTestCurrentSINFLayout(t *testing.T, credential []byte, mode uint32, short bool) []byte {
+	t.Helper()
+	rightsBytes := 88
+	if short {
+		rightsBytes = 80
+	}
+	rights := make([]byte, rightsBytes)
+	rightsTypes := []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32"}
+	if short {
+		rightsTypes = rightsTypes[:9]
+	}
+	for index, typ := range rightsTypes {
 		copy(rights[index*8:index*8+4], typ)
 		binary.BigEndian.PutUint32(rights[index*8+4:index*8+8], uint32(index+1))
 	}
 	binary.BigEndian.PutUint32(rights[8*8+4:8*8+8], mode)
-	copy(rights[80:], []byte{0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe})
+	copy(rights[len(rights)-8:], []byte{0xde, 0xad, 0xbe, 0xef, 0xca, 0xfe, 0xba, 0xbe})
 	iviv := []byte{0x10, 0x21, 0x32, 0x43, 0x54, 0x65, 0x76, 0x87, 0x98, 0xa9, 0xba, 0xcb, 0xdc, 0xed, 0xfe, 0x0f}
 	name := make([]byte, 256)
 	copy(name, "Signal")
@@ -39,12 +52,19 @@ func macOSTestCurrentSINF(t *testing.T, credential []byte, mode uint32) []byte {
 	}{{"key ", key}, {"iviv", iviv}, {"tmpr", tmpr}, {"righ", rights}, {"name", name}} {
 		cleartext = append(cleartext, macOSSINFAtom(field.typ, field.payload)...)
 	}
-	if len(cleartext) != 448 {
+	if len(cleartext) != 360+rightsBytes {
 		t.Fatalf("current private fixture has %d bytes", len(cleartext))
 	}
-	private, err := macOSSINFCrypt(cleartext, credential, name, iviv, true)
+	encryptedClear := cleartext
+	if short {
+		encryptedClear = cleartext[:432]
+	}
+	private, err := macOSSINFCrypt(encryptedClear, credential, name, iviv, true)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if short {
+		private = append(private, cleartext[432:]...)
 	}
 	user := make([]byte, 4)
 	keyID := make([]byte, 4)
@@ -398,4 +418,73 @@ func TestExternalMacOSCredentialFromEnrollmentModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	clear(converted)
+}
+
+func TestNormalizeShortMacOSSINF(t *testing.T) {
+	credential := macOSTestCredential()
+	original := macOSTestCurrentSINFLayout(t, credential, 7, true)
+	converted, report, err := normalizeMacOSSINF(original, credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RightsSuffixRemovedBytes != 0 || report.NamedRightsPreserved != 9 || report.OriginalMode != 7 || !report.PrivateKeyMaterialPreserved {
+		t.Fatal("incorrect short-layout report")
+	}
+	if err := verifyMacOSSINF(converted, credential); err != nil {
+		t.Fatal(err)
+	}
+	convertedFields, err := parseSINFFields(converted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	convertedRights, err := macOSSINFField(converted, convertedFields, "righ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	convertedPrivate, err := macOSSINFField(converted, convertedFields, "priv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(convertedRights) != 80 || len(convertedPrivate) != 440 {
+		t.Fatalf("converted geometry = %d/%d, want 80/440", len(convertedRights), len(convertedPrivate))
+	}
+	for index, typ := range []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode"} {
+		want := uint32(index + 1)
+		if typ == "mode" {
+			want = 0
+		}
+		if string(convertedRights[index*8:index*8+4]) != typ || binary.BigEndian.Uint32(convertedRights[index*8+4:index*8+8]) != want {
+			t.Fatalf("converted right %q was not preserved or normalized", typ)
+		}
+	}
+	if !bytes.Equal(convertedRights[72:], make([]byte, 8)) {
+		t.Fatal("converted rights suffix is not zero")
+	}
+	wrong := append([]byte(nil), credential...)
+	wrong[0] ^= 0xff
+	if _, _, err := normalizeMacOSSINF(original, wrong); err == nil {
+		t.Fatal("wrong credential accepted")
+	}
+	fields, err := parseSINFFields(original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	priv, err := uniqueAtom(fields, "priv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := append([]byte(nil), original...)
+	bad[priv.end-1] = 1
+	if _, _, err := normalizeMacOSSINF(bad, credential); err == nil {
+		t.Fatal("nonzero short trailer accepted")
+	}
+	rights, err := uniqueAtom(fields, "righ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad = append([]byte(nil), original...)
+	bad[rights.start+4] ^= 1
+	if _, _, err := normalizeMacOSSINF(bad, credential); err == nil {
+		t.Fatal("visible/private rights mismatch accepted")
+	}
 }
