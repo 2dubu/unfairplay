@@ -146,6 +146,36 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountFourthWordRound:
 		next, err := runAccountFourthWordRound(s)
 		return next, true, err
+	case accountScaledSelect:
+		next, err := runAccountScaledSelect(s)
+		return next, true, err
+	case accountIndexedSelect:
+		next, err := runAccountIndexedSelect(s)
+		return next, true, err
+	case accountFrameSetup:
+		next, err := runAccountFrameSetup(s)
+		return next, true, err
+	case accountNestedReturn:
+		next, err := runAccountNestedReturn(s)
+		return next, true, err
+	case accountShiftSelect:
+		next, err := runAccountShiftSelect(s)
+		return next, true, err
+	case accountPairedSelectFront:
+		next, err := runAccountPairedSelect(s)
+		return next, true, err
+	case accountDifferenceSelect:
+		next, err := runAccountDifferenceSelect(s)
+		return next, true, err
+	case accountByteWriterA:
+		next, err := runAccountByteWriterA(s)
+		return next, true, err
+	case accountByteWriterB:
+		next, err := runAccountByteWriterB(s)
+		return next, true, err
+	case accountByteWriterCFront:
+		next, err := runAccountByteWriterC(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
