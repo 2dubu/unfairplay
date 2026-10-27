@@ -1,0 +1,231 @@
+package recovery
+
+import "fmt"
+
+const (
+	sinfPrecursorCodecPass = uint64(0x10015320c)
+	sinfMaterialWriterPass = uint64(0x10005fde4)
+)
+
+func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
+	switch pc {
+	case sinfPrecursorCodecPass:
+		next, err := runSINFPrecursorCodec(s)
+		return next, true, err
+	case sinfMaterialWriterPass:
+		next, err := runSINFMaterialWriter(s)
+		return next, true, err
+	default:
+		return pc, false, nil
+	}
+}
+
+// runSINFPrecursorCodec applies the position-dependent byte codec used for the
+// 432-byte current-SINF private source. Bytes are independent; only the reverse
+// loop counter and protected continuation are carried between iterations.
+func runSINFPrecursorCodec(s *state) (uint64, error) {
+	const maximumBytes = 1024
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runSINFPrecursorCodecStep(s)
+		if err != nil || next != sinfPrecursorCodecPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("SINF precursor codec exceeded %d bytes", maximumBytes)
+}
+
+func runSINFPrecursorCodecStep(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("SINF precursor codec state is unavailable")
+	}
+	s.traceBlock(sinfPrecursorCodecPass)
+	s.x[9] = uint64(uint32(s.x[12]) | 0x02600022)
+	oldCounter := s.x[11]
+	s.x[11] = s.subtractWithFlags(oldCounter, 1, 64)
+	input, err := s.load(s.x[23]+s.x[11], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor input: %w", err)
+	}
+	s.x[10] = uint64(byte(input))
+	firstWord, err := s.load(0x101075000+0x588, 4)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor first static word: %w", err)
+	}
+	s.x[17] = uint64(uint32(firstWord))
+	secondWord, err := s.load(s.x[25]+0xb40, 4)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor second static word: %w", err)
+	}
+	s.x[20] = uint64(uint32(secondWord))
+	s.x[21] = uint64(uint32(s.x[17]) ^ uint32(s.x[20]))
+	s.x[21] = uint64(uint32(s.x[21]) ^ uint32(s.x[15]))
+	s.x[21] = uint64(uint32(s.x[21]) * uint32(s.x[16]))
+	firstBase, err := s.load(addOffset(s.x[29], -0xc8), 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor first dynamic table: %w", err)
+	}
+	s.x[1] = firstBase
+	s.x[22] = firstBase + uint64(byte(s.x[21]))
+	first, err := s.load(s.x[22], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor first dynamic byte: %w", err)
+	}
+	s.x[22] = uint64(byte(first))
+	s.x[22] = uint64(uint32(s.x[22]) ^ uint32(s.x[0]))
+	first, err = s.load(s.x[14]+uint64(uint32(s.x[22])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor first substitution: %w", err)
+	}
+	s.x[22] = uint64(byte(first))
+	s.x[21] = uint64(uint32(s.x[21]) ^ uint32(s.x[22]))
+	s.x[17] = uint64(uint32(s.x[20]) - uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[15]))
+	s.x[17] = uint64(uint32(s.x[17]) * uint32(s.x[16]))
+	s.x[20] = s.x[17] & 0xff
+	s.x[21] &= 0xff
+	s.x[22] = s.x[26] + s.x[20]
+	second, err := s.load(s.x[22], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor second dynamic byte: %w", err)
+	}
+	s.x[22] = uint64(byte(second))
+	s.x[22] = uint64(uint32(s.x[22]) ^ uint32(s.x[3]))
+	second, err = s.load(s.x[28]+uint64(uint32(s.x[22])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor second substitution: %w", err)
+	}
+	s.x[22] = uint64(byte(second))
+	s.x[21] = uint64(uint32(s.x[21]) + 0x577)
+	s.x[22] = uint64(uint32(s.x[17]) ^ uint32(s.x[22]))
+	s.x[22] &= 0xff
+	s.x[22] = uint64(uint32(s.x[22]) + 0xd6f)
+	secondBase, err := s.load(addOffset(s.x[29], -0xf8), 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor second dynamic table: %w", err)
+	}
+	s.x[20] = secondBase + s.x[20]
+	s.x[1] = 0x10105b000 + 0x6f0
+	s.x[22], err = s.load(s.x[1]+uint64(uint32(s.x[22]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor second pointer: %w", err)
+	}
+	second, err = s.load(s.x[20], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor second table byte: %w", err)
+	}
+	s.x[20] = uint64(byte(second))
+	s.x[20] = uint64(uint32(s.x[20]) ^ uint32(s.x[6]))
+	s.x[30] = s.x[23]
+	positionTable, err := s.load(s.sp+0x4c8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor position table: %w", err)
+	}
+	s.x[23] = positionTable
+	second, err = s.load(positionTable+uint64(uint32(s.x[20])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor position byte: %w", err)
+	}
+	s.x[20] = uint64(byte(second))
+	s.x[21], err = s.load(s.x[1]+uint64(uint32(s.x[21]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor first pointer: %w", err)
+	}
+	position := s.x[11] & 0xf
+	s.x[23] = position
+	s.x[17] = uint64(uint32(s.x[17]) ^ uint32(s.x[20]))
+	s.x[17] &= 0xff
+	s.x[17] = uint64(uint32(s.x[17]) + 0x946)
+	s.x[20] = position + s.x[4]
+	s.x[20] = s.x[22] + s.x[20]
+	s.x[17], err = s.load(s.x[1]+uint64(uint32(s.x[17]))*8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor third pointer: %w", err)
+	}
+	s.x[22] = position + s.x[7]
+	s.x[17] += s.x[22]
+	s.x[22] = position + s.x[2]
+	s.x[21] += s.x[22]
+	s.x[22] = uint64(uint32(s.x[9]) - 0x1e)
+	s.x[10] = uint64(uint32(s.x[22]) ^ uint32(s.x[10]))
+	s.x[22] = uint64(uint32(position) * uint32(s.x[5]))
+	s.x[23] = s.x[30]
+	s.x[30], err = s.load(addOffset(s.x[29], -0x100), 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor final table: %w", err)
+	}
+	s.x[10] = uint64(uint32(s.x[10]) ^ uint32(s.x[22]))
+	first, err = s.load(s.x[21], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor first result byte: %w", err)
+	}
+	s.x[21] = uint64(byte(first))
+	s.x[10] = uint64(uint32(s.x[10]) ^ uint32(s.x[21]))
+	second, err = s.load(s.x[20], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor second result byte: %w", err)
+	}
+	s.x[20] = uint64(byte(second))
+	third, err := s.load(s.x[17], 1)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor third result byte: %w", err)
+	}
+	s.x[17] = uint64(uint32(s.x[20]) ^ uint32(byte(third)))
+	s.x[10] = uint64(uint32(s.x[10]) ^ uint32(s.x[17]))
+	if err := s.storeValue(s.x[8]+s.x[11], uint64(byte(s.x[10])), 1); err != nil {
+		return 0, fmt.Errorf("SINF precursor output: %w", err)
+	}
+	last := uint32(boolValue(s.condition("eq")))
+	dispatchIndex := last*uint32(s.x[19]) ^ uint32(s.x[13])
+	next, err := loadBootstrapPointer(s, s.x[27], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("SINF precursor dispatch: %w", err)
+	}
+	s.x[10] = next
+	s.x[17] = 0x1840
+	return next, nil
+}
+
+// runSINFMaterialWriter applies the recovered direct precursor-to-material
+// projection. The native protected handler performs the same byte-wise mask
+// while dispatching once per byte.
+func runSINFMaterialWriter(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("SINF material writer state is unavailable")
+	}
+	source, err := s.load(s.x[24]+0x10, 8)
+	if err != nil {
+		return 0, fmt.Errorf("SINF material precursor: %w", err)
+	}
+	const maximumBytes = 16
+	for count := 0; count < maximumBytes; count++ {
+		s.traceBlock(sinfMaterialWriterPass)
+		oldCounter := s.x[8]
+		s.x[8] = s.subtractWithFlags(oldCounter, 1, 64)
+		if s.x[8] >= uint64(len(currentSINFMaterialMask)) {
+			return 0, fmt.Errorf("SINF material index %d is outside the 16-byte block", s.x[8])
+		}
+		input, err := s.load(source+s.x[8], 1)
+		if err != nil {
+			return 0, fmt.Errorf("SINF material precursor byte: %w", err)
+		}
+		material := byte(input) ^ currentSINFMaterialMask[s.x[8]]
+		destination := s.x[29] - 0x70 + s.x[8]
+		if err := s.storeValue(destination, uint64(material), 1); err != nil {
+			return 0, fmt.Errorf("SINF material output byte: %w", err)
+		}
+		more := uint32(boolValue(s.condition("ne")))
+		dispatchIndex := uint32(s.x[13]) ^ (more << 6)
+		next, err := loadBootstrapPointer(s, s.x[27], dispatchIndex)
+		if err != nil {
+			return 0, fmt.Errorf("SINF material writer dispatch: %w", err)
+		}
+		s.x[9] = destination
+		s.x[10] = uint64(material)
+		s.x[11] = next
+		s.x[17] = 0x39ba
+		if next != sinfMaterialWriterPass {
+			return next, nil
+		}
+	}
+	return 0, fmt.Errorf("SINF material writer did not exit after %d bytes", maximumBytes)
+}
