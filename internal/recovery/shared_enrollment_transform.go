@@ -7,6 +7,7 @@ const (
 	sharedEnrollmentBranch   = uint64(0x1005649c4)
 	sharedEnrollmentWrite    = uint64(0x1003f63b0)
 	sharedEnrollmentAdvance  = uint64(0x1003f6400)
+	sharedEnrollmentByteFill = uint64(0x10051c16c)
 )
 
 // runSharedEnrollmentBlock replaces the small protected dispatcher core that
@@ -29,9 +30,60 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentAdvance:
 		next, err := runSharedEnrollmentAdvance(s)
 		return next, true, err
+	case sharedEnrollmentByteFill:
+		next, err := runSharedEnrollmentByteFill(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runSharedEnrollmentByteFill(s *state) (uint64, error) {
+	const maximumBytes = 16384
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runSharedEnrollmentByteFillStep(s)
+		if err != nil || next != sharedEnrollmentByteFill {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("shared enrollment byte fill exceeded %d bytes", maximumBytes)
+}
+
+func runSharedEnrollmentByteFillStep(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentByteFill)
+	s.x[11] = uint64(uint32(s.x[9]) + uint32(s.x[30]))
+	s.x[8]--
+	if err := s.storeValue(s.sp+0x3af8, s.x[8], 8); err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill counter: %w", err)
+	}
+	s.x[12] = uint64(uint32(s.x[10]) ^ uint32(s.x[1]))
+	s.x[13] = uint64(uint32(s.x[10]) + 0x11)
+	s.x[12] = uint64(uint32(s.x[12]) * uint32(s.x[13]))
+	if err := s.storeValue(s.x[20]+s.x[8], uint64(byte(s.x[12])), 1); err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill output: %w", err)
+	}
+	s.x[8] = s.x[10] + s.x[3]
+	s.x[10] = s.x[8] + s.x[11]
+	counter, err := s.load(s.sp+0x3af8, 8)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill saved counter: %w", err)
+	}
+	s.x[8] = counter
+	s.compare64(counter, 0)
+	last := uint32(boolValue(s.condition("eq")))
+	dispatchIndex := uint32(s.x[9]) ^ (last << 3)
+	dispatchTable, err := s.load(s.sp+0xdf0, 8)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill dispatch table: %w", err)
+	}
+	s.x[12] = dispatchTable
+	next, err := loadBootstrapPointer(s, dispatchTable, dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("shared enrollment byte-fill dispatch: %w", err)
+	}
+	s.x[11] = next
+	s.x[17] = 0x3548
+	return next, nil
 }
 
 func runSharedEnrollmentClassify(s *state) (uint64, error) {
