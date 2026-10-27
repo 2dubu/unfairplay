@@ -247,6 +247,22 @@ func runRawSourceBootstrapCFG(s *state, runtime *rawSourceRuntime, maxBlocks int
 			pc = next
 			continue
 		}
+		if pc == bootstrapRangeDispatchA && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapRangeDispatchA(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
+		if pc == bootstrapRangeDispatchB && (runtime == nil || runtime.stopPC == 0) {
+			next, err := runBootstrapRangeDispatchB(s)
+			if err != nil {
+				return pc, blockCount, err
+			}
+			pc = next
+			continue
+		}
 		if runtime == nil || runtime.stopPC == 0 {
 			next, handled, err := runCrossStageSemanticBlock(s, pc)
 			if err != nil {

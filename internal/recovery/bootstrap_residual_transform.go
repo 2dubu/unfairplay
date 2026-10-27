@@ -16,7 +16,66 @@ const (
 	bootstrapSavedFrameReturn  = uint64(0x100147c4c)
 	bootstrapProtectedCall     = uint64(0x10034d758)
 	bootstrapProtectedDispatch = uint64(0x10034d800)
+	bootstrapRangeDispatchA    = uint64(0x10015dd44)
+	bootstrapRangeDispatchB    = uint64(0x100040340)
 )
+
+func runBootstrapRangeDispatchA(s *state) (uint64, error) {
+	s.traceBlock(bootstrapRangeDispatchA)
+	s.x[11] = uint64((uint32(s.x[28]) + 0xffda80b3) & 0x00257f2e)
+	s.x[5] = uint64(uint32(s.x[28]) ^ 0x8a5e)
+	s.x[15] = uint64(uint32(s.x[12]) + 0x842a8d92)
+	s.x[17] = uint64(uint32(s.x[5]) + 0xffff4aed)
+	s.compare32(uint32(s.x[15]), uint32(s.x[17]))
+	s.x[15] = uint64(uint32(boolValue(s.condition("gt"))))
+	s.x[11] = uint64(uint32(s.x[11]) ^ 0x4060)
+	s.x[11] = uint64(uint32(s.x[15]) * uint32(s.x[11]))
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[28]))
+	next, err := loadBootstrapPointer(s, s.x[10], uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap range-dispatch A: %w", err)
+	}
+	s.x[15] = next
+	s.x[11] = 0x5eec043d
+	s.x[17] = 0x63e8
+	return next, nil
+}
+
+func runBootstrapRangeDispatchB(s *state) (uint64, error) {
+	s.traceBlock(bootstrapRangeDispatchB)
+	s.x[11] = 0xffffe558
+	s.x[16] = 0xac2aa0cd
+	s.x[17] = 0xac2ad0ac
+	s.x[14] = uint64(uint32(s.x[13]) + uint32(s.x[11]))
+	s.x[11] = uint64(uint32(s.x[14]) ^ uint32(s.x[17]))
+	s.x[17] = 0xffff7353
+	s.x[12] = uint64(uint32(s.x[12]) + uint32(s.x[13]))
+	s.x[12] = uint64(uint32(s.x[12]) + uint32(s.x[17]))
+	s.x[17] = 0xa800133a
+	s.x[16] = uint64(uint32(s.x[15]) + uint32(s.x[16]))
+	s.compare32(uint32(s.x[16]), uint32(s.x[17]))
+	s.x[1] = uint64(uint32(boolValue(s.condition("lt"))))
+	s.x[11] = uint64(uint32(s.x[12]) + uint32(s.x[11]))
+	s.compare32(uint32(s.x[11]), uint32(s.x[17]))
+	s.x[12] = uint64(uint32(boolValue(s.condition("lt"))))
+	s.x[17] = uint64(uint32(s.x[1]) ^ uint32(s.x[12]))
+	s.compare32(uint32(s.x[16]), uint32(s.x[11]))
+	s.x[11] = uint64(uint32(boolValue(s.condition("lt"))))
+	s.compare32(uint32(s.x[17]), 0)
+	if s.condition("ne") {
+		s.x[11] = uint64(uint32(s.x[12]))
+	}
+	s.x[11] = uint64(uint32(s.x[11]) * 0x3d)
+	s.x[11] = uint64(uint32(s.x[11]) ^ uint32(s.x[13]))
+	next, err := loadBootstrapPointer(s, s.x[10], uint32(s.x[11]))
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap range-dispatch B: %w", err)
+	}
+	s.x[12] = next
+	s.x[11] = 0x5eec043c
+	s.x[17] = 0xfe60
+	return next, nil
+}
 
 func runBootstrapProtectedCall(s *state) (uint64, error) {
 	s.traceBlock(bootstrapProtectedCall)
