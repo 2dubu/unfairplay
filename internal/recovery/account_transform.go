@@ -810,7 +810,7 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 		next, err := runAccountMultiplyCompareTarget(s)
 		return next, true, err
 	default:
-		return pc, false, nil
+		return runAccountEntryDirectBlock(s, pc)
 	}
 }
 
