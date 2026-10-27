@@ -82,6 +82,12 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedEnrollmentRegisterJump:
 		s.traceBlock(sharedEnrollmentRegisterJump)
 		return s.x[2], true, nil
+	case sharedPermutationFront:
+		next, err := runSharedPermutationFront(s)
+		return next, true, err
+	case sharedPermutationTail:
+		next, err := runSharedPermutationTail(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
