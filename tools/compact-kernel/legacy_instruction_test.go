@@ -105,7 +105,7 @@ func TestExternalSeededMachoExtraction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, address := range []uint64{0x1000103a8, 0x1007ead40, 0x1007eadc0, 0x1008fe5d4, 0x10093fe44, 0x10093ff14, 0x1009f0994} {
+	for _, address := range []uint64{0x1000103a8, 0x100484cd0, 0x1006dd508, 0x100796630, 0x100796720, 0x1007ead40, 0x1007eadc0, 0x1008fe5d4, 0x10093fe44, 0x10093ff14, 0x1009f0994} {
 		seeds[address] = true
 	}
 	all, err := annotatedMachoBlocks(path, seeds)
@@ -125,7 +125,7 @@ func TestExternalSeededMachoExtraction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(all) != 59747 || len(all)-len(blocks) != 5525 || strings.Count(string(generated), "start:") != 52496 || skipped != 1726 {
+	if len(all) != 59747 || len(all)-len(blocks) != 5529 || strings.Count(string(generated), "start:") != 52492 || skipped != 1726 {
 		t.Fatalf("seeded extraction geometry changed: all=%d excluded=%d generated=%d skipped=%d",
 			len(all), len(all)-len(blocks), strings.Count(string(generated), "start:"), skipped)
 	}
