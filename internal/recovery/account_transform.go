@@ -572,6 +572,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountRoundSetupRoute:
 		next, err := runAccountRoundSetupRoute(s)
 		return next, true, err
+	case accountMixerSetup:
+		next, err := runAccountMixerSetup(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
