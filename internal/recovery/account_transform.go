@@ -362,6 +362,24 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountMaskTargetRoute:
 		next, err := runAccountMaskTargetRoute(s)
 		return next, true, err
+	case accountByteIndexRoute:
+		next, err := runAccountByteIndexRoute(s)
+		return next, true, err
+	case accountWideOffsetRoute:
+		next, err := runAccountWideOffsetRoute(s)
+		return next, true, err
+	case accountRouteConstant:
+		next, err := runAccountRouteConstant(s)
+		return next, true, err
+	case accountCompareRoute:
+		next, err := runAccountCompareRoute(s)
+		return next, true, err
+	case accountExpressionRoute:
+		next, err := runAccountExpressionRoute(s)
+		return next, true, err
+	case accountBitTestRoute:
+		next, err := runAccountBitTestRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
