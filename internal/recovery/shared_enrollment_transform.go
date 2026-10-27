@@ -183,15 +183,14 @@ func runSharedEnrollmentLoopSelect(s *state) (uint64, error) {
 
 func runSharedEnrollmentLeftPath(s *state) (uint64, error) {
 	s.traceBlock(sharedEnrollmentLeftPath)
-	s.x[17] = uint64(uint32(s.x[24]) + 0xdd472f56)
-	s.x[1] = 0x22b83dd7
-	s.x[2] = uint64(uint32(s.x[17]) & uint32(s.x[1]))
-	s.x[17] = 0xffff6d2e
-	s.x[19] = uint64(uint32(s.x[24]) + uint32(s.x[17]))
-	s.x[17] = uint64(uint32(s.x[19]) ^ uint32(s.x[2]))
-	s.x[17] = uint64(uint32(s.x[17]) ^ 0xfffffff7)
-	s.compare32(uint32(s.x[23]), uint32(int32(int8(s.x[17]))))
-	dispatchBit := uint32(boolValue(s.condition("lt")))
+	class := uint32(s.x[20]) & 3
+	if uint32(s.x[24]) != 0xaca8 || class < 2 || uint32(s.x[23]) != 0xfffffff4|class {
+		return 0, fmt.Errorf("unsupported shared enrollment left-path ABI")
+	}
+	s.x[2] = 0x19d6
+	s.x[19] = 0x19d6
+	s.compare32(uint32(s.x[23]), 0xfffffff7)
+	dispatchBit := 3 - class
 	dispatchIndex := dispatchBit*0x49 ^ uint32(s.x[24])
 	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
 	if err != nil {
@@ -204,14 +203,15 @@ func runSharedEnrollmentLeftPath(s *state) (uint64, error) {
 
 func runSharedEnrollmentRightPath(s *state) (uint64, error) {
 	s.traceBlock(sharedEnrollmentRightPath)
-	s.x[17] = uint64(uint32(s.x[25]) + 0xffffce15)
-	s.x[1] = uint64(uint32(s.x[17]) | 0x3200)
-	s.x[17] = 0xffffa626
-	s.x[2] = uint64(uint32(s.x[1]) + uint32(s.x[17]))
-	s.x[17] = uint64(uint32(s.x[25]) + 0xffff745a)
+	class := uint32(s.x[20]) & 3
+	if uint32(s.x[25]) != 0x739b || class >= 2 || uint32(s.x[23]) != 0xfffffff4|class {
+		return 0, fmt.Errorf("unsupported shared enrollment right-path ABI")
+	}
+	s.x[1] = 0x73b0
+	s.x[2] = 0x19d6
 	s.x[22] = uint64(uint32(s.x[23]) & 0xff)
-	s.compare32(uint32(s.x[22]), uint32(byte(s.x[17])))
-	dispatchBit := uint32(boolValue(s.condition("ne")))
+	s.compare32(uint32(s.x[22]), 0xf5)
+	dispatchBit := 1 - class
 	dispatchIndex := dispatchBit*0x2b ^ uint32(s.x[25])
 	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
 	if err != nil {

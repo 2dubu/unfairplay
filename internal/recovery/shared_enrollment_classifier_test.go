@@ -173,3 +173,109 @@ func TestSharedEnrollmentBranchMatchesCircuit(t *testing.T) {
 		}
 	}
 }
+
+func runSharedEnrollmentLeftPathCircuit(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentLeftPath)
+	s.x[17] = uint64(uint32(s.x[24]) + 0xdd472f56)
+	s.x[1] = 0x22b83dd7
+	s.x[2] = uint64(uint32(s.x[17]) & uint32(s.x[1]))
+	s.x[17] = 0xffff6d2e
+	s.x[19] = uint64(uint32(s.x[24]) + uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[19]) ^ uint32(s.x[2]))
+	s.x[17] = uint64(uint32(s.x[17]) ^ 0xfffffff7)
+	s.compare32(uint32(s.x[23]), uint32(int32(int8(s.x[17]))))
+	dispatchBit := uint32(boolValue(s.condition("lt")))
+	dispatchIndex := dispatchBit*0x49 ^ uint32(s.x[24])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, err
+	}
+	s.x[1] = next
+	s.x[17] = 0x60e8
+	return next, nil
+}
+
+func runSharedEnrollmentRightPathCircuit(s *state) (uint64, error) {
+	s.traceBlock(sharedEnrollmentRightPath)
+	s.x[17] = uint64(uint32(s.x[25]) + 0xffffce15)
+	s.x[1] = uint64(uint32(s.x[17]) | 0x3200)
+	s.x[17] = 0xffffa626
+	s.x[2] = uint64(uint32(s.x[1]) + uint32(s.x[17]))
+	s.x[17] = uint64(uint32(s.x[25]) + 0xffff745a)
+	s.x[22] = uint64(uint32(s.x[23]) & 0xff)
+	s.compare32(uint32(s.x[22]), uint32(byte(s.x[17])))
+	dispatchBit := uint32(boolValue(s.condition("ne")))
+	dispatchIndex := dispatchBit*0x2b ^ uint32(s.x[25])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, err
+	}
+	s.x[17] = 0xbf5f
+	s.x[22] = next
+	return next, nil
+}
+
+func TestSharedEnrollmentPathSelectorsMatchCircuits(t *testing.T) {
+	tests := []struct {
+		name     string
+		classes  []uint32
+		indices  []uint32
+		circuit  func(*state) (uint64, error)
+		semantic func(*state) (uint64, error)
+		setup    func(*state)
+	}{
+		{
+			name: "left", classes: []uint32{2, 3}, indices: []uint32{0xaca8, 0xace1},
+			circuit: runSharedEnrollmentLeftPathCircuit, semantic: runSharedEnrollmentLeftPath,
+			setup: func(s *state) { s.x[24] = 0xaca8 },
+		},
+		{
+			name: "right", classes: []uint32{0, 1}, indices: []uint32{0x739b, 0x73b0},
+			circuit: runSharedEnrollmentRightPathCircuit, semantic: runSharedEnrollmentRightPath,
+			setup: func(s *state) { s.x[25] = 0x739b },
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			random := rand.New(rand.NewSource(int64(len(test.name)) + int64(sharedEnrollmentLeftPath)))
+			for trial := 0; trial < 512; trial++ {
+				const tableBase = uint64(0x200000)
+				pages := map[uint64][]byte{}
+				for _, index := range test.indices {
+					address := tableBase + uint64(index)*8
+					if pages[address&^(pageSize-1)] == nil {
+						pages[address&^(pageSize-1)] = make([]byte, pageSize)
+					}
+				}
+				for _, page := range pages {
+					if _, err := random.Read(page); err != nil {
+						t.Fatal(err)
+					}
+				}
+				base := newState(&model{pages: clonePages(pages)})
+				for register := range base.x {
+					base.x[register] = random.Uint64()
+				}
+				class := test.classes[random.Intn(len(test.classes))]
+				current := uint32(byte(random.Uint32())&^3) | class
+				base.x[20] = uint64(current)
+				base.x[23] = uint64(0xfffffff4 | class)
+				base.x[21] = tableBase
+				test.setup(base)
+
+				circuit := newState(base.model)
+				semantic := newState(base.model)
+				circuit.x, semantic.x = base.x, base.x
+				circuitNext, circuitErr := test.circuit(circuit)
+				semanticNext, semanticErr := test.semantic(semantic)
+				if circuitErr != nil || semanticErr != nil {
+					t.Fatalf("trial %d errors: circuit=%v semantic=%v", trial, circuitErr, semanticErr)
+				}
+				if circuitNext != semanticNext || circuit.x != semantic.x ||
+					circuit.n != semantic.n || circuit.z != semantic.z || circuit.c != semantic.c || circuit.v != semantic.v {
+					t.Fatalf("trial %d state differs:\ncircuit=%#v\nsemantic=%#v", trial, circuit.x, semantic.x)
+				}
+			}
+		})
+	}
+}
