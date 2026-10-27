@@ -1203,10 +1203,62 @@ func runAccountEntryZeroFillStep(s *state) (uint64, error) {
 
 func runAccountEntryByteCopy(s *state) (uint64, error) {
 	const maximumBytes = 4096
+	if s == nil {
+		return 0, fmt.Errorf("account-entry byte-copy state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		index := uint32(s.x[12]) ^ bit*0x172c
+		next, err := loadBootstrapPointer(s, s.x[20], index)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry byte-copy target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == accountEntryByteCopyPass && targets[1] == accountEntryByteCopyPass {
+		return 0, fmt.Errorf("account-entry byte-copy has no exit target")
+	}
+
+	gate := uint32(0)
+	if uint32(s.x[15]) < uint32(s.x[14]) {
+		gate = 1
+	}
+	s.x[10] = uint64((uint32(s.x[12]) + 0xb66ead0e) & 0x4990ff67)
+	delta := uint32(s.x[10]) + 0xffffb09b
 	for index := 0; index < maximumBytes; index++ {
-		next, err := runAccountEntryByteCopyStep(s)
-		if err != nil || next != accountEntryByteCopyPass {
-			return next, err
+		s.traceBlock(accountEntryByteCopyPass)
+		position := uint32(s.x[13])
+		value, err := s.load(s.x[9]+uint64(position), 1)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry byte-copy input: %w", err)
+		}
+		if err := s.storeValue(s.x[8]+uint64(position), uint64(byte(value)), 1); err != nil {
+			return 0, fmt.Errorf("account-entry byte-copy output: %w", err)
+		}
+		nextPosition := position + delta
+		s.x[16] = uint64(nextPosition)
+		s.x[0] = 0x1de54aff
+		high := uint32(0)
+		if nextPosition > uint32(s.x[0]) {
+			high = 1
+		}
+		selector := gate ^ high
+		boundPosition := position + 0xe21ab501
+		secondBound := uint32(0)
+		if boundPosition < uint32(s.x[15]) {
+			secondBound = 1
+		}
+		dispatchBit := secondBound
+		if selector != 0 {
+			dispatchBit = gate
+		}
+		s.compare32(selector, 0)
+		next := targets[dispatchBit]
+		s.x[11] = next
+		s.x[13] = uint64(nextPosition)
+		s.x[17] = 0x63d5
+		if next != accountEntryByteCopyPass {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("account-entry byte copy exceeded %d bytes", maximumBytes)
