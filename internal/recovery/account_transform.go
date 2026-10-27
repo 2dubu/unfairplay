@@ -176,6 +176,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountByteWriterCFront:
 		next, err := runAccountByteWriterC(s)
 		return next, true, err
+	case accountNestedSetupStart:
+		next, err := runAccountNestedSetup(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
