@@ -1494,14 +1494,59 @@ func runAccountEntryFourWordStep(s *state) (uint64, error) {
 }
 
 func runAccountEntryWordMixer(s *state) (uint64, error) {
-	const maximumWords = 4096
-	for index := 0; index < maximumWords; index++ {
-		next, err := runAccountEntryWordMixerStep(s)
-		if err != nil || next != accountEntryWordMixerPass {
-			return next, err
-		}
+	if s == nil {
+		return 0, fmt.Errorf("account-entry word-mixer state is unavailable")
 	}
-	return 0, fmt.Errorf("account-entry word mixer exceeded %d words", maximumWords)
+	count := uint32(s.x[15]) - uint32(s.x[20])
+	if count == 0 || count > accountSHA1ExpandedWords {
+		return 0, fmt.Errorf("account SHA-1 schedule counter %#x is outside the expansion", uint32(s.x[20]))
+	}
+	continueTarget, err := loadBootstrapPointer(s, s.x[21], 0x5d42)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry word-mixer continuation: %w", err)
+	}
+	if continueTarget != accountEntryWordMixerPass {
+		return 0, fmt.Errorf("unsupported account-entry word-mixer continuation %#x", continueTarget)
+	}
+	exitTarget, err := loadBootstrapPointer(s, s.x[21], 0x5d30)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry word-mixer exit: %w", err)
+	}
+	if exitTarget == accountEntryWordMixerPass {
+		return 0, fmt.Errorf("account-entry word-mixer exit loops to itself")
+	}
+
+	for index := uint32(0); index < count; index++ {
+		s.traceBlock(accountEntryWordMixerPass)
+		outputAddress := s.x[10] + s.x[6] + (s.x[20] << 2)
+		var previous [4]uint32
+		for previousIndex, distance := range [...]uint64{3, 8, 14, 16} {
+			value, err := s.load(outputAddress-distance*4, 4)
+			if err != nil {
+				return 0, fmt.Errorf("account SHA-1 schedule input t-%d: %w", distance, err)
+			}
+			previous[previousIndex] = uint32(value) ^ accountSHA1ScheduleMask
+		}
+		encodedWord := accountSHA1ExpandWord(previous) ^ accountSHA1ScheduleMask
+		if err := s.storeValue(outputAddress, uint64(encodedWord), 4); err != nil {
+			return 0, fmt.Errorf("account-entry word mixer output: %w", err)
+		}
+		s.x[20]++
+	}
+	limit, err := s.load(s.sp+0x7c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry word mixer limit: %w", err)
+	}
+	s.x[4] = exitTarget
+	s.x[7] = s.x[0]
+	s.x[9] = 0x5465
+	s.x[11] = s.x[3]
+	s.x[12] = s.x[26]
+	s.x[13] = s.x[22]
+	s.x[16] = uint64(uint32(s.x[15]) - accountSHA1Rounds)
+	s.x[17] = 0x3601
+	s.x[19] = uint64(uint32(limit))
+	return exitTarget, nil
 }
 
 func runAccountEntryWordMixerStep(s *state) (uint64, error) {

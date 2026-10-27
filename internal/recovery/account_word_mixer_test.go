@@ -74,3 +74,64 @@ func TestAccountWordMixerMatchesCircuit(t *testing.T) {
 		}
 	}
 }
+
+func TestAccountWordMixerPassMatchesSteps(t *testing.T) {
+	const (
+		scheduleBase = uint64(0x710000100000)
+		dispatchBase = uint64(0x710000200000)
+		stackBase    = uint64(0x710000300000)
+		counterEnd   = uint32(0x2ba7c3db)
+		counterBase  = counterEnd - accountSHA1Rounds
+		encodedBase  = uint64(0xffffffff5160f1d4)
+		exitTarget   = uint64(0x123456789)
+	)
+	random := rand.New(rand.NewSource(int64(accountEntryWordMixerPass) ^ 0x5d30))
+	for trial := 0; trial < 1024; trial++ {
+		pages := map[uint64][]byte{
+			scheduleBase: make([]byte, pageSize),
+			stackBase:    make([]byte, pageSize),
+		}
+		for _, page := range pages {
+			if _, err := random.Read(page); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for index, target := range map[uint32]uint64{0x5d30: exitTarget, 0x5d42: accountEntryWordMixerPass} {
+			address := dispatchBase + uint64(index)*8
+			base := address &^ (pageSize - 1)
+			if pages[base] == nil {
+				pages[base] = make([]byte, pageSize)
+			}
+			binary.LittleEndian.PutUint64(pages[base][address-base:], target)
+		}
+
+		registers := [31]uint64{}
+		for index := range registers {
+			registers[index] = random.Uint64()
+		}
+		count := uint32(1 + random.Intn(int(accountSHA1ExpandedWords)))
+		registers[6], registers[10], registers[15] = encodedBase, scheduleBase, uint64(counterEnd)
+		registers[20], registers[21] = uint64(counterEnd-count), dispatchBase
+		repeated := newState(&model{pages: clonePages(pages)})
+		semantic := newState(&model{pages: clonePages(pages)})
+		for _, item := range []*state{repeated, semantic} {
+			item.x = registers
+			item.sp = stackBase
+		}
+		var repeatedNext uint64
+		for index := uint32(0); index < count; index++ {
+			var err error
+			repeatedNext, err = runAccountEntryWordMixerStep(repeated)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		semanticNext, err := runAccountEntryWordMixer(semantic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if repeatedNext != semanticNext || repeated.x != semantic.x || repeated.n != semantic.n || repeated.z != semantic.z || repeated.c != semantic.c || repeated.v != semantic.v || !reflect.DeepEqual(repeated.writable, semantic.writable) {
+			t.Fatalf("trial %d state differs", trial)
+		}
+	}
+}
