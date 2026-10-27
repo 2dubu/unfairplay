@@ -1,9 +1,9 @@
 package recovery
 
-// outerTableRoundState is the compact semantic state consumed by the 21
-// protected table writers. Hardware is the six-byte native identity consumed
-// through a rotating three-byte window. Codec is the paired three-byte state
-// used while updating state word 2.
+// outerTableRoundState is the compact semantic state consumed by one complete
+// outer iteration. HardwareIndex is the first byte of the table-round window;
+// the earlier digest window starts two bytes later. Codec is the 17-byte state
+// shared by both stages.
 type outerTableRoundState struct {
 	Words         [5]uint32
 	Hardware      [6]byte
@@ -11,7 +11,10 @@ type outerTableRoundState struct {
 	Codec         [17]byte
 }
 
-func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
+// applyOuterTableRoundReduced preserves the named lane formulas used by the
+// focused unit tests. The complete circuit below is authoritative because a
+// later lane can read a slot written by an earlier lane for some rolling bases.
+func applyOuterTableRoundReduced(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
 	indexes, ok := outerTableIndexes(base)
 	if !ok || table == nil || state == nil || state.HardwareIndex >= uint8(len(state.Hardware)) {
 		return 0, false
@@ -72,6 +75,10 @@ func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *ou
 	return next, ok
 }
 
+func applyOuterTableRound(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
+	return applyOuterTableRoundCircuit(table, base, state)
+}
+
 func applyOuterSemanticIteration(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState) (uint32, bool) {
 	if !applyOuterPreRound(table, base, state) {
 		return 0, false
@@ -81,4 +88,11 @@ func applyOuterSemanticIteration(table *[outerTableWords]uint32, base uint32, st
 		return 0, false
 	}
 	return next, true
+}
+
+func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state *outerTableRoundState, x1, counterSeed uint32) (uint32, bool) {
+	if !applyOuterFront(table, base, state, x1, counterSeed) {
+		return 0, false
+	}
+	return applyOuterSemanticIteration(table, base, state)
 }

@@ -100,3 +100,36 @@ func TestOuterSemanticIterationDeterministic(t *testing.T) {
 		t.Fatalf("semantic iteration digest = %s, want %s", got, want)
 	}
 }
+
+func TestOuterFullIterationDeterministic(t *testing.T) {
+	var table [outerTableWords]uint32
+	for index := range table {
+		table[index] = uint32(index)*0x27d4eb2d ^ 0x165667b1
+	}
+	state := outerTableRoundState{
+		Words:         [5]uint32{0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f},
+		Hardware:      [6]byte{0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc},
+		HardwareIndex: 0,
+		Codec: [17]byte{
+			4: 0x10, 5: 0x21, 6: 0x32, 7: 0x43, 8: 0x54, 9: 0x65,
+			10: 0x76, 11: 0x87, 12: 0x98, 13: 0xa9, 14: 0xba, 15: 0xcb, 16: 0xdc,
+		},
+	}
+	next, ok := applyOuterFullIteration(&table, outerTableInitialBase, &state, 0x60319d83, 0x12345678)
+	if !ok || next != 11 || state.HardwareIndex != 5 {
+		t.Fatalf("full iteration advance = %d/%d/%v, want 11/5/true", next, state.HardwareIndex, ok)
+	}
+	hasher := sha256.New()
+	var word [4]byte
+	for _, value := range table {
+		binary.LittleEndian.PutUint32(word[:], value)
+		_, _ = hasher.Write(word[:])
+	}
+	for _, value := range state.Words {
+		binary.LittleEndian.PutUint32(word[:], value)
+		_, _ = hasher.Write(word[:])
+	}
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "915195acf73648d5dcfa0673cbb8718c8529afd2487dce11fef1f355bfb800b5"; got != want {
+		t.Fatalf("full iteration digest = %s, want %s", got, want)
+	}
+}
