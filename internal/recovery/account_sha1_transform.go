@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/bits"
 )
@@ -31,6 +32,12 @@ type accountSHA1State struct {
 	A, B, C, D, E uint32
 }
 
+type accountSHA1Compression struct {
+	State      accountSHA1State
+	Compressed accountSHA1State
+	Schedule   [80]uint32
+}
+
 // accountSHA1ExpandWord is the standard SHA-1 message-schedule recurrence for
 // W[t], with previous ordered as W[t-3], W[t-8], W[t-14], and W[t-16].
 func accountSHA1ExpandWord(previous [4]uint32) uint32 {
@@ -44,6 +51,44 @@ func accountSHA1FeedForward(initial, compressed accountSHA1State) accountSHA1Sta
 		C: initial.C + compressed.C,
 		D: initial.D + compressed.D,
 		E: initial.E + compressed.E,
+	}
+}
+
+// accountSHA1CompressBlock is the complete algorithm hidden by the native
+// byte-pack, schedule, round, and feed-forward handlers. The input-byte mask is
+// part of the surrounding protected representation; zero gives ordinary SHA-1.
+func accountSHA1CompressBlock(initial accountSHA1State, block [64]byte, inputByteMask byte) accountSHA1Compression {
+	var schedule [80]uint32
+	for index := range 16 {
+		var encoded [4]byte
+		for octet := range encoded {
+			encoded[octet] = block[index*4+octet] ^ inputByteMask
+		}
+		schedule[index] = binary.BigEndian.Uint32(encoded[:])
+	}
+	for index := 16; index < len(schedule); index++ {
+		schedule[index] = accountSHA1ExpandWord([4]uint32{
+			schedule[index-3], schedule[index-8], schedule[index-14], schedule[index-16],
+		})
+	}
+
+	compressed := initial
+	for index, word := range schedule {
+		phase := accountSHA1Choose
+		switch {
+		case index < 20:
+			phase = accountSHA1Choose
+		case index < 40:
+			phase = accountSHA1ParityEarly
+		case index < 60:
+			phase = accountSHA1Majority
+		default:
+			phase = accountSHA1ParityLate
+		}
+		compressed = accountSHA1Round(compressed, word, phase)
+	}
+	return accountSHA1Compression{
+		State: accountSHA1FeedForward(initial, compressed), Compressed: compressed, Schedule: schedule,
 	}
 }
 

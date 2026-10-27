@@ -10,6 +10,10 @@ const (
 )
 
 func runAccountBytePack(s *state) (uint64, error) {
+	return runAccountSHA1CompressionStage(s)
+}
+
+func runAccountBytePackWords(s *state) (uint64, error) {
 	for index := 0; index < 4096; index++ {
 		next, err := runAccountBytePackStep(s)
 		if err != nil || next != accountBytePackPass {

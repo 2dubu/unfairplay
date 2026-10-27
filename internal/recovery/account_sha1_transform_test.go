@@ -2,10 +2,35 @@ package recovery
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"testing"
 )
+
+func TestAccountSHA1CompressBlock(t *testing.T) {
+	initial := accountSHA1State{
+		A: 0x67452301, B: 0xefcdab89, C: 0x98badcfe,
+		D: 0x10325476, E: 0xc3d2e1f0,
+	}
+	var block [64]byte
+	copy(block[:], "abc")
+	block[3] = 0x80
+	binary.BigEndian.PutUint64(block[56:], 3*8)
+	got := accountSHA1CompressBlock(initial, block, 0).State
+	wantBytes, err := hex.DecodeString("a9993e364706816aba3e25717850c26c9cd0d89d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := accountSHA1State{
+		A: binary.BigEndian.Uint32(wantBytes[0:4]), B: binary.BigEndian.Uint32(wantBytes[4:8]),
+		C: binary.BigEndian.Uint32(wantBytes[8:12]), D: binary.BigEndian.Uint32(wantBytes[12:16]),
+		E: binary.BigEndian.Uint32(wantBytes[16:20]),
+	}
+	if got != want {
+		t.Fatalf("SHA-1(abc) = %#v, want %#v", got, want)
+	}
+}
 
 func TestAccountSHA1Round(t *testing.T) {
 	state := accountSHA1State{
