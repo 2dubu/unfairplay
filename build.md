@@ -69,13 +69,20 @@ flattened native selector.
 | Account entry | SHA-1 and the dominant copy, projection, schedule, and encoding loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Bootstrap | Montgomery arithmetic and the dominant table/byte loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
-| SIDB | Container projection and the 59-block AES consumer are typed. The candidate-frame-to-SIDB-key producer is still inside the legacy path. |
+| SIDB | Container projection and the 59-block AES consumer are typed. The legacy path was narrowed to an affinely encoded AES round-10 key; affine decoding plus ordinary AES-128 schedule reversal is now typed Go. The frame-to-encoded-round-key producer is still inside the legacy path. |
 | SINF | Portable AES/model decoding exists. Directly treating a candidate state or frame as the final precursor was tested and rejected because SIDB registry decoding comes first. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
 semantic memory-layout adapters are transitional oracle infrastructure. They
 are not the final architecture.
+
+The prior per-enrollment SIDB DFA is no longer a semantic requirement. At the
+pre-consumer boundary, sixteen encoded bytes decode to the complete AES-128
+round-10 key. Reversing the standard key schedule reproduces the SIDB decoder
+key. This was derived from 64 chosen-frame controls and then matched 17
+independent recovered keys exactly. The affine byte encodings are still
+26A428 oracle evidence until they are normalized across other builds.
 
 ## Cross-build evidence
 
@@ -104,7 +111,9 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Recover the typed candidate-frame-to-SIDB-decoder-key transform.
+1. Recover the remaining typed candidate-frame-to-encoded-round-key producer.
+   The encoded round key to SIDB decoder key stage is complete and must not be
+   replaced by another DFA implementation.
 2. Parse the decoded SIDB registry structurally and recover its typed
    registry-to-current-SINF-precursor transform.
 3. Connect the precursor to personalized SINF validation and remove native
