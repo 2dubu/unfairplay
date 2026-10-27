@@ -1700,10 +1700,65 @@ func runBootstrapNonlinearByteStep(s *state) (uint64, error) {
 
 func runBootstrapByteStatePass(s *state) (uint64, error) {
 	const maximumBytes = 4096
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap byte-state state is unavailable")
+	}
+	targets := [2]uint64{}
+	for bit := uint32(0); bit < 2; bit++ {
+		index := uint32(s.x[24]) ^ bit*0x22
+		next, err := loadBootstrapPointer(s, s.x[30], index)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap byte-state target %d: %w", bit, err)
+		}
+		targets[bit] = next
+	}
+	if targets[0] == bootstrapByteStatePass && targets[1] == bootstrapByteStatePass {
+		return 0, fmt.Errorf("bootstrap byte-state pass has no exit target")
+	}
+
 	for index := 0; index < maximumBytes; index++ {
-		next, err := runBootstrapByteStateStep(s)
-		if err != nil || next != bootstrapByteStatePass {
-			return next, err
+		s.traceBlock(bootstrapByteStatePass)
+		s.x[10] = 0xadf89487
+		s.compare32(uint32(s.x[11]), uint32(s.x[10]))
+		firstBound := uint32(boolValue(s.condition("lo")))
+		s.x[12] = uint64(firstBound)
+		s.x[10] = 0x1eda
+		value, err := s.load(s.x[20]+uint64(uint32(s.x[9])), 1)
+		if err != nil {
+			return 0, fmt.Errorf("bootstrap byte-state input: %w", err)
+		}
+		s.x[13] = uint64(byte(value))
+		s.x[14] = uint64(uint32(s.x[9]) + 1)
+		s.x[15] = 0x21dd12bf
+		s.x[8] = uint64(uint32(s.x[8]) ^ uint32(s.x[15]))
+		s.x[15] = 0xffffff1b
+		s.x[15] = uint64(uint32(s.x[13]) ^ uint32(s.x[15]))
+		s.x[8] = uint64(uint32(s.x[15]) & uint32(s.x[8]))
+		s.x[13] = uint64(uint32(s.x[13]) & 0xffffffbf)
+		s.x[15] = 0x21dd121f
+		s.x[13] = uint64(uint32(s.x[13]) | uint32(s.x[15]))
+		s.x[8] = uint64(uint32(s.x[13]) ^ uint32(s.x[8]))
+		s.x[13] = 0xadf80939
+		s.x[10] = uint64(uint32(s.x[24]) + uint32(s.x[10]))
+		s.x[13] = uint64(uint32(s.x[10]) ^ uint32(s.x[13]))
+		s.x[15] = 0x52076b78
+		s.compare32(uint32(s.x[14]), uint32(s.x[15]))
+		selector := firstBound ^ uint32(boolValue(s.condition("hi")))
+		s.x[9] = uint64(uint32(s.x[9]) + uint32(s.x[13]))
+		s.compare32(uint32(s.x[9]), uint32(s.x[11]))
+		secondBound := uint32(boolValue(s.condition("lo")))
+		s.compare32(selector, 0)
+		dispatchBit := secondBound
+		if s.condition("ne") {
+			dispatchBit = firstBound
+		}
+		s.x[12] = uint64(dispatchBit << 1)
+		next := targets[dispatchBit]
+		s.x[9] = s.x[14]
+		s.x[12] = next
+		s.x[17] = 0x37fb
+		if next != bootstrapByteStatePass {
+			return next, nil
 		}
 	}
 	return 0, fmt.Errorf("bootstrap byte-state pass exceeded %d bytes", maximumBytes)
