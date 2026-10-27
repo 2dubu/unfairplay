@@ -14,6 +14,21 @@ func TestOuterOptionalIndexAndDecode(t *testing.T) {
 	}
 }
 
+func TestOuterOptionalDecodeMatchesCircuit(t *testing.T) {
+	for word := uint32(0); word < 1<<16; word++ {
+		if got, want := outerOptionalDecode(word), outerOptionalDecodeCircuit(word); got != want {
+			t.Fatalf("word %08x = %08x, want %08x", word, got, want)
+		}
+	}
+	random := rand.New(rand.NewSource(0x26a428))
+	for sample := 0; sample < 1<<16; sample++ {
+		word := random.Uint32()
+		if got, want := outerOptionalDecode(word), outerOptionalDecodeCircuit(word); got != want {
+			t.Fatalf("word %08x = %08x, want %08x", word, got, want)
+		}
+	}
+}
+
 func TestOuterOptionalNormalizedIndexExhaustive(t *testing.T) {
 	for phase := uint32(0); phase < outerWriterSeedStates; phase++ {
 		seed := outerWriterSeedBase + phase

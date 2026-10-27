@@ -1,4 +1,4 @@
-// Code generated from the proved optional-hook first-index circuit; DO NOT EDIT.
+// Generated optional-hook circuits retained only for differential tests.
 package recovery
 
 import "math/bits"
@@ -16845,7 +16845,7 @@ func outerOptionalFirstIndexMBA(seed uint32) uint32 {
 	return uint32(t16826)
 }
 
-func outerOptionalDecode(word uint32) uint32 {
+func outerOptionalDecodeCircuit(word uint32) uint32 {
 	t0 := uint64(((uint64(word)) >> 31) & 0x1)
 	t1 := uint64(((uint64(word)) >> 30) & 0x1)
 	t2 := uint64((^(t1)) & 0x1)
