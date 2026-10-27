@@ -94,6 +94,12 @@ func runSharedEnrollmentBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sharedRangeSelect:
 		next, err := runSharedRangeSelect(s)
 		return next, true, err
+	case sharedMBAFront:
+		next, err := runSharedMBAFront(s)
+		return next, true, err
+	case sharedMBATail:
+		next, err := runSharedMBATail(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
