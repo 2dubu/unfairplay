@@ -11,8 +11,10 @@ type outerTableRoundState struct {
 	Codec          [33]byte
 	Source         [224]byte
 	Tail           [140]byte
+	Writer         [140]byte
 	SelectionState [32]byte
 	OptionalWord   uint32
+	CycleRegisters [5]uint64
 }
 
 type outerIterationControl struct {
@@ -21,6 +23,10 @@ type outerIterationControl struct {
 }
 
 const outerNaturalIterationCount = 317
+
+func outerSelectorFromHardwareIndex(index uint8) uint32 {
+	return 0x4fc66d49 + uint32((index+1)%6)
+}
 
 // applyOuterTableRoundReduced preserves the named lane formulas used by the
 // focused unit tests. The complete circuit below is authoritative because a

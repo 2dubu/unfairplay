@@ -405,7 +405,7 @@ func runBootstrapStage(worker *state) error {
 
 func runOuterStage(worker *state) (iterations int, err error) {
 	err = withRecoveryStage(worker, "outer", func() error {
-		iterations, err = runRawSourceKernelLoop(worker, "outer")
+		iterations, err = runSemanticOuterStage(worker)
 		return err
 	})
 	return iterations, err

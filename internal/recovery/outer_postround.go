@@ -245,6 +245,7 @@ func applyOuterPostRoundWithSeed(table *[outerTableWords]uint32, base uint32, st
 		if !ok {
 			return false
 		}
+		state.Writer = output
 		copy(state.Source[92:], output[:])
 	}
 	return true

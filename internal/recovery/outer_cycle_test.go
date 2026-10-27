@@ -24,7 +24,14 @@ func TestOuterCycleDeterministic(t *testing.T) {
 	for index, value := range state.Words {
 		binary.LittleEndian.PutUint32(encoded[index*4:], value)
 	}
-	if got, want := fmt.Sprintf("%x", sha256.Sum256(encoded[:])), "8d05ed2e00a5a8fe3d13abfd78da96e255e69a4eced90b8cce4351b95a5fbde1"; got != want {
+	hasher := sha256.New()
+	_, _ = hasher.Write(encoded[:])
+	var wide [8]byte
+	for _, value := range state.CycleRegisters {
+		binary.LittleEndian.PutUint64(wide[:], value)
+		_, _ = hasher.Write(wide[:])
+	}
+	if got, want := fmt.Sprintf("%x", hasher.Sum(nil)), "209d67e44059e6e3201b84db7ebd4efd3a7306825fe50e6222d8a32dd68bd46a"; got != want {
 		t.Fatalf("cycle digest = %s, want %s", got, want)
 	}
 }
