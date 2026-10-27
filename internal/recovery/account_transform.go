@@ -560,6 +560,15 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountDualMaskTarget:
 		next, err := runAccountDualMaskTarget(s)
 		return next, true, err
+	case accountSmallStoreReturn:
+		next, err := runAccountSmallStoreReturn(s)
+		return next, true, err
+	case accountEqualityTarget:
+		next, err := runAccountEqualityTarget(s)
+		return next, true, err
+	case accountBitWordTarget:
+		next, err := runAccountBitWordTarget(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
