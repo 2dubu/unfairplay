@@ -6,6 +6,8 @@ const (
 	accountEntryByteGeneratorPass = uint64(0x100b1ddc0)
 	accountEntryXORCopyPass       = uint64(0x1004bb284)
 	accountEntryByteRemapPass     = uint64(0x100131cd8)
+	accountEntryTableWriterPass   = uint64(0x10007e214)
+	accountEntryWordMixerPass     = uint64(0x10007ba1c)
 )
 
 func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -19,9 +21,125 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountEntryByteRemapPass:
 		next, err := runAccountEntryByteRemap(s)
 		return next, true, err
+	case accountEntryTableWriterPass:
+		next, err := runAccountEntryTableWriter(s)
+		return next, true, err
+	case accountEntryWordMixerPass:
+		next, err := runAccountEntryWordMixer(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
+}
+
+func runAccountEntryWordMixer(s *state) (uint64, error) {
+	const maximumWords = 4096
+	for index := 0; index < maximumWords; index++ {
+		next, err := runAccountEntryWordMixerStep(s)
+		if err != nil || next != accountEntryWordMixerPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("account-entry word mixer exceeded %d words", maximumWords)
+}
+
+func runAccountEntryWordMixerStep(s *state) (uint64, error) {
+	s.traceBlock(accountEntryWordMixerPass)
+	s.x[9] = uint64(uint32(s.x[15]) + 0xd458908a)
+	s.x[11] = s.x[20] << 2
+	addresses := [...]uint64{
+		0xffffffff5160f1c8,
+		0xffffffff5160f1b4,
+		0xffffffff5160f19c,
+		0xffffffff5160f194,
+	}
+	registers := [...]int{12, 13, 16, 17}
+	for index, offset := range addresses {
+		value, err := s.load(s.x[10]+s.x[11]+offset, 4)
+		if err != nil {
+			return 0, fmt.Errorf("account-entry word mixer input %d: %w", index, err)
+		}
+		s.x[registers[index]] = uint64(uint32(value))
+	}
+	s.x[12] = uint64(uint32(s.x[13]) ^ uint32(s.x[12]))
+	s.x[13] = uint64(uint32(s.x[16]) ^ uint32(s.x[17]))
+	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[13]))
+	s.x[12] = uint64(uint32(s.x[9]) ^ uint32(rotateRight(s.x[12], 31, 32)))
+	s.x[13] = 0xce752fa0
+	s.x[12] = uint64(uint32(s.x[12]) ^ uint32(s.x[13]))
+	s.x[11] += s.x[6]
+	if err := s.storeValue(s.x[10]+s.x[11], uint64(uint32(s.x[12])), 4); err != nil {
+		return 0, fmt.Errorf("account-entry word mixer output: %w", err)
+	}
+	s.x[20]++
+	s.x[11] = s.x[20] - s.x[15]
+	s.x[12] = s.x[15] - s.x[20]
+	s.x[11] |= s.x[12]
+	s.x[11] >>= 63
+	s.x[11] = uint64(uint32(s.x[11]) * 0x72)
+	s.x[12] = uint64(uint32(s.x[15]) + 0xd4589955)
+	dispatchIndex := uint32(s.x[11]) ^ uint32(s.x[12])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry word mixer dispatch: %w", err)
+	}
+	limit, err := s.load(s.sp+0x7c, 4)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry word mixer limit: %w", err)
+	}
+	s.x[4] = next
+	s.x[7] = s.x[0]
+	s.x[11] = s.x[3]
+	s.x[12] = s.x[26]
+	s.x[13] = s.x[22]
+	s.x[16] = 0x2ba7c38b
+	s.x[17] = 0x3601
+	s.x[19] = uint64(uint32(limit))
+	return next, nil
+}
+
+func runAccountEntryTableWriter(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runAccountEntryTableWriterStep(s)
+		if err != nil || next != accountEntryTableWriterPass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("account-entry table writer exceeded %d bytes", maximumBytes)
+}
+
+func runAccountEntryTableWriterStep(s *state) (uint64, error) {
+	s.traceBlock(accountEntryTableWriterPass)
+	s.x[11] = uint64(uint32(s.x[15]) + uint32(s.x[19]))
+	s.x[13] = uint64(uint32(s.x[11]) | uint32(s.x[20]))
+	value, err := s.load(s.x[2]+uint64(uint32(s.x[9])), 1)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry table writer input: %w", err)
+	}
+	s.x[11] = uint64(byte(value))
+	s.x[25] = uint64(uint32(s.x[9]) + 1)
+	s.x[9] = s.x[16] + s.x[22]
+	s.x[9] += s.x[13]
+	s.x[12] = uint64(uint32(s.x[23]) & uint32(s.x[11]<<1))
+	s.x[11] = uint64(uint32(s.x[11]) - uint32(s.x[12]))
+	s.x[11] = uint64(uint32(s.x[11]) + 0x1b)
+	if err := s.storeValue(s.x[24]+s.x[9], uint64(byte(s.x[11])), 1); err != nil {
+		return 0, fmt.Errorf("account-entry table writer output: %w", err)
+	}
+	s.x[16]++
+	s.compare64(s.x[16], s.x[26])
+	dispatchIndex := uint32(boolValue(s.condition("eq")))*uint32(s.x[27]) ^ uint32(s.x[15])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("account-entry table writer dispatch: %w", err)
+	}
+	s.x[1] = s.x[24]
+	s.x[4] = 0x12d6a942
+	s.x[9] = s.x[25]
+	s.x[11] = next
+	s.x[17] = 0x71c7
+	return next, nil
 }
 
 func runAccountEntryXORCopy(s *state) (uint64, error) {
