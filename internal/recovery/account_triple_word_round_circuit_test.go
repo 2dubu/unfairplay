@@ -2,12 +2,7 @@ package recovery
 
 import "fmt"
 
-const (
-	accountTripleWordRoundFront = uint64(0x1001c4ed0)
-	accountTripleWordRoundTail  = uint64(0x1001c5000)
-)
-
-func runAccountTripleWordRound(s *state) (uint64, error) {
+func runAccountTripleWordRoundCircuit(s *state) (uint64, error) {
 	s.traceBlock(accountTripleWordRoundFront)
 	s.x[16] = s.x[10]
 	s.x[12] = s.x[8]

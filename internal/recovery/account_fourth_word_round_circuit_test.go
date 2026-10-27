@@ -2,9 +2,7 @@ package recovery
 
 import "fmt"
 
-const accountFourthWordRound = uint64(0x1002a759c)
-
-func runAccountFourthWordRound(s *state) (uint64, error) {
+func runAccountFourthWordRoundCircuit(s *state) (uint64, error) {
 	s.traceBlock(accountFourthWordRound)
 	s.x[2] = s.x[16]
 	s.x[17] = s.x[12]

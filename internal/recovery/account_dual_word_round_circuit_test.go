@@ -2,12 +2,7 @@ package recovery
 
 import "fmt"
 
-const (
-	accountDualWordRoundFront = uint64(0x1001c2f34)
-	accountDualWordRoundTail  = uint64(0x1001c3000)
-)
-
-func runAccountDualWordRound(s *state) (uint64, error) {
+func runAccountDualWordRoundCircuit(s *state) (uint64, error) {
 	s.traceBlock(accountDualWordRoundFront)
 	s.x[15] = s.x[10]
 	s.x[22] = s.x[8]
