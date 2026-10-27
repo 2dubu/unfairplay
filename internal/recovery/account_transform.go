@@ -245,6 +245,9 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountRecordRoute:
 		next, err := runAccountRecordRoute(s)
 		return next, true, err
+	case accountRecordWriterRoute:
+		next, err := runAccountRecordWriterRoute(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
