@@ -593,16 +593,19 @@ func (s *state) load(address uint64, size int) (uint64, error) {
 				}
 			}
 		}
+		var result uint64
 		switch size {
 		case 1:
-			return uint64(page[offset]), nil
+			result = uint64(page[offset])
 		case 2:
-			return uint64(binary.LittleEndian.Uint16(page[offset : offset+2])), nil
+			result = uint64(binary.LittleEndian.Uint16(page[offset : offset+2]))
 		case 4:
-			return uint64(binary.LittleEndian.Uint32(page[offset : offset+4])), nil
+			result = uint64(binary.LittleEndian.Uint32(page[offset : offset+4]))
 		default:
-			return binary.LittleEndian.Uint64(page[offset : offset+8]), nil
+			result = binary.LittleEndian.Uint64(page[offset : offset+8])
 		}
+		s.traceReadValue(address, size, result)
+		return result, nil
 	}
 	var buffer [8]byte
 	for index := 0; index < size; index++ {
@@ -612,11 +615,14 @@ func (s *state) load(address uint64, size int) (uint64, error) {
 		}
 		buffer[index] = byte(value)
 	}
-	return binary.LittleEndian.Uint64(buffer[:]), nil
+	result := binary.LittleEndian.Uint64(buffer[:])
+	s.traceReadValue(address, size, result)
+	return result, nil
 }
 
 func (s *state) store(address uint64, value []byte) error {
 	s.traceAccess(address, len(value), true)
+	s.traceWriteValue(address, value)
 	for len(value) != 0 {
 		page, err := s.page(address, true)
 		if err != nil {

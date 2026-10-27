@@ -58,10 +58,13 @@ type RecoveryTraceBlock struct {
 }
 
 type RecoveryTraceMemorySite struct {
-	PC      uint64 `json:"pc"`
-	Address uint64 `json:"address"`
-	Bytes   int    `json:"bytes"`
-	Count   int    `json:"count"`
+	PC        uint64              `json:"pc"`
+	Address   uint64              `json:"address"`
+	Bytes     int                 `json:"bytes"`
+	Count     int                 `json:"count"`
+	Registers []uint64            `json:"registers,omitempty"`
+	Flags     *RecoveryTraceFlags `json:"flags,omitempty"`
+	ValueHex  string              `json:"value_hex,omitempty"`
 }
 
 type RecoveryStageTrace struct {
@@ -89,22 +92,26 @@ type RecoveryStageTrace struct {
 }
 
 type recoveryStageCapture struct {
-	name       string
-	entryState string
-	entryX     [31]uint64
-	entrySP    uint64
-	entryFlags RecoveryTraceFlags
-	before     map[uint64][]byte
-	read       map[uint64][]byte
-	liveIn     map[uint64][]byte
-	write      map[uint64][]byte
-	written    map[uint64][]byte
-	blocks     map[uint64]int
-	readSites  map[recoveryTraceMemoryKey]int
-	writeSites map[recoveryTraceWriteKey]int
-	path       hash.Hash
-	blockCount int
-	invocation int
+	name           string
+	entryState     string
+	entryX         [31]uint64
+	entrySP        uint64
+	entryFlags     RecoveryTraceFlags
+	before         map[uint64][]byte
+	read           map[uint64][]byte
+	liveIn         map[uint64][]byte
+	write          map[uint64][]byte
+	written        map[uint64][]byte
+	blocks         map[uint64]int
+	readSites      map[recoveryTraceMemoryKey]int
+	readValues     map[recoveryTraceMemoryKey]uint64
+	writeSites     map[recoveryTraceWriteKey]int
+	writeRegisters map[recoveryTraceWriteKey][31]uint64
+	writeFlags     map[recoveryTraceWriteKey]RecoveryTraceFlags
+	writeValues    map[recoveryTraceWriteKey]uint64
+	path           hash.Hash
+	blockCount     int
+	invocation     int
 }
 
 type recoveryTraceMemoryKey struct {
@@ -296,7 +303,10 @@ func (r *recoveryTraceRecorder) begin(s *state, name string) *recoveryStageCaptu
 		entryFlags: RecoveryTraceFlags{Negative: s.n, Zero: s.z, Carry: s.c, Overflow: s.v},
 		before:     currentTracePages(s), read: make(map[uint64][]byte), liveIn: make(map[uint64][]byte), write: make(map[uint64][]byte),
 		written: make(map[uint64][]byte), blocks: make(map[uint64]int), path: sha256.New(),
-		readSites: make(map[recoveryTraceMemoryKey]int), writeSites: make(map[recoveryTraceWriteKey]int),
+		readSites: make(map[recoveryTraceMemoryKey]int), readValues: make(map[recoveryTraceMemoryKey]uint64),
+		writeSites:     make(map[recoveryTraceWriteKey]int),
+		writeRegisters: make(map[recoveryTraceWriteKey][31]uint64), writeFlags: make(map[recoveryTraceWriteKey]RecoveryTraceFlags),
+		writeValues: make(map[recoveryTraceWriteKey]uint64),
 	}
 	r.active = append(r.active, capture)
 	return capture
@@ -348,9 +358,15 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 	buildMemorySites := func(source map[recoveryTraceMemoryKey]int) []RecoveryTraceMemorySite {
 		sites := make([]RecoveryTraceMemorySite, 0, len(source))
 		for key, count := range source {
-			sites = append(sites, RecoveryTraceMemorySite{
+			item := RecoveryTraceMemorySite{
 				PC: key.pc, Address: key.address, Bytes: key.bytes, Count: count,
-			})
+			}
+			if value, ok := capture.readValues[key]; ok {
+				var encoded [8]byte
+				binary.LittleEndian.PutUint64(encoded[:], value)
+				item.ValueHex = hex.EncodeToString(encoded[:key.bytes])
+			}
+			sites = append(sites, item)
 		}
 		sort.Slice(sites, func(left, right int) bool {
 			if sites[left].PC != sites[right].PC {
@@ -366,9 +382,20 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 	trace.ReadSites = buildMemorySites(capture.readSites)
 	writeSites := make([]RecoveryTraceMemorySite, 0, len(capture.writeSites))
 	for key, count := range capture.writeSites {
-		writeSites = append(writeSites, RecoveryTraceMemorySite{
+		item := RecoveryTraceMemorySite{
 			PC: key.pc, Address: key.address, Bytes: key.bytes, Count: count,
-		})
+		}
+		if registers, ok := capture.writeRegisters[key]; ok {
+			item.Registers = append(item.Registers, registers[:]...)
+			flags := capture.writeFlags[key]
+			item.Flags = &flags
+		}
+		if value, ok := capture.writeValues[key]; ok {
+			var encoded [8]byte
+			binary.LittleEndian.PutUint64(encoded[:], value)
+			item.ValueHex = hex.EncodeToString(encoded[:key.bytes])
+		}
+		writeSites = append(writeSites, item)
 	}
 	sort.Slice(writeSites, func(left, right int) bool {
 		if writeSites[left].PC != writeSites[right].PC {
@@ -383,6 +410,33 @@ func (r *recoveryTraceRecorder) finish(s *state, capture *recoveryStageCapture, 
 	r.results = append(r.results, trace)
 	for _, page := range capture.before {
 		clear(page)
+	}
+}
+
+func (s *state) traceReadValue(address uint64, size int, value uint64) {
+	if s.tracer == nil || !s.tracer.includeValues || s.tracePC == 0 {
+		return
+	}
+	key := recoveryTraceMemoryKey{pc: s.tracePC, address: address, bytes: size}
+	for _, capture := range s.tracer.active {
+		if _, exists := capture.readValues[key]; !exists {
+			capture.readValues[key] = value
+		}
+	}
+}
+
+func (s *state) traceWriteValue(address uint64, value []byte) {
+	if s.tracer == nil || !s.tracer.includeValues || s.tracePC == 0 || len(value) == 0 || len(value) > 8 {
+		return
+	}
+	var encoded [8]byte
+	copy(encoded[:], value)
+	key := recoveryTraceWriteKey{pc: s.tracePC, address: address, bytes: len(value)}
+	decoded := binary.LittleEndian.Uint64(encoded[:])
+	for _, capture := range s.tracer.active {
+		if _, exists := capture.writeValues[key]; !exists {
+			capture.writeValues[key] = decoded
+		}
 	}
 }
 
@@ -402,7 +456,12 @@ func (s *state) traceAccess(address uint64, size int, write bool) {
 		if write {
 			traceMarkWrite(capture, address, size)
 			if s.tracer.includeValues && s.tracePC != 0 {
-				capture.writeSites[recoveryTraceWriteKey{pc: s.tracePC, address: address, bytes: size}]++
+				key := recoveryTraceWriteKey{pc: s.tracePC, address: address, bytes: size}
+				capture.writeSites[key]++
+				if _, exists := capture.writeRegisters[key]; !exists {
+					capture.writeRegisters[key] = s.x
+					capture.writeFlags[key] = RecoveryTraceFlags{Negative: s.n, Zero: s.z, Carry: s.c, Overflow: s.v}
+				}
 			}
 		} else {
 			traceMarkRead(capture, address, size)
