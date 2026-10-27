@@ -35,6 +35,15 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case sinfByteProjectionPass:
 		next, err := runSINFByteProjection(s)
 		return next, true, err
+	case sinfModuloDispatch:
+		next, err := runSINFModuloDispatch(s)
+		return next, true, err
+	case sinfByteWriter:
+		next, err := runSINFByteWriter(s)
+		return next, true, err
+	case sinfReverseWriter:
+		next, err := runSINFReverseWriter(s)
+		return next, true, err
 	default:
 		return pc, false, nil
 	}
