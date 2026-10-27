@@ -37,6 +37,16 @@ func accountSHA1ExpandWord(previous [4]uint32) uint32 {
 	return bits.RotateLeft32(previous[0]^previous[1]^previous[2]^previous[3], 1)
 }
 
+func accountSHA1FeedForward(initial, compressed accountSHA1State) accountSHA1State {
+	return accountSHA1State{
+		A: initial.A + compressed.A,
+		B: initial.B + compressed.B,
+		C: initial.C + compressed.C,
+		D: initial.D + compressed.D,
+		E: initial.E + compressed.E,
+	}
+}
+
 // accountSHA1Round is one standard SHA-1 compression round. The native
 // handlers split its 80 rounds into the usual four groups of twenty.
 func accountSHA1Round(state accountSHA1State, word uint32, phase accountSHA1Phase) accountSHA1State {
