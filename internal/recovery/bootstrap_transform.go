@@ -14,6 +14,10 @@ const (
 	bootstrapAccumulatorPassB     = uint64(0x100916db0)
 	bootstrapShufflePass          = uint64(0x10051b558)
 	bootstrapShuffleExit          = uint64(0x10051b5a8)
+	bootstrapForwardShuffleSeed   = uint64(0x1005df7f4)
+	bootstrapForwardShuffleStep   = uint64(0x1005df800)
+	bootstrapForwardShuffleExit   = uint64(0x1005df840)
+	bootstrapReverseBytePass      = uint64(0x10002d8fc)
 )
 
 // runBootstrapMixer replaces the dominant flattened bootstrap path with its
@@ -412,6 +416,120 @@ func runBootstrapShuffleStep(s *state) (uint64, error) {
 		return bootstrapShufflePass, nil
 	}
 	return bootstrapShuffleExit, nil
+}
+
+// runBootstrapForwardShufflePass performs the ascending companion to the
+// descending shuffle above. The first entry is prepared by the preceding CFG;
+// this loop owns entries 2 through 272.
+func runBootstrapForwardShufflePass(s *state) (uint64, error) {
+	const maximumEntries = 4096
+	for entry := 0; entry < maximumEntries; entry++ {
+		next, err := runBootstrapForwardShuffleIteration(s)
+		if err != nil || next != bootstrapForwardShuffleSeed {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap forward shuffle exceeded %d entries", maximumEntries)
+}
+
+func runBootstrapForwardShuffleIteration(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle state is unavailable")
+	}
+	s.traceBlock(bootstrapForwardShuffleSeed)
+	limit := uint32(s.x[12])
+	seed := uint32(s.x[10])
+	mixed := ((seed + limit) ^ seed) * uint32(s.x[11])
+
+	s.traceBlock(bootstrapForwardShuffleStep)
+	selected := uint32(0)
+	if limit != 0 {
+		selected = mixed % limit
+	}
+	leftAddress := s.x[13] + uint64(limit)*8
+	rightAddress := s.x[13] + uint64(selected)*8
+	left, err := s.load(leftAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle left entry: %w", err)
+	}
+	rightLoaded, err := s.load(rightAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle right entry: %w", err)
+	}
+	xor := left ^ rightLoaded
+	if err := s.storeValue(leftAddress, xor, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle left xor: %w", err)
+	}
+	rightLoaded, err = s.load(rightAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle updated right entry: %w", err)
+	}
+	right := rightLoaded ^ xor
+	if err := s.storeValue(rightAddress, right, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle right xor: %w", err)
+	}
+	left, err = s.load(leftAddress, 8)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle updated left entry: %w", err)
+	}
+	left ^= right
+	if err := s.storeValue(leftAddress, left, 8); err != nil {
+		return 0, fmt.Errorf("bootstrap forward shuffle final left entry: %w", err)
+	}
+
+	s.x[12] = uint64(limit) + 1
+	s.x[14] = left
+	s.x[15] = leftAddress
+	s.x[16] = right
+	s.x[17] = rightLoaded
+	s.compare64(s.x[12], 0x111)
+	if s.condition("ne") {
+		return bootstrapForwardShuffleSeed, nil
+	}
+	return bootstrapForwardShuffleExit, nil
+}
+
+// runBootstrapReverseBytePass copies a byte range backwards while applying a
+// fixed XOR byte. The protected handler uses its zero flag to select the exit
+// continuation after the last byte.
+func runBootstrapReverseBytePass(s *state) (uint64, error) {
+	const maximumBytes = 4096
+	for index := 0; index < maximumBytes; index++ {
+		next, err := runBootstrapReverseByteStep(s)
+		if err != nil || next != bootstrapReverseBytePass {
+			return next, err
+		}
+	}
+	return 0, fmt.Errorf("bootstrap reverse byte pass exceeded %d bytes", maximumBytes)
+}
+
+func runBootstrapReverseByteStep(s *state) (uint64, error) {
+	if s == nil {
+		return 0, fmt.Errorf("bootstrap reverse byte state is unavailable")
+	}
+	s.traceBlock(bootstrapReverseBytePass)
+	s.x[8] = uint64(uint32(s.x[9]) ^ uint32(s.x[11]))
+	counter := s.x[10] - 1
+	s.x[10] = counter
+	s.compare64(counter+1, 1)
+	value, err := s.load(s.x[24]+counter, 1)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reverse byte input: %w", err)
+	}
+	value = uint64(uint32(value) ^ uint32(s.x[12]))
+	if err := s.storeValue(s.x[13]+counter, uint64(byte(value)), 1); err != nil {
+		return 0, fmt.Errorf("bootstrap reverse byte output: %w", err)
+	}
+	last := uint32(boolValue(s.condition("eq")))
+	s.x[16] = uint64(uint32(s.x[8]) + uint32(s.x[14]))
+	dispatchIndex := last*uint32(s.x[16]) ^ uint32(s.x[9])
+	next, err := loadBootstrapPointer(s, s.x[21], dispatchIndex)
+	if err != nil {
+		return 0, fmt.Errorf("bootstrap reverse byte dispatch: %w", err)
+	}
+	s.x[15] = next
+	s.x[17] = 0x864c
+	return next, nil
 }
 
 // runBootstrapRecurrenceStep is the direct form of the hot recurrence used by
