@@ -45,7 +45,7 @@ const (
 // natural nested-loop structure. A round contains either 31 or 63 recurrence
 // steps, followed by five small control blocks. If a different, valid path is
 // selected, the caller resumes it through the verified CFG.
-func runBootstrapMixer(s *state, _ *rawSourceRuntime, profile *executionProfile) (uint64, error) {
+func runBootstrapMixerCircuit(s *state, _ *rawSourceRuntime, profile *executionProfile) (uint64, error) {
 	if s == nil || profile == nil || profile.runBootstrap == nil {
 		return 0, fmt.Errorf("bootstrap mixer state is unavailable")
 	}
