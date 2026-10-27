@@ -584,6 +584,12 @@ func runAccountEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 	case accountStateSetupTransform:
 		next, err := runAccountStateSetupTransform(s)
 		return next, true, err
+	case accountDispatchSeedSetup:
+		next, err := runAccountDispatchSeedSetup(s)
+		return next, true, err
+	case accountDispatchMixSetup:
+		next, err := runAccountDispatchMixSetup(s)
+		return next, true, err
 	case accountLookupSetupTarget:
 		next, err := runAccountLookupSetupTarget(s)
 		return next, true, err
