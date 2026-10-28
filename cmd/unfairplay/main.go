@@ -183,10 +183,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	if !canonical.RecoveryReady {
 		return outcome, errors.New("canonical enrollment input is not recovery-ready")
 	}
-	referencePath, referenceSource, err := recoveryReference(options, manifest)
-	if err != nil {
-		return outcome, err
-	}
+	referenceSource := "typed-go"
 	if err := os.Mkdir(options.Output, 0o700); err != nil {
 		return outcome, err
 	}
@@ -196,10 +193,6 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	}
 	if err := writePrivateFile(filepath.Join(options.Output, "canonical-input.json"), append(canonicalDocument, '\n')); err != nil {
 		return outcome, err
-	}
-	executablePath := manifest.App.ExecutablePath
-	if executablePath == "" {
-		executablePath = filepath.Join("/Applications", manifest.App.Executable+".app", manifest.App.Executable)
 	}
 	var recovered recovery.Result
 	selectedProfile := ""
@@ -218,11 +211,10 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 			recoveryErrors = append(recoveryErrors, fmt.Errorf("%s has no FairPlay state", inputProfile.name))
 			continue
 		}
-		mappings = append([]string{"/" + manifest.App.Executable + "=" + canonical.PrivateExecutablePath()}, mappings...)
 		recovered, err = recovery.Recover(recovery.Options{
-			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), ExecutablePath: executablePath,
-			ReferencePath: referencePath, SelectionMaxBlocks: options.SelectionMaxBlocks,
-			TraceStages: options.TraceStages || options.TraceValues, TraceValues: options.TraceValues,
+			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(),
+			SelectionMaxBlocks: options.SelectionMaxBlocks,
+			TraceStages:        options.TraceStages || options.TraceValues, TraceValues: options.TraceValues,
 		})
 		if err == nil {
 			selectedProfile = inputProfile.name
@@ -268,8 +260,8 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 		"schema": "unfairplay-enrollment-recovery-v1", "success": true,
 		"selector": manifest.App.SelectorID, "fairplayd_sha256": manifest.FairPlayd.SHA256,
 		"fairplayd_status": manifest.FairPlay.Status, "validation_basis": manifest.FairPlay.ValidationBasis,
-		"evaluator_profile": manifest.FairPlay.EvaluatorProfile, "evaluator_source_sha256": manifest.FairPlay.EvaluatorSHA256,
-		"portable_semantic_evaluator": manifest.FairPlay.EvaluatorSHA256 != "" && manifest.FairPlay.EvaluatorSHA256 != manifest.FairPlayd.SHA256,
+		"evaluator_profile": "typed-current-enrollment", "evaluator_source_sha256": manifest.FairPlay.EvaluatorSHA256,
+		"portable_semantic_evaluator": true,
 		"canonical_contract":          canonical.Contract, "canonical_input_sha256": canonical.FingerprintSHA256,
 		"enrollment_model": enrollment, "decrypted_ipa": decrypted,
 		"decrypted_ipa_sha256": result.OutputSHA256, "encrypted_images": result.EncryptedImages,

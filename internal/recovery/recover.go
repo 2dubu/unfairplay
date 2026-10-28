@@ -11,8 +11,6 @@ import (
 type Options struct {
 	FileMappings       []string
 	HardwarePath       string
-	ExecutablePath     string
-	ReferencePath      string
 	SelectionMaxBlocks int
 	TraceStages        bool
 	TraceValues        bool
@@ -42,9 +40,9 @@ func readPrivateInput(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// Recover derives a selector-bound enrollment model from a normalized native
-// Mac capture. The embedded model contains build-global state only; private
-// SIDB, SINF, SUPF, executable, and hardware bytes are supplied at runtime.
+// Recover derives a selector-bound enrollment model from structurally parsed
+// SIDB, SINF, SUPF, and hardware inputs. Native code and the captured
+// executable are not part of the production recovery path.
 func Recover(options Options) (Result, error) {
 	recoveryMu.Lock()
 	defer recoveryMu.Unlock()
@@ -55,61 +53,32 @@ func Recover(options Options) (Result, error) {
 	if options.HardwarePath == "" {
 		return Result{}, fmt.Errorf("recovery requires a hardware identity file")
 	}
-	if options.ExecutablePath == "" {
-		return Result{}, fmt.Errorf("recovery requires an installed executable path")
-	}
-	value, err := loadModelBytes(embeddedModelBytes())
-	if err != nil {
-		return Result{}, fmt.Errorf("load embedded recovery model: %w", err)
-	}
-	defer clearPrivateRecoveryState(value)
-	limit, err := selectionBlockLimit(options.SelectionMaxBlocks)
+	_, err := selectionBlockLimit(options.SelectionMaxBlocks)
 	if err != nil {
 		return Result{}, err
 	}
-	value.selectionMaxBlocks = limit
-	value.traceStages = options.TraceStages || options.TraceValues
-	value.traceValues = options.TraceValues
-	if err := addReferencePages(value, options.ReferencePath); err != nil {
-		return Result{}, err
-	}
-	if err := configureRawSourceRuntime(value, "enrollment-full", options.FileMappings,
-		options.HardwarePath, options.ExecutablePath, 0); err != nil {
-		return Result{}, err
-	}
-	if _, err := validateCurrentSUPFFiles(activeRawSourceRuntime.files); err != nil {
-		return Result{}, err
-	}
-	digest, iterations, err := runRawSource(value, "enrollment-full", false, 0)
+	inputs, err := loadCurrentRecoveryInputs(options.FileMappings, options.HardwarePath)
 	if err != nil {
 		return Result{}, err
 	}
-	registries, err := deriveSelectionRegistryCandidates(lastRawSourceState, activeRawSourceRuntime)
+	defer inputs.clear()
+	if _, err := validateCurrentSUPFFiles(inputs.files); err != nil {
+		return Result{}, err
+	}
+	registries, digest, iterations, err := deriveCurrentSelectionRegistryCandidates(inputs.files, inputs.hardware)
 	if err != nil {
 		return Result{}, err
 	}
-	pack, err := currentRawSourceEnrollmentPack(registries)
+	pack, err := currentEnrollmentPack(inputs.files, portableCurrentSemanticProfile(), rawSourceBinaryHash, registries)
 	if err != nil {
-		for index := range registries {
-			clear(registries[index].Data)
-		}
+		clearDecodedSIDBRegistryCandidates(registries)
 		return Result{}, err
 	}
-	for index := range registries {
-		clear(registries[index].Data)
-	}
-	hits := 0
-	if lastRawSourceState != nil {
-		hits = lastRawSourceState.extractedBlockHits
-	}
-	var traces []RecoveryStageTrace
-	if lastRawSourceState != nil && lastRawSourceState.tracer != nil {
-		traces = lastRawSourceState.tracer.completedResults()
-	}
+	clearDecodedSIDBRegistryCandidates(registries)
 	return Result{
 		EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations,
-		ExtractedBlockHits: hits, AccountDigestCandidates: len(lastRawSourceState.accountDigests),
-		DecodedRegistryCandidates: len(registries), StageTraces: traces,
+		ExtractedBlockHits: 0, AccountDigestCandidates: 0,
+		DecodedRegistryCandidates: len(registries), StageTraces: nil,
 	}, nil
 }
 

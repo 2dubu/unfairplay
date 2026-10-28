@@ -644,16 +644,14 @@ func rawSourceSINFSelector(blob []byte) (uint32, uint32, error) {
 	return values[0], values[1], nil
 }
 
-func currentRawSourceEnrollmentPack(registries []decodedSIDBRegistryCandidate) ([]byte, error) {
+func currentEnrollmentPack(files map[string][]byte, profile *semanticBuildProfile, binaryHash [32]byte, registries []decodedSIDBRegistryCandidate) ([]byte, error) {
 	var sinf []byte
-	if activeRawSourceRuntime != nil {
-		for suffix, data := range activeRawSourceRuntime.files {
-			if strings.HasSuffix(suffix, ".sinf") {
-				if sinf != nil {
-					return nil, fmt.Errorf("enrollment model requires exactly one installed SINF")
-				}
-				sinf = data
+	for suffix, data := range files {
+		if strings.HasSuffix(suffix, ".sinf") {
+			if sinf != nil {
+				return nil, fmt.Errorf("enrollment model requires exactly one installed SINF")
 			}
+			sinf = data
 		}
 	}
 	if sinf == nil {
@@ -663,20 +661,27 @@ func currentRawSourceEnrollmentPack(registries []decodedSIDBRegistryCandidate) (
 	if err != nil {
 		return nil, err
 	}
+	if profile == nil {
+		return nil, fmt.Errorf("semantic enrollment profile is unavailable")
+	}
+	selected, err := selectAuthenticatedClassPrecursor(sinf, profile, registries)
+	if err != nil {
+		return nil, err
+	}
+	pack, err := enrollmentPackForPrecursor(profile, binaryHash, user, keyID, selected.Precursor)
+	clear(selected.Precursor[:])
+	return pack, err
+}
+
+func currentRawSourceEnrollmentPack(registries []decodedSIDBRegistryCandidate) ([]byte, error) {
+	if activeRawSourceRuntime == nil || lastRawSourceState == nil {
+		return nil, fmt.Errorf("raw-source enrollment state is unavailable")
+	}
 	profile, err := executionProfileForModel(lastRawSourceState.model)
 	if err != nil {
 		return nil, err
 	}
-	if profile.semantic == nil {
-		return nil, fmt.Errorf("semantic enrollment profile is unavailable")
-	}
-	selected, err := selectAuthenticatedClassPrecursor(sinf, profile.semantic, registries)
-	if err != nil {
-		return nil, err
-	}
-	pack, err := enrollmentPackForPrecursor(profile.semantic, profile.binaryHash, user, keyID, selected.Precursor)
-	clear(selected.Precursor[:])
-	return pack, err
+	return currentEnrollmentPack(activeRawSourceRuntime.files, profile.semantic, profile.binaryHash, registries)
 }
 
 func runRawSourceKernelIteration(worker *state, kernel string) (bool, error) {

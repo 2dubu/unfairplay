@@ -17,6 +17,11 @@ type decodedSIDBRegistryCandidate struct {
 	Data     []byte
 }
 
+type currentSIDBContainerFile struct {
+	name string
+	data []byte
+}
+
 const (
 	selectionSourceEnvelopeBytes = 224
 	selectionSourcePrefixBytes   = 32
@@ -38,6 +43,76 @@ func selectionSourceLayouts(source []byte) ([][]byte, error) {
 	}
 }
 
+func currentSIDBContainerFiles(files map[string][]byte) ([]currentSIDBContainerFile, error) {
+	var containers []currentSIDBContainerFile
+	seen := make(map[[sha256.Size]byte]bool)
+	for name, data := range files {
+		if !strings.HasSuffix(name, "SC Info.sidb") || len(data) != selectionSIDBContainerBytes || binary.BigEndian.Uint32(data[:4]) != currentSIDBContainerVersion {
+			continue
+		}
+		digest := sha256.Sum256(data)
+		if seen[digest] {
+			continue
+		}
+		seen[digest] = true
+		containers = append(containers, currentSIDBContainerFile{name: name, data: data})
+	}
+	if len(containers) == 0 {
+		return nil, fmt.Errorf("typed SIDB selection found no current SIDB container")
+	}
+	sort.Slice(containers, func(left, right int) bool { return containers[left].name < containers[right].name })
+	return containers, nil
+}
+
+func clearDecodedSIDBRegistryCandidates(candidates []decodedSIDBRegistryCandidate) {
+	for index := range candidates {
+		clear(candidates[index].Data)
+	}
+}
+
+func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, seen map[[sha256.Size]byte]bool, source []byte, container currentSIDBContainerFile) ([]decodedSIDBRegistryCandidate, error) {
+	encoded, err := decodeSelectionSIDBContainer(container.data)
+	if err != nil {
+		return result, err
+	}
+	layouts, err := selectionSourceLayouts(source)
+	if err != nil {
+		return result, err
+	}
+	for _, layout := range layouts {
+		frames, err := enrollmentFrameCandidates(layout)
+		if err != nil {
+			return result, err
+		}
+		for _, frame := range frames {
+			decoded, err := decryptSelectionSIDBPayload(encoded, frame.Key)
+			clear(frame.Key[:])
+			if err != nil {
+				return result, err
+			}
+			digest := sha256.Sum256(decoded[:])
+			if seen[digest] {
+				clear(decoded[:])
+				continue
+			}
+			registry, err := parseDecodedSIDBRegistry(decoded[:])
+			if err != nil {
+				clear(decoded[:])
+				continue
+			}
+			seen[digest] = true
+			data := append([]byte(nil), decoded[:]...)
+			clear(decoded[:])
+			result = append(result, decodedSIDBRegistryCandidate{Registry: registry, Data: data})
+			if len(result) > maximumDecodedSIDBRegistryCandidates {
+				clearDecodedSIDBRegistryCandidates(result)
+				return nil, fmt.Errorf("typed SIDB selection found more than %d registry candidates", maximumDecodedSIDBRegistryCandidates)
+			}
+		}
+	}
+	return result, nil
+}
+
 // deriveSelectionRegistryCandidates replaces native SIDB candidate selection.
 // It evaluates both supported source layouts and every structurally current
 // SIDB container. Personalized SINF authentication later promotes exactly one
@@ -56,72 +131,49 @@ func deriveSelectionRegistryCandidates(s *state, runtime *rawSourceRuntime) ([]d
 	}
 	defer clear(source)
 
-	type containerFile struct {
-		name string
-		data []byte
+	containers, err := currentSIDBContainerFiles(runtime.files)
+	if err != nil {
+		return nil, err
 	}
-	var containers []containerFile
-	seenContainers := make(map[[sha256.Size]byte]bool)
-	for name, data := range runtime.files {
-		if !strings.HasSuffix(name, "SC Info.sidb") || len(data) != selectionSIDBContainerBytes || binary.BigEndian.Uint32(data[:4]) != currentSIDBContainerVersion {
-			continue
-		}
-		digest := sha256.Sum256(data)
-		if seenContainers[digest] {
-			continue
-		}
-		seenContainers[digest] = true
-		containers = append(containers, containerFile{name: name, data: data})
-	}
-	if len(containers) == 0 {
-		return nil, fmt.Errorf("typed SIDB selection found no current SIDB container")
-	}
-	sort.Slice(containers, func(left, right int) bool { return containers[left].name < containers[right].name })
 
 	seenRegistries := make(map[[sha256.Size]byte]bool)
 	var result []decodedSIDBRegistryCandidate
 	for _, container := range containers {
-		encoded, err := decodeSelectionSIDBContainer(container.data)
+		result, err = appendSelectionRegistryCandidates(result, seenRegistries, source, container)
 		if err != nil {
+			clearDecodedSIDBRegistryCandidates(result)
 			return nil, err
-		}
-		layouts, err := selectionSourceLayouts(source)
-		if err != nil {
-			return nil, err
-		}
-		for _, layout := range layouts {
-			frames, err := enrollmentFrameCandidates(layout)
-			if err != nil {
-				return nil, err
-			}
-			for _, frame := range frames {
-				decoded, err := decryptSelectionSIDBPayload(encoded, frame.Key)
-				clear(frame.Key[:])
-				if err != nil {
-					return nil, err
-				}
-				digest := sha256.Sum256(decoded[:])
-				if seenRegistries[digest] {
-					clear(decoded[:])
-					continue
-				}
-				registry, err := parseDecodedSIDBRegistry(decoded[:])
-				if err != nil {
-					clear(decoded[:])
-					continue
-				}
-				seenRegistries[digest] = true
-				data := append([]byte(nil), decoded[:]...)
-				clear(decoded[:])
-				result = append(result, decodedSIDBRegistryCandidate{Registry: registry, Data: data})
-				if len(result) > maximumDecodedSIDBRegistryCandidates {
-					for index := range result {
-						clear(result[index].Data)
-					}
-					return nil, fmt.Errorf("typed SIDB selection found more than %d registry candidates", maximumDecodedSIDBRegistryCandidates)
-				}
-			}
 		}
 	}
 	return result, nil
+}
+
+func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware []byte) ([]decodedSIDBRegistryCandidate, string, int, error) {
+	containers, err := currentSIDBContainerFiles(files)
+	if err != nil {
+		return nil, "", 0, err
+	}
+	hash := sha256.New()
+	seenRegistries := make(map[[sha256.Size]byte]bool)
+	var result []decodedSIDBRegistryCandidate
+	for _, container := range containers {
+		source, iterations, err := deriveCurrentSelectionSource(container.data, hardware)
+		if err != nil {
+			clearDecodedSIDBRegistryCandidates(result)
+			return nil, "", iterations, err
+		}
+		containerDigest := sha256.Sum256(container.data)
+		_, _ = hash.Write(containerDigest[:])
+		_, _ = hash.Write(source[:])
+		result, err = appendSelectionRegistryCandidates(result, seenRegistries, source[:], container)
+		clear(source[:])
+		if err != nil {
+			clearDecodedSIDBRegistryCandidates(result)
+			return nil, "", iterations, err
+		}
+	}
+	if len(result) == 0 {
+		return nil, "", outerNaturalIterationCount, fmt.Errorf("typed SIDB selection found no decoded registry candidate")
+	}
+	return result, fmt.Sprintf("%x", hash.Sum(nil)), outerNaturalIterationCount, nil
 }

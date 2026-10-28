@@ -53,17 +53,22 @@ type executionProfile struct {
 	optionalStart uint64
 }
 
+func portableCurrentSemanticProfile() *semanticBuildProfile {
+	return &semanticBuildProfile{
+		currentSINFWhite: generatedCurrentSINFWhitening,
+		currentSINFInput: generatedCurrentSINFInputDecode,
+	}
+}
+
 func embedded26A428ExecutionProfile() *executionProfile {
+	semantic := portableCurrentSemanticProfile()
+	semantic.outer = outerStage26A428Layout
+	semantic.sourceAddress = 0x7000000FB304
+	semantic.frameAddress = 0x7000000FB724
+	semantic.selectionStart = 0x1006b10a0
 	return &executionProfile{
 		name: "macos26a428", binaryHash: rawSourceBinaryHash,
-		semantic: &semanticBuildProfile{
-			outer:            outerStage26A428Layout,
-			sourceAddress:    0x7000000FB304,
-			frameAddress:     0x7000000FB724,
-			selectionStart:   0x1006b10a0,
-			currentSINFWhite: generatedCurrentSINFWhitening,
-			currentSINFInput: generatedCurrentSINFInputDecode,
-		},
+		semantic:          semantic,
 		accountEntryStart: 0x100cd1c18, accountEntryStop: 0x10057ae74,
 		bootstrapStart: 0x10057ae74, bootstrapStop: 0x1005b7438,
 		selectionStart: 0x1006b10a0, selectionStop: 0x10008a644, selectionStopHits: 2,

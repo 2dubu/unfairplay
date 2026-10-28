@@ -13,9 +13,8 @@ import (
 // Private capture inputs are optional and are never stored in the repository.
 func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 	capture := os.Getenv("UNFAIRPLAY_TEST_CAPTURE")
-	reference := os.Getenv("UNFAIRPLAY_TEST_REFERENCE")
-	if capture == "" || reference == "" {
-		t.Skip("local capture/reference not configured")
+	if capture == "" {
+		t.Skip("local capture not configured")
 	}
 	manifest, err := fairplay.LoadEnrollmentCapture(capture, true)
 	if err != nil {
@@ -29,14 +28,8 @@ func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 	if stateFiles == 0 {
 		t.Fatal("capture has no FairPlay state")
 	}
-	mappings = append([]string{"/" + manifest.App.Executable + "=" + canonical.PrivateExecutablePath()}, mappings...)
-	executablePath := manifest.App.ExecutablePath
-	if executablePath == "" {
-		executablePath = filepath.Join("/Applications", manifest.App.Executable+".app", manifest.App.Executable)
-	}
 	options := recovery.Options{
 		FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(),
-		ExecutablePath: executablePath, ReferencePath: reference,
 		SelectionMaxBlocks: 20_000_000,
 	}
 	first, err := recovery.Recover(options)
