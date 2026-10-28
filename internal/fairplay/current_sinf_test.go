@@ -62,12 +62,16 @@ func syntheticCurrentSINFFixture(t *testing.T, user, key uint32, righBytes int, 
 	types := [...]string{"key ", "iviv", "tmpr", "righ", "name"}
 	sizes := [...]int{24, 24, 24, righBytes, 264}
 	plaintext := make([]byte, 0, 432)
+	var visibleRights []byte
 	for index, typ := range types {
 		atom := make([]byte, sizes[index])
 		binary.BigEndian.PutUint32(atom[:4], uint32(len(atom)))
 		copy(atom[4:8], typ)
 		if index == 0 {
 			copy(atom[8:], innerKey[:])
+		}
+		if typ == "righ" {
+			visibleRights = append([]byte(nil), atom[8:]...)
 		}
 		plaintext = append(plaintext, atom...)
 	}
@@ -103,6 +107,7 @@ func syntheticCurrentSINFFixture(t *testing.T, user, key uint32, righBytes int, 
 	binary.BigEndian.PutUint32(userPayload, user)
 	binary.BigEndian.PutUint32(keyPayload, key)
 	fields := append(testAtom("user", userPayload), testAtom("key ", keyPayload)...)
+	fields = append(fields, testAtom("righ", visibleRights)...)
 	fields = append(fields, testAtom("priv", protected)...)
 	sinf := testAtom("sinf", testAtom("schi", fields))
 
@@ -426,6 +431,7 @@ func TestCurrentSINFPortableFixtures(t *testing.T) {
 	}{
 		{"zero-trailer", 0x11223344, 2, 96, [16]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10}},
 		{"eight-byte-trailer", 0x11223344, 2, 88, [16]byte{0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01}},
+		{"extended-rights", 0x11223344, 2, 104, [16]byte{0x21, 0x43, 0x65, 0x87, 0xa9, 0xcb, 0xed, 0x0f, 0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12}},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {

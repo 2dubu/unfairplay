@@ -73,7 +73,7 @@ flattened native selector.
 | SIDB | Container projection, candidate-state-to-key production, and the 36- or 59-block AES consumer are typed. The unused frame output encoding is gone. The producer is now ten direct AES inverse-S-box layers, nine fixed `InvShiftRows + InvMixColumns` operations, four final XOR graphs, and compact endpoint maps. Its protected stage encodings and per-enrollment DFA are no longer semantic requirements. |
 | SINF | Portable AES/model decoding exists. Decoded SIDB discovery, current and older payload-to-`valu` arithmetic, all semantic class-value families, AES class join, exhaustive record/window or mask-phase evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
-| Build portability | The 630-, 993-, and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, per-enrollment DFA, or iPhone-derived secret. The five-build account-entry static matrix is complete; structurally locating the downstream frame and SIDB-key stages in independent builds remains open. |
+| Build portability | The 630-, 993-, and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, per-enrollment DFA, or iPhone-derived secret. Other version-`0x0007000b` containers are discovered from bounded codec, registry, footer, and trailer geometry and promoted only by complete SINF and IPA authentication. |
 
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
@@ -258,6 +258,23 @@ source directly and emits zero whitening plus canonical identity tables for
 backward-compatible version-2 models. The former semantic-profile object and
 its 4,112 bytes of encoding data have been removed.
 
+SIDB container selection is no longer a three-size switch. The three verified
+layouts remain exact controls, while other containers in the same versioned
+family are inferred from a 13- to 39-byte codec, a block-aligned decoded
+registry containing 40-byte records and a 16- or 24-byte footer, and a fixed
+16-byte trailer. The outer iteration count is `11 * codec_bytes - 2`, matching
+all three independent controls. Unknown structural candidates still have to
+produce one decoded registry and one personalized-SINF precursor; a truncated
+known container therefore cannot be promoted merely because its size resembles
+another valid layout.
+
+Current SINF parsing now accepts bounded rights payloads from 80 through 256
+bytes in eight-byte units. The observed 440- and 448-byte private records and
+synthetic appended-rights controls share one structural CBC/trailer parser.
+macOS conversion separately requires the canonical named-right prefix, visible
+and private rights equality, a zero partial-block trailer, and an exact CBC
+round trip before reducing the record to the 440-byte target geometry.
+
 Go evaluates the fixed current class value and every value in the complete
 32,767-element workspace-seed domain against the typed `valu` and AES class
 stages for every structurally parsed SIDB record and all five valid record
@@ -441,15 +458,13 @@ That structural search has now recovered a narrower, evidence-ranked set:
   sixteen-byte transforms, but none normalizes to the typed frame core. They
   are therefore rejected as cross-build identities. The exact natural caller
   state must select the instance and its tables.
-- Local predecessor matching is insufficient too. The exact 26A428 frame path
-  enters through `0x100242ea8`, loops through `0x1003d0dd8`, and reaches its
-  descriptor caller at `0x100433434`. The independently top-ranked 25G83
-  lookalikes are `0x100030084`, `0x1000d9778`, and `0x100034d60`, but they do
-  not form one coherent protected chain. Under the only dispatch-table base and
-  entry state that send the first block to the proposed loop, that loop's next
-  encoded index points outside the same static fixup table. This rejects the
-  composed match; it does not prove a new algorithm. Cross-build discovery must
-  preserve one coherent dispatcher state from entry through frame output.
+- The 25G83 predecessor chain is coherent after using its real dispatcher base
+  rather than a table-rank guess. The unique bounded solution starts with state
+  `-1`, uses table base `0x100f8e190`, selects loop state `0x6376`, applies exit
+  mask `0xb2`, runs seven iterations through `0x1000d9778`, reaches descriptor
+  caller `0x100034d60`, and naturally enters the 3,953-instruction frame at
+  `0x100086a70`. This is further evidence for regenerated protected encodings,
+  not a different enrollment algorithm. These addresses remain research-only.
 
 The formerly top-ranked 22A380 candidate at
 `0x10061d8c8..0x100623954` is rejected. It has attractive instruction counts,
@@ -470,12 +485,10 @@ those builds. Its sixteen 32-bit block loads and compression-shaped dataflow
 make it a useful cross-build control, but its 64+16-to-16 contract is the wrong
 semantic boundary. Do not promote it as enrollment evidence.
 
-At least five independently hashed stable release and update builds must
-receive stage-level differential validation before this work is complete.
-The cross-generation control set starts with macOS 13.0 (22A380), macOS 14.0
-(23A344), and macOS 15.0 (24A335), then adds two stable macOS 26/27 builds.
-These binaries are research controls: inclusion here is not a claim that their
-enrollment layouts are already supported.
+The five independently hashed builds remain static research controls. Further
+build-by-build MBA tracing is not a beta gate: production consumes the semantic
+input format and authenticates the resulting model instead of selecting an
+implementation by binary identity.
 
 ## Proof requirements
 
@@ -490,19 +503,12 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Structurally locate the true frame and SIDB-key boundaries in the independent
-   builds. First recover one coherent 25G83 dispatcher path from entry through
-   the descriptor caller and normalize its frame against the typed Go stage;
-   do not compose independently ranked lookalike blocks. Use the resulting
-   semantic fingerprint to select the enrollment member from the many 22A380,
-   23A344, and 24A335 white-box-family controls. Require sixteen-byte
-   input/output geometry, causal dataflow, coherent control state, and exact
-   semantic agreement; compare outputs, not protected registers, instruction
-   words, selector ranks, or table addresses. Classify any genuine constant
-   change as input data rather than a build selector.
-2. Run exact private QA across multiple enrollment layouts after each promoted
-   cross-build normalization. The three older binaries are differential
-   controls and do not require private account enrollment on those OS releases.
+1. Beta-test structural SIDB and SINF discovery with independent enrolled Macs.
+   Record only non-secret build, commit, and byte geometry in public reports;
+   keep every license, hardware identity, model, and decrypted IPA private.
+2. Promote a new structural family only after one personalized SINF selects a
+   unique precursor and complete IPA validation succeeds. Add a synthetic
+   regression for the geometry and an opt-in private QA control.
 
 Update this file whenever a stage becomes typed, an offset is removed, a
 cross-build invariant is proved, or a completion requirement changes state.

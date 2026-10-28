@@ -39,6 +39,9 @@ type CanonicalSIDB struct {
 	File                CanonicalEnrollmentFile `json:"file"`
 	Version             uint32                  `json:"version"`
 	Format              string                  `json:"format"`
+	CodecBytes          int                     `json:"codec_bytes,omitempty"`
+	RegistryBytes       int                     `json:"registry_bytes,omitempty"`
+	FooterBytes         int                     `json:"footer_bytes,omitempty"`
 	ExpectedSourceBytes int                     `json:"expected_source_bytes,omitempty"`
 }
 
@@ -84,17 +87,44 @@ func canonicalSIDB(file CanonicalEnrollmentFile) (CanonicalSIDB, error) {
 	version := binary.BigEndian.Uint32(data[:4])
 	result := CanonicalSIDB{File: file, Version: version}
 	if version == 0x0007000b {
-		result.Format = "macos-sidb-v7000b"
-		switch len(data) {
-		case 630, 642:
-			result.ExpectedSourceBytes = 192
-		case 993, 1003:
-			result.ExpectedSourceBytes = 224
+		if codecBytes, registryBytes, footerBytes, ok := canonicalSIDBGeometry(len(data)); ok {
+			result.Format = "macos-sidb-v7000b"
+			result.CodecBytes = codecBytes
+			result.RegistryBytes = registryBytes
+			result.FooterBytes = footerBytes
+			if footerBytes == 16 {
+				result.ExpectedSourceBytes = 192
+			} else {
+				result.ExpectedSourceBytes = 224
+			}
 		}
 	} else {
 		result.Format = "unknown"
 	}
 	return result, nil
+}
+
+func canonicalSIDBGeometry(size int) (codecBytes, registryBytes, footerBytes int, ok bool) {
+	for codec := 13; codec <= 39; codec++ {
+		registry := size - 4 - codec - 16
+		if registry <= 0 || registry%16 != 0 {
+			continue
+		}
+		for _, footer := range [...]int{16, 24} {
+			if registry <= footer || (registry-footer)%40 != 0 {
+				continue
+			}
+			records := (registry - footer) / 40
+			if records <= 0 || records > 64 {
+				continue
+			}
+			if ok {
+				return 0, 0, 0, false
+			}
+			codecBytes, registryBytes, footerBytes, ok = codec, registry, footer, true
+		}
+	}
+	return
 }
 
 func canonicalSUPF(file CanonicalEnrollmentFile) (CanonicalSUPF, error) {

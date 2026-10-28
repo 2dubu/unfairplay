@@ -177,14 +177,14 @@ func currentSINFPrivateKeyLegacy(model currentSINFModel, source []byte) ([16]byt
 	copy(plaintext[len(decrypted):], trailer)
 
 	expectedAtoms := [...]struct {
-		typ   string
-		sizes []int
+		typ  string
+		size int
 	}{
-		{"key ", []int{24}},
-		{"iviv", []int{24}},
-		{"tmpr", []int{24}},
-		{"righ", []int{88, 96}},
-		{"name", []int{264}},
+		{"key ", 24},
+		{"iviv", 24},
+		{"tmpr", 24},
+		{"righ", 0},
+		{"name", 264},
 	}
 	cursor := 0
 	for index, expected := range expectedAtoms {
@@ -192,11 +192,14 @@ func currentSINFPrivateKeyLegacy(model currentSINFModel, source []byte) ([16]byt
 		if parseErr != nil {
 			return innerKey, fmt.Errorf("%w: plaintext atom %d: %v", errCurrentSINFProfileMismatch, index, parseErr)
 		}
-		validSize := false
-		for _, size := range expected.sizes {
-			validSize = validSize || atom.end-cursor == size
+		if atom.typ != expected.typ {
+			return innerKey, fmt.Errorf("%w: plaintext has invalid %s atom", errCurrentSINFProfileMismatch, expected.typ)
 		}
-		if atom.typ != expected.typ || !validSize {
+		if atom.typ == "righ" {
+			if rightsErr := currentSINFRightsPayloadGeometry(plaintext[cursor+8 : atom.end]); rightsErr != nil {
+				return innerKey, fmt.Errorf("%w: plaintext has invalid rights: %v", errCurrentSINFProfileMismatch, rightsErr)
+			}
+		} else if atom.end-cursor != expected.size {
 			return innerKey, fmt.Errorf("%w: plaintext has invalid %s atom", errCurrentSINFProfileMismatch, expected.typ)
 		}
 		if index == 0 {

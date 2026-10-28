@@ -17,6 +17,9 @@ func TestParseDecodedSIDBRegistry(t *testing.T) {
 	if len(registry.Records) != 2 {
 		t.Fatalf("records = %d, want 2", len(registry.Records))
 	}
+	if registry.FooterBytes != decodedSIDBFooterBytes {
+		t.Fatalf("footer bytes = %d, want %d", registry.FooterBytes, decodedSIDBFooterBytes)
+	}
 	for index, record := range registry.Records {
 		offset := index * decodedSIDBRecordBytes
 		if !bytes.Equal(record.Metadata[:], data[offset:offset+decodedSIDBMetadataBytes]) {
@@ -57,6 +60,9 @@ func TestParseDecodedOlderSIDBRegistry(t *testing.T) {
 	}
 	if len(registry.Records) != 14 {
 		t.Fatalf("older records = %d, want 14", len(registry.Records))
+	}
+	if registry.FooterBytes != decodedSIDBOlderFooterBytes {
+		t.Fatalf("older footer bytes = %d, want %d", registry.FooterBytes, decodedSIDBOlderFooterBytes)
 	}
 	if !bytes.Equal(registry.Footer[:decodedSIDBOlderFooterBytes], data[len(data)-decodedSIDBOlderFooterBytes:]) || !bytes.Equal(registry.Footer[decodedSIDBOlderFooterBytes:], make([]byte, decodedSIDBFooterBytes-decodedSIDBOlderFooterBytes)) {
 		t.Fatal("older footer mismatch")

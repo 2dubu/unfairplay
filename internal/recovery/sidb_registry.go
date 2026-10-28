@@ -23,8 +23,9 @@ type decodedSIDBRecord struct {
 }
 
 type decodedSIDBRegistry struct {
-	Records []decodedSIDBRecord
-	Footer  [decodedSIDBFooterBytes]byte
+	Records     []decodedSIDBRecord
+	Footer      [decodedSIDBFooterBytes]byte
+	FooterBytes int
 }
 
 // parseDecodedSIDBRegistry parses only authenticated, already-decoded SIDB
@@ -41,7 +42,7 @@ func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
 	if count == 0 || count > maximumDecodedSIDBRecords {
 		return decodedSIDBRegistry{}, fmt.Errorf("decoded SIDB registry has invalid record count: %d", count)
 	}
-	result := decodedSIDBRegistry{Records: make([]decodedSIDBRecord, count)}
+	result := decodedSIDBRegistry{Records: make([]decodedSIDBRecord, count), FooterBytes: footerBytes}
 	for index := range result.Records {
 		offset := index * decodedSIDBRecordBytes
 		record := &result.Records[index]

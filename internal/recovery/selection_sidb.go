@@ -17,9 +17,14 @@ const (
 	selectionSIDBExtendedPayloadOffset = 43
 	selectionSIDBPayloadBytes          = 944
 	selectionSIDBBlockBytes            = aes.BlockSize
-	selectionSIDBExtendedTrailerBytes  = 16
+	selectionSIDBTrailerBytes          = 16
 	selectionSIDBOuterIterations       = outerNaturalIterationCount
 	selectionSIDBExtendedIterations    = 427
+	selectionSIDBMinimumCodecBytes     = 13
+	selectionSIDBMaximumCodecBytes     = 39
+	selectionSIDBIterationsPerCodec    = 11
+	selectionSIDBIterationBias         = -2
+	maximumStructuralSIDBRecords       = 64
 )
 
 type currentSIDBLayout struct {
@@ -55,9 +60,40 @@ func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
 			PayloadBytes:    selectionSIDBPayloadBytes,
 			OuterIterations: selectionSIDBExtendedIterations,
 		}, nil
-	default:
-		return currentSIDBLayout{}, fmt.Errorf("current SIDB container has unsupported size %d", len(input))
 	}
+
+	// Every observed current container is version || codec || encrypted
+	// registry || 16-byte trailer. The decoded registry is a bounded sequence
+	// of 40-byte records followed by a 16- or 24-byte footer. The outer loop
+	// consumes one codec byte every eleven iterations, with the same two-step
+	// bias in all three independently validated layouts.
+	var layouts []currentSIDBLayout
+	for codecBytes := selectionSIDBMinimumCodecBytes; codecBytes <= selectionSIDBMaximumCodecBytes; codecBytes++ {
+		payloadBytes := len(input) - 4 - codecBytes - selectionSIDBTrailerBytes
+		if payloadBytes <= 0 || payloadBytes%selectionSIDBBlockBytes != 0 || !validDecodedSIDBRegistrySize(payloadBytes) {
+			continue
+		}
+		layouts = append(layouts, currentSIDBLayout{
+			CodecBytes:      codecBytes,
+			PayloadOffset:   4 + codecBytes,
+			PayloadBytes:    payloadBytes,
+			OuterIterations: selectionSIDBIterationsPerCodec*codecBytes + selectionSIDBIterationBias,
+		})
+	}
+	if len(layouts) != 1 {
+		return currentSIDBLayout{}, fmt.Errorf("current SIDB container has unsupported or ambiguous size %d", len(input))
+	}
+	return layouts[0], nil
+}
+
+func validDecodedSIDBRegistrySize(size int) bool {
+	for _, footerBytes := range [...]int{decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
+		if size > footerBytes && (size-footerBytes)%decodedSIDBRecordBytes == 0 {
+			count := (size - footerBytes) / decodedSIDBRecordBytes
+			return count > 0 && count <= maximumStructuralSIDBRecords
+		}
+	}
+	return false
 }
 
 // These are fixed semantic external encodings, not account or build material.

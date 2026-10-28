@@ -37,25 +37,39 @@ func TestDecodeSelectionSIDBContainer(t *testing.T) {
 					t.Fatalf("decoded byte %d=%#x, want %#x", index, value, want)
 				}
 			}
-			if control.name == "extended" && control.payloadOffset+len(output)+selectionSIDBExtendedTrailerBytes != len(input) {
+			if control.name == "extended" && control.payloadOffset+len(output)+selectionSIDBTrailerBytes != len(input) {
 				t.Fatal("extended SIDB trailer geometry changed")
 			}
 		})
+	}
+
+	structural := make([]byte, 4+28+selectionSIDBPayloadBytes+selectionSIDBTrailerBytes)
+	binary.BigEndian.PutUint32(structural[:4], currentSIDBContainerVersion)
+	for index := 4; index < len(structural); index++ {
+		structural[index] = byte(index*13 + 5)
+	}
+	layout, err := currentSIDBLayoutForContainer(structural)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.CodecBytes != 28 || layout.PayloadOffset != 32 || layout.PayloadBytes != selectionSIDBPayloadBytes || layout.OuterIterations != 306 {
+		t.Fatalf("structural SIDB layout = %+v", layout)
+	}
+	decoded, err := decodeSelectionSIDBContainer(structural)
+	if err != nil || len(decoded) != selectionSIDBPayloadBytes {
+		t.Fatalf("decode structural SIDB = %d, %v", len(decoded), err)
 	}
 
 	invalidVersion := make([]byte, selectionSIDBContainerBytes)
 	if _, err := decodeSelectionSIDBContainer(invalidVersion); err == nil {
 		t.Fatal("accepted a selection SIDB container with an invalid version")
 	}
-	truncated := make([]byte, selectionSIDBContainerBytes-1)
-	binary.BigEndian.PutUint32(truncated[:4], currentSIDBContainerVersion)
-	if _, err := decodeSelectionSIDBContainer(truncated); err == nil {
-		t.Fatal("accepted a truncated selection SIDB container")
-	}
-	oversized := make([]byte, selectionSIDBExtendedBytes+1)
-	binary.BigEndian.PutUint32(oversized[:4], currentSIDBContainerVersion)
-	if _, err := decodeSelectionSIDBContainer(oversized); err == nil {
-		t.Fatal("accepted an oversized selection SIDB container")
+	for _, size := range []int{4 + 12 + 64 + selectionSIDBTrailerBytes, 4 + 40 + 64 + selectionSIDBTrailerBytes} {
+		unsupported := make([]byte, size)
+		binary.BigEndian.PutUint32(unsupported[:4], currentSIDBContainerVersion)
+		if _, err := decodeSelectionSIDBContainer(unsupported); err == nil {
+			t.Fatalf("accepted unsupported %d-byte selection SIDB container", size)
+		}
 	}
 	for _, size := range []int{0, 1, 2, 3} {
 		if _, err := decodeSelectionSIDBContainer(make([]byte, size)); err == nil {

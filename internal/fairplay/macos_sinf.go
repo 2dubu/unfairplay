@@ -257,44 +257,52 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 		return nil, report, fmt.Errorf("current SINF does not contain the required six fields")
 	}
 	rights := values["righ"]
-	expectedRights := [...]string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32"}
-	if len(rights) != 88 {
-		return nil, report, fmt.Errorf("current SINF rights have %d bytes, want 88", len(rights))
-	}
-	for index, typ := range expectedRights {
-		if string(rights[index*8:index*8+4]) != typ {
-			return nil, report, fmt.Errorf("current SINF right %d is not %q", index, typ)
-		}
-	}
-	if len(values["user"]) != 4 || len(values["key "]) != 4 || len(values["iviv"]) != aes.BlockSize ||
-		len(values["name"]) != 256 || len(values["priv"]) != 448 {
-		return nil, report, fmt.Errorf("current SINF has unsupported IV or private-record geometry")
-	}
-	cleartext, err := macOSSINFCrypt(values["priv"], credential, values["name"], values["iviv"], false)
+	namedRightsBytes, err := currentSINFRightsGeometry(rights)
 	if err != nil {
 		return nil, report, err
 	}
+	privateBytes := 360 + len(rights)
+	if len(values["user"]) != 4 || len(values["key "]) != 4 || len(values["iviv"]) != aes.BlockSize ||
+		len(values["name"]) != 256 || len(values["priv"]) != privateBytes {
+		return nil, report, fmt.Errorf("current SINF has unsupported IV or private-record geometry")
+	}
+	trailerBytes := privateBytes % aes.BlockSize
+	if trailerBytes != 0 && trailerBytes != 8 {
+		return nil, report, fmt.Errorf("current SINF private record has invalid trailer geometry")
+	}
+	encryptedPrivate := values["priv"][:privateBytes-trailerBytes]
+	for _, value := range values["priv"][privateBytes-trailerBytes:] {
+		if value != 0 {
+			return nil, report, fmt.Errorf("current SINF private record has nonzero trailer")
+		}
+	}
+	cleartext, err := macOSSINFCrypt(encryptedPrivate, credential, values["name"], values["iviv"], false)
+	if err != nil {
+		return nil, report, err
+	}
+	cleartext = append(cleartext, values["priv"][privateBytes-trailerBytes:]...)
 	defer clear(cleartext)
 	privateFields, err := validateMacOSSINFPrivate(cleartext, rights)
 	if err != nil {
 		return nil, report, err
 	}
-	roundTrip, err := macOSSINFCrypt(cleartext, credential, values["name"], values["iviv"], true)
+	roundTrip, err := macOSSINFCrypt(cleartext[:len(cleartext)-trailerBytes], credential, values["name"], values["iviv"], true)
 	if err != nil {
 		return nil, report, err
 	}
-	if !bytes.Equal(roundTrip, values["priv"]) {
+	if !bytes.Equal(roundTrip, encryptedPrivate) {
 		clear(roundTrip)
 		return nil, report, fmt.Errorf("current SINF private record does not round trip")
 	}
 	clear(roundTrip)
 
-	modeAt, err := macOSSINFRightsValue(rights, "mode")
+	modeAt, err := macOSSINFRightsValue(rights[:namedRightsBytes], "mode")
 	if err != nil {
 		return nil, report, err
 	}
 	originalMode := binary.BigEndian.Uint32(rights[modeAt : modeAt+4])
-	normalizedRights := append([]byte(nil), rights[:80]...)
+	normalizedRights := make([]byte, 80)
+	copy(normalizedRights, rights[:min(namedRightsBytes, len(normalizedRights))])
 	binary.BigEndian.PutUint32(normalizedRights[modeAt:modeAt+4], 0)
 
 	normalizedClear := append([]byte(nil), cleartext[:16]...)
@@ -315,7 +323,7 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	}
 	private = append(private, normalizedClear[len(normalizedClear)-8:]...)
 	defer clear(private)
-	tranAt, err := macOSSINFRightsValue(rights, "tran")
+	tranAt, err := macOSSINFRightsValue(rights[:namedRightsBytes], "tran")
 	if err != nil {
 		return nil, report, err
 	}
@@ -360,8 +368,8 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	}
 	report = MacOSSINFRecordReport{
 		InputBytes: len(blob), OutputBytes: len(result), OriginalMode: originalMode,
-		ConvertedMode: 0, NamedRightsPreserved: len(expectedRights),
-		RightsSuffixRemovedBytes: 8, PrivateKeyMaterialPreserved: true,
+		ConvertedMode: 0, NamedRightsPreserved: min(namedRightsBytes/8, len(normalizedRights)/8),
+		RightsSuffixRemovedBytes: len(rights) - len(normalizedRights), PrivateKeyMaterialPreserved: true,
 	}
 	return result, report, nil
 }

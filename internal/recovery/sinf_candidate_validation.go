@@ -48,14 +48,14 @@ func validateCurrentSINFPrecursor(sinf []byte, precursor [16]byte) (bool, error)
 	cipher.NewCBCDecrypter(block, logical[:aes.BlockSize]).CryptBlocks(decrypted, logical[aes.BlockSize:])
 
 	expected := [...]struct {
-		typ   string
-		sizes []int
+		typ  string
+		size int
 	}{
-		{"key ", []int{24}},
-		{"iviv", []int{24}},
-		{"tmpr", []int{24}},
-		{"righ", []int{88, 96}},
-		{"name", []int{264}},
+		{"key ", 24},
+		{"iviv", 24},
+		{"tmpr", 24},
+		{"righ", 0},
+		{"name", 264},
 	}
 	cursor := 0
 	for _, atom := range expected {
@@ -66,11 +66,11 @@ func validateCurrentSINFPrecursor(sinf []byte, precursor [16]byte) (bool, error)
 		if size < 8 || size > len(plaintext)-cursor || string(plaintext[cursor+4:cursor+8]) != atom.typ {
 			return false, nil
 		}
-		validSize := false
-		for _, expectedSize := range atom.sizes {
-			validSize = validSize || size == expectedSize
-		}
-		if !validSize {
+		if atom.typ == "righ" {
+			if err := validateCurrentSINFRights(plaintext[cursor+8 : cursor+size]); err != nil {
+				return false, nil
+			}
+		} else if size != atom.size {
 			return false, nil
 		}
 		cursor += size
@@ -293,9 +293,9 @@ func selectAuthenticatedEnrollmentClassPrecursor(sinf []byte, registries []decod
 	if len(registries) == 0 {
 		return authenticatedClassPrecursor{}, fmt.Errorf("class precursor selection requires one decoded registry")
 	}
-	older := len(registries[0].Data) == selectionSIDBOlderPayloadBytes
+	older := registries[0].Registry.FooterBytes == decodedSIDBOlderFooterBytes
 	for _, registry := range registries[1:] {
-		if (len(registry.Data) == selectionSIDBOlderPayloadBytes) != older {
+		if (registry.Registry.FooterBytes == decodedSIDBOlderFooterBytes) != older {
 			return authenticatedClassPrecursor{}, fmt.Errorf("class precursor selection found mixed registry layouts")
 		}
 	}

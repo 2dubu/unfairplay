@@ -2,6 +2,7 @@ package fairplay
 
 import (
 	"archive/zip"
+	"crypto/aes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -23,6 +24,7 @@ type SINFDiagnostic struct {
 	Selector      SINFSelector `json:"selector"`
 	SelectorID    string       `json:"selector_id"`
 	PrivateBytes  int          `json:"private_bytes"`
+	RightsBytes   int          `json:"rights_bytes"`
 	Atoms         []string     `json:"atoms"`
 	CurrentLayout bool         `json:"current_layout"`
 	LegacyMarkers bool         `json:"legacy_markers"`
@@ -129,19 +131,31 @@ func InspectSINF(data []byte) (SINFDiagnostic, error) {
 	}
 	result.Selector = selector
 	result.SelectorID = selector.Identifier()
+	var rights, private []byte
 	for _, field := range fields {
 		result.Atoms = append(result.Atoms, field.typ)
 		if field.typ == "priv" {
 			result.PrivateBytes = field.end - field.start
+			private = data[field.start:field.end]
+		}
+		if field.typ == "righ" {
+			rights = data[field.start:field.end]
+			result.RightsBytes = len(rights)
 		}
 		if field.typ == "crdt" || field.typ == "asdt" {
 			result.LegacyMarkers = true
 		}
 	}
-	// Current Store enrollments can retain legacy crdt/asdt atoms. The
-	// protected private-payload geometry, not those optional markers, is the
-	// useful non-secret preflight signal.
-	result.CurrentLayout = result.PrivateBytes == 440 || result.PrivateBytes == 448
+	// Current Store enrollments can retain legacy crdt/asdt atoms. Detect the
+	// layout from its structural rights/private relationship rather than two
+	// pinned private-record sizes.
+	if rightsErr := currentSINFRightsPayloadGeometry(rights); rightsErr == nil && len(private) == 360+len(rights) {
+		trailerBytes := len(private) % aes.BlockSize
+		result.CurrentLayout = trailerBytes == 0 || trailerBytes == 8
+		for _, value := range private[len(private)-trailerBytes:] {
+			result.CurrentLayout = result.CurrentLayout && value == 0
+		}
+	}
 	return result, nil
 }
 

@@ -28,6 +28,16 @@ func syntheticExtendedCurrentOuterInputs() ([]byte, []byte) {
 	return container, hardware
 }
 
+func syntheticStructuralCurrentOuterInputs(codecBytes, payloadBytes int) ([]byte, []byte) {
+	container := make([]byte, 4+codecBytes+payloadBytes+selectionSIDBTrailerBytes)
+	binary.BigEndian.PutUint32(container[:4], currentSIDBContainerVersion)
+	for index := 4; index < len(container); index++ {
+		container[index] = byte(index*17 + 3)
+	}
+	hardware := []byte{0x04, 0x15, 0x26, 0x37, 0x48, 0x59}
+	return container, hardware
+}
+
 func TestCurrentOuterInputsAreTypedAndStructural(t *testing.T) {
 	container, hardware := syntheticCurrentOuterInputs()
 	table, state, control, err := currentOuterInputs(container, hardware)
@@ -118,10 +128,39 @@ func TestDeriveExtendedCurrentSelectionSourceDependencies(t *testing.T) {
 	}
 }
 
+func TestDeriveStructuralCurrentSelectionSource(t *testing.T) {
+	container, hardware := syntheticStructuralCurrentOuterInputs(28, selectionSIDBPayloadBytes)
+	layout, err := currentSIDBLayoutForContainer(container)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.CodecBytes != 28 || layout.OuterIterations != 306 {
+		t.Fatalf("structural layout = %+v", layout)
+	}
+	baseline, iterations, err := deriveCurrentSelectionSource(container, hardware)
+	if err != nil || iterations != 306 {
+		t.Fatalf("derive structural source = %d/%v", iterations, err)
+	}
+	codecMutation := append([]byte(nil), container...)
+	codecMutation[4] ^= 1
+	changed, _, err := deriveCurrentSelectionSource(codecMutation, hardware)
+	if err != nil || changed == baseline {
+		t.Fatal("structurally discovered codec did not affect the source")
+	}
+	payloadMutation := append([]byte(nil), container...)
+	payloadMutation[layout.PayloadOffset+17] ^= 1
+	unchanged, _, err := deriveCurrentSelectionSource(payloadMutation, hardware)
+	if err != nil || unchanged != baseline {
+		t.Fatal("structurally discovered encrypted payload changed the outer source")
+	}
+}
+
 func TestCurrentOuterInputsRejectUnknownGeometry(t *testing.T) {
 	container, hardware := syntheticCurrentOuterInputs()
-	if _, _, _, err := currentOuterInputs(container[:len(container)-1], hardware); err == nil {
-		t.Fatal("truncated SIDB was accepted")
+	unsupported := make([]byte, 4+12+64+selectionSIDBTrailerBytes)
+	binary.BigEndian.PutUint32(unsupported[:4], currentSIDBContainerVersion)
+	if _, _, _, err := currentOuterInputs(unsupported, hardware); err == nil {
+		t.Fatal("SIDB with an undersized codec was accepted")
 	}
 	badVersion := append([]byte(nil), container...)
 	badVersion[3] ^= 1

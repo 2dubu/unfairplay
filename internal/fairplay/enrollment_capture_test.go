@@ -1,11 +1,13 @@
 package fairplay
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -40,12 +42,95 @@ func TestParseIORegistryHardwareMAC(t *testing.T) {
 	}
 }
 
+func TestParseIORegistryHardwareMACSubtrees(t *testing.T) {
+	want := []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x01}
+	other := []byte{0x02, 0x00, 0x00, 0x00, 0x00, 0x02}
+	controller := func(name string, builtin bool, mac []byte) map[string]any {
+		return map[string]any{
+			"IOMACAddress": mac,
+			"IORegistryEntryChildren": []any{
+				map[string]any{"BSD Name": name, "IOBuiltin": builtin},
+			},
+		}
+	}
+	for _, test := range []struct {
+		name     string
+		document any
+		wantMAC  bool
+	}{
+		{"multiple-controllers", []any{controller("en1", true, other), controller("en0", false, other), controller("en0", true, want)}, true},
+		{"not-built-in", []any{controller("en0", false, want)}, false},
+		{"wrong-interface", []any{controller("en1", true, want)}, false},
+		{"short-parent-address", []any{controller("en0", true, want[:5])}, false},
+		{"missing-parent-address", []any{map[string]any{
+			"IORegistryEntryChildren": []any{map[string]any{"BSD Name": "en0", "IOBuiltin": true, "IOMACAddress": want}},
+		}}, false},
+		{"empty", []any{}, false},
+		{"invalid-root", "not a registry", false},
+		{"invalid-subtree", []any{"not a registry"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			encoded, err := plist.Marshal(test.document, plist.XMLFormat)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := parseIORegistryHardwareMAC(encoded, "en0")
+			if test.wantMAC {
+				if err != nil || !bytes.Equal(got, want) {
+					t.Fatalf("IOMACAddress = %x, err = %v; want %x", got, err, want)
+				}
+			} else if err == nil {
+				t.Fatal("invalid hardware identity was accepted")
+			}
+		})
+	}
+}
+
+func TestParseIORegistryHardwareMACRejectsInvalidXML(t *testing.T) {
+	for _, document := range []string{
+		`<plist><array><dict><key>unrelated</key><string>` + "\x01" + `</string></dict></array></plist>`,
+		`<plist><array><dict>`,
+	} {
+		if _, err := parseIORegistryHardwareMAC([]byte(document), "en0"); err == nil {
+			t.Fatal("invalid XML was accepted")
+		}
+	}
+}
+
+func TestExternalIORegistryHardwareMAC(t *testing.T) {
+	macPath := os.Getenv("UNFAIRPLAY_IOMAC_FILE")
+	if runtime.GOOS != "darwin" || macPath == "" {
+		t.Skip("private macOS hardware identity control is not configured")
+	}
+	want, err := os.ReadFile(macPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(want)
+	if len(want) != 6 {
+		t.Fatal("private hardware identity control must contain six bytes")
+	}
+	got, err := ioregHardwareMAC("en0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clear(got)
+	if !bytes.Equal(got, want) {
+		t.Fatal("hardware identity does not match the private control")
+	}
+}
+
 func currentLayoutSINF(selector SINFSelector) []byte {
 	user := make([]byte, 4)
 	key := make([]byte, 4)
 	user[0], user[1], user[2], user[3] = byte(selector.User>>24), byte(selector.User>>16), byte(selector.User>>8), byte(selector.User)
 	key[0], key[1], key[2], key[3] = byte(selector.Key>>24), byte(selector.Key>>16), byte(selector.Key>>8), byte(selector.Key)
 	fields := append(testAtom("user", user), testAtom("key ", key)...)
+	rights := make([]byte, 88)
+	for index, name := range append(currentSINFRequiredRights[:], "hi32") {
+		copy(rights[index*8:index*8+4], name)
+	}
+	fields = append(fields, testAtom("righ", rights)...)
 	fields = append(fields, testAtom("priv", make([]byte, 448))...)
 	return testAtom("sinf", testAtom("schi", fields))
 }
@@ -56,7 +141,7 @@ func TestInspectSINFAndModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diagnostic.Selector != selector || !diagnostic.CurrentLayout || diagnostic.LegacyMarkers || diagnostic.PrivateBytes != 448 {
+	if diagnostic.Selector != selector || !diagnostic.CurrentLayout || diagnostic.LegacyMarkers || diagnostic.PrivateBytes != 448 || diagnostic.RightsBytes != 88 {
 		t.Fatalf("unexpected SINF diagnostic: %#v", diagnostic)
 	}
 	modelPath := filepath.Join(t.TempDir(), "model.bin")
@@ -69,6 +154,31 @@ func TestInspectSINFAndModel(t *testing.T) {
 	}
 	if model.Version != 2 || model.Selector == nil || *model.Selector != selector {
 		t.Fatalf("unexpected model diagnostic: %#v", model)
+	}
+}
+
+func TestInspectSINFStructuralCurrentLayouts(t *testing.T) {
+	credential := macOSTestCredential()
+	for _, test := range []struct {
+		name                      string
+		sinf                      []byte
+		privateBytes, rightsBytes int
+	}{
+		{"short", macOSTestCurrentSINFLayout(t, credential, 1, true), 440, 80},
+		{"standard", macOSTestCurrentSINF(t, credential, 1), 448, 88},
+		{"extended", macOSTestCurrentSINFWithRights(t, credential, 1, []string{
+			"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32", "xtra",
+		}), 456, 96},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			diagnostic, err := InspectSINF(test.sinf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !diagnostic.CurrentLayout || diagnostic.PrivateBytes != test.privateBytes || diagnostic.RightsBytes != test.rightsBytes {
+				t.Fatalf("diagnostic = %#v", diagnostic)
+			}
+		})
 	}
 }
 

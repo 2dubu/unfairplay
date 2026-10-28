@@ -36,20 +36,24 @@ func TestCurrentSINFLogicalSourceIsIdentity(t *testing.T) {
 }
 
 func syntheticCurrentSINFForPrecursor(t *testing.T, precursor [16]byte) []byte {
+	return syntheticCurrentSINFForPrecursorRights(t, precursor, 88)
+}
+
+func syntheticCurrentSINFForPrecursorRights(t *testing.T, precursor [16]byte, rightsAtomBytes int) []byte {
 	t.Helper()
 	var plaintext []byte
 	for index, atom := range []struct {
 		name string
 		size int
-	}{{"key ", 24}, {"iviv", 24}, {"tmpr", 24}, {"righ", 88}, {"name", 264}} {
+	}{{"key ", 24}, {"iviv", 24}, {"tmpr", 24}, {"righ", rightsAtomBytes}, {"name", 264}} {
 		payload := make([]byte, atom.size-8)
 		for offset := range payload {
 			payload[offset] = byte(index*47 + offset*19 + 3)
 		}
 		plaintext = append(plaintext, syntheticSINFAtom(atom.name, payload)...)
 	}
-	if len(plaintext) != 424 {
-		t.Fatalf("synthetic plaintext bytes = %d", len(plaintext))
+	if len(plaintext)%8 != 0 {
+		t.Fatalf("synthetic plaintext has invalid geometry: %d bytes", len(plaintext))
 	}
 
 	key := currentSINFModelKeyFromPrecursor(precursor)
@@ -59,14 +63,28 @@ func syntheticCurrentSINFForPrecursor(t *testing.T, precursor [16]byte) []byte {
 		t.Fatal(err)
 	}
 	iv := [aes.BlockSize]byte{0x53, 0x49, 0x4e, 0x46, 0x2d, 0x49, 0x56, 0xa5, 0x5a, 0x13, 0x37, 0x24, 0x68, 0x9c, 0xde, 0xf0}
-	logical := make([]byte, aes.BlockSize+416)
+	trailerBytes := len(plaintext) % aes.BlockSize
+	ciphertextBytes := len(plaintext) - trailerBytes
+	logical := make([]byte, aes.BlockSize+ciphertextBytes)
 	copy(logical, iv[:])
-	cipher.NewCBCEncrypter(block, iv[:]).CryptBlocks(logical[aes.BlockSize:], plaintext[:416])
-	protected := make([]byte, 440)
+	cipher.NewCBCEncrypter(block, iv[:]).CryptBlocks(logical[aes.BlockSize:], plaintext[:ciphertextBytes])
+	protected := make([]byte, len(logical)+trailerBytes)
 	copy(protected, logical)
 	fields := append(syntheticSINFAtom("user", []byte{0x12, 0x34, 0x56, 0x78}), syntheticSINFAtom("key ", []byte{0, 0, 0, 2})...)
 	fields = append(fields, syntheticSINFAtom("priv", protected)...)
 	return syntheticSINFAtom("sinf", syntheticSINFAtom("schi", fields))
+}
+
+func TestValidateCurrentSINFPrecursorExtendedRights(t *testing.T) {
+	var precursor [16]byte
+	for index := range precursor {
+		precursor[index] = byte(index*7 + 5)
+	}
+	sinf := syntheticCurrentSINFForPrecursorRights(t, precursor, 104)
+	accepted, err := validateCurrentSINFPrecursor(sinf, precursor)
+	if err != nil || !accepted {
+		t.Fatalf("extended-rights precursor rejected: accepted=%v err=%v", accepted, err)
+	}
 }
 
 func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
