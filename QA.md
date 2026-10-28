@@ -100,3 +100,21 @@ Expected size: 17,024 bytes. Expected compressed SHA-256:
 `f1cb13c0056a4125387f98a575c21cc6129438580e48c76373e333df614ea963`.
 The 51,592-byte decoded profile has SHA-256
 `22aabdb275527d924176145147a372bb3c5e4325e5060a345833a2302b1af89c`.
+
+## Normalized SIDB producer SPN
+
+The candidate-frame-to-SIDB-key producer is generated only from build-global
+chosen-state controls. Its private research files are not committed:
+
+```sh
+UNFAIRPLAY_SIDB_PRODUCER_PROFILE=/private/path/producer.bin.gz \
+UNFAIRPLAY_SIDB_KEY_LAYER_PROFILE=/private/path/key-layer.bin \
+UNFAIRPLAY_SIDB_KEY_REPORT_INPUT=/private/path/key-controls.json \
+UNFAIRPLAY_SIDB_PRODUCER_SPN_OUTPUT="$PWD/internal/recovery/profiles/macos26a428-sidb-producer-spn.bin.gz" \
+go test ./internal/recovery -run '^TestSIDBProducerSPNResearch$' -count=1
+```
+
+Expected size: 1,929 bytes. Expected compressed SHA-256:
+`0b1ce0c897216723802c38dcffd81875cf69afd1d2a164e80cb1391d619733ed`.
+The 43,392-byte decoded profile has SHA-256
+`3522ed6e1621f8821ce49a179882ac90d046fc62023d77287e174c5333609fc1`.

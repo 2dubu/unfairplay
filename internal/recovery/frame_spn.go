@@ -48,8 +48,8 @@ func frameSBoxState(input [16]byte) (output [16]byte) {
 	return output
 }
 
-func (model frameSPNModel) apply(input [16]byte) (output [16]byte, exitWord uint32) {
-	state := model.initial.apply(input)
+func (model frameSPNModel) applyInternal(input [16]byte) (state [16]byte, exitWord uint32) {
+	state = model.initial.apply(input)
 	for stageIndex, stage := range model.stages {
 		if stageIndex == 6 {
 			for outputByte := range 4 {
@@ -63,6 +63,11 @@ func (model frameSPNModel) apply(input [16]byte) (output [16]byte, exitWord uint
 		state = stage.output.apply(frameSBoxState(stage.input.apply(state)))
 	}
 	state = model.finalOutput.apply(frameSBoxState(model.finalInput.apply(state)))
+	return state, exitWord
+}
+
+func (model frameSPNModel) apply(input [16]byte) (output [16]byte, exitWord uint32) {
+	state, exitWord := model.applyInternal(input)
 	for position, value := range state {
 		output[position] = model.outputEncoding[position][value]
 	}

@@ -69,7 +69,8 @@ flattened native selector.
 | Account entry | SHA-1 and the dominant copy, projection, schedule, and encoding loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Bootstrap | Montgomery arithmetic and the dominant table/byte loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
-| SIDB | Container projection and the 59-block AES consumer are typed. The legacy path was narrowed to an affinely encoded AES round-10 key; affine decoding plus ordinary AES-128 schedule reversal is now typed Go. The nine generalized frame-producer rounds and their final shared-output layer are now normalized to a typed AES-S-box SPN with affine 128-bit stages. |
+| Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
+| SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
 | SINF | Portable AES/model decoding exists. Directly treating a candidate state or frame as the final precursor was tested and rejected because SIDB registry decoding comes first. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
@@ -91,8 +92,8 @@ round-specific white box or DFA is required after a semantic round key has
 been recovered. The remaining unknown is the earlier frame-to-round-key
 producer and its protected byte representation.
 
-All nine generalized producer rounds are now separated from their protected
-register representation. At each boundary, four complete 32-bit carriers were
+All nine generalized SIDB-key producer rounds are now separated from their
+protected register representation. At each boundary, four complete 32-bit carriers were
 identified while transient XOR shares were excluded. Every round is exactly a
 baseline plus sixteen independent 8-to-32-bit XOR contribution tables, with
 four input bytes feeding each four-byte output group. For every round, all
@@ -105,12 +106,24 @@ are:
 aa1f69d0 36867136 e797caf6 64556dd1
 ```
 
-These native-boundary coordinates deliberately do not hash like the existing
-semantic profile's internal rounds: the older trace solver chose different
-byte permutations and protected boundary encodings. Their complete transforms
-still agree at the public frame output.
+These native-boundary rounds are not the enrollment-frame suffix described
+below. They sit later, between the selected enrollment frame and the SIDB AES
+key. Their protected boundary encodings are now removed too. The enrollment
+frame's sixteen arbitrary output encodings compose with the producer prefix's
+sixteen arbitrary input substitutions to sixteen affine byte maps. The nine
+middle rounds and the final key layer are all AES-S-box layers separated by
+affine 128-bit stages. The resulting producer profile is 43,392 bytes before
+gzip and 1,929 bytes compressed.
 
-The table algebra is now closed. All 144 input substitutions in the
+The typed producer matched all one-byte and deterministic multi-byte controls
+at every recovered boundary, then reproduced 17 independently DFA-recovered
+AES keys exactly. A selected frame captured on the independent 26B118 machine
+also produced the same key SHA-256 as a fresh full DFA recovery. Production
+candidate enumeration now returns the state, portable frame, and derived SIDB
+key. No handler address, register carrier, stack slot, generated CFG, or DFA
+participates in that derivation.
+
+Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES
 S-box, exhaustively over the 256-byte domain. For each substitution, its four
 output components are related by invertible affine byte maps. The final layer
@@ -159,12 +172,10 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Compare and canonicalize the normalized SPN affine stages across independent
-   macOS builds. The 26A428 constants are semantic evidence, not a valid build
-   selector. Do not add another generated CFG or generalized table profile for
-   a new build.
-2. Parse the decoded SIDB registry structurally and recover its typed
-   registry-to-current-SINF-precursor transform.
+1. Parse the decoded SIDB registry structurally, try each typed candidate key,
+   and select the unique candidate accepted by the authenticated SIDB/SINF
+   structure. Do not route candidate selection back through the generated CFG.
+2. Recover the registry-to-current-SINF-precursor transform as a typed stage.
 3. Connect the precursor to personalized SINF validation and remove native
    selection when exactly one candidate reaches a valid SINF.
 4. Express account entry and bootstrap as typed stage functions rather than
@@ -173,8 +184,8 @@ Every promoted transformation needs suitable evidence:
    remaining memory offsets.
 6. Delete generated CFG and compact-interpreter production paths after typed
    stage parity is proven.
-7. Validate the same algorithms across at least five independent builds and
-   multiple enrollment layouts.
+7. Canonicalize and compare the normalized algorithms across at least five
+   independent builds and multiple enrollment layouts.
 
 Update this file whenever a stage becomes typed, an offset is removed, a
 cross-build invariant is proved, or a completion requirement changes state.

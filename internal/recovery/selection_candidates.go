@@ -7,6 +7,7 @@ type enrollmentFrameCandidate struct {
 	Slot  int
 	State [16]byte
 	Frame [16]byte
+	Key   [16]byte
 }
 
 func enrollmentFrameCandidates(source []byte) ([]enrollmentFrameCandidate, error) {
@@ -20,7 +21,9 @@ func enrollmentFrameCandidates(source []byte) ([]enrollmentFrameCandidate, error
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, enrollmentFrameCandidate{Slot: slot, State: states[slot], Frame: frame})
+		result = append(result, enrollmentFrameCandidate{
+			Slot: slot, State: states[slot], Frame: frame, Key: deriveSelectionSIDBKey(states[slot]),
+		})
 	}
 	return result, nil
 }

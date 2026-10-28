@@ -26,10 +26,11 @@ func TestEnrollmentFrameCandidates(t *testing.T) {
 			}
 			_, _ = hash.Write(candidate.State[:])
 			_, _ = hash.Write(candidate.Frame[:])
+			_, _ = hash.Write(candidate.Key[:])
 		}
 		want := map[int]string{
-			192: "31203fc8c2853b0a675952004acc455e11e23c410df8bb76ca895ce191100340",
-			224: "194ef8ef3f9ea21dfab7471ef441087f7ac9d82fa3cdd6a9f53615790eca6b83",
+			192: "b7fa7cd0bfea718156a026078df095b7913966b2eaa1c7362fb8d4b3738a4b0e",
+			224: "0fa30ba4791845e36c5603ba1ab4d18594dd4750ac5cc8d3ae9b7e55d667135a",
 		}[size]
 		if got := fmt.Sprintf("%x", hash.Sum(nil)); got != want {
 			t.Fatalf("%d-byte candidate digest=%s, want %s", size, got, want)
