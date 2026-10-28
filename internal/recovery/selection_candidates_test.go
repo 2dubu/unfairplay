@@ -1,10 +1,34 @@
 package recovery
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"testing"
 )
+
+func TestSelectionSourceLayouts(t *testing.T) {
+	envelope := make([]byte, selectionSourceEnvelopeBytes)
+	for index := range envelope {
+		envelope[index] = byte(index*17 + 5)
+	}
+	layouts, err := selectionSourceLayouts(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(layouts) != 2 || len(layouts[0]) != selectionSourceBodyBytes || len(layouts[1]) != selectionSourceEnvelopeBytes ||
+		!bytes.Equal(layouts[0], envelope[selectionSourcePrefixBytes:]) || !bytes.Equal(layouts[1], envelope) {
+		t.Fatal("224-byte selection envelope was not split structurally")
+	}
+	body := envelope[:selectionSourceBodyBytes]
+	layouts, err = selectionSourceLayouts(body)
+	if err != nil || len(layouts) != 1 || !bytes.Equal(layouts[0], body) {
+		t.Fatal("192-byte selection body was not retained")
+	}
+	if _, err := selectionSourceLayouts(envelope[:208]); err == nil {
+		t.Fatal("unsupported selection source geometry was accepted")
+	}
+}
 
 func TestEnrollmentFrameCandidates(t *testing.T) {
 	for _, size := range []int{192, 224} {
