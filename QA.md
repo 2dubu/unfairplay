@@ -77,6 +77,10 @@ Run available controls for the observed 440- and 448-byte private SINF forms.
 Also test bounded extended-rights records when a private control exists. Do not
 commit the model, IPA, SINF, credential, or converted output.
 
+For direct-enrollment models, require the converter to decode the current SINF
+through the model before writing the legacy wrapper. Keep the older credential-
+wrapped version-2 model test as a compatibility control.
+
 ## ARMv7 decryption control
 
 Use one private IPA that contains encrypted ARMv7 and ARM64 slices. Require

@@ -229,6 +229,39 @@ func TestNormalizeExtendedMacOSSINF(t *testing.T) {
 	}
 }
 
+func TestNormalizeMacOSSINFWithDirectEnrollmentModel(t *testing.T) {
+	for _, test := range []struct {
+		name                                string
+		rightsAtomBytes, preserved, removed int
+	}{
+		{"short", 88, 9, 0},
+		{"standard", 96, 10, 8},
+		{"extended", 104, 10, 16},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			innerKey := [16]byte{0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01}
+			fixture := syntheticCurrentSINFFixture(t, 0x10203040, 2, test.rightsAtomBytes, innerKey)
+			pack := selectorBoundModelPack(t, fixture.selector)
+			converted, report, err := normalizeMacOSSINFWithModels(fixture.sinf, [][]byte{pack})
+			if err != nil {
+				t.Fatal(err)
+			}
+			model := syntheticLegacyModel()
+			credential := make([]byte, aes.BlockSize)
+			for index, value := range model.key {
+				credential[index] = value ^ 0x30
+			}
+			defer clear(credential)
+			if err := verifyMacOSSINF(converted, credential); err != nil {
+				t.Fatal(err)
+			}
+			if report.NamedRightsPreserved != test.preserved || report.RightsSuffixRemovedBytes != test.removed {
+				t.Fatalf("direct-model report = %+v", report)
+			}
+		})
+	}
+}
+
 func TestCurrentSINFRightsGeometryIgnoresOpaqueSuffix(t *testing.T) {
 	rights := make([]byte, 80)
 	for index, typ := range currentSINFRequiredRights {

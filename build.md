@@ -273,7 +273,10 @@ bytes in eight-byte units. The observed 440- and 448-byte private records and
 synthetic appended-rights controls share one structural CBC/trailer parser.
 macOS conversion separately requires the canonical named-right prefix, visible
 and private rights equality, a zero partial-block trailer, and an exact CBC
-round trip before reducing the record to the 440-byte target geometry.
+round trip before reducing the record to the 440-byte target geometry. Direct
+version-2 enrollment models decode the current IV-prefixed private record first,
+then re-encode that authenticated plaintext with the legacy macOS CBC wrapper.
+Older credential-wrapped version-2 models retain their compatibility path.
 
 Go evaluates the fixed current class value and every value in the complete
 32,767-element workspace-seed domain against the typed `valu` and AES class

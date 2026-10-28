@@ -61,11 +61,14 @@ This requires an encrypted IPA personalized for the same Store enrollment as
 your saved model. Convert it with:
 
 ```sh
-./unfairplay convert-ipa-macos --input App.ipa
+./unfairplay convert-ipa-macos \
+  --input App.ipa \
+  --model /private/path/fairplay-enrollment.bin
 ```
 
-The default output is `App.macos.ipa`. Use `--output` to choose another path or
-`--force` to replace an existing output.
+Omit `--model` to use the saved model. The default output is `App.macos.ipa`.
+Use `--output` to choose another path or `--force` to replace an existing
+output.
 
 The command uses a saved version-2 enrollment model. You can instead use a
 matching private 16-byte credential:
@@ -79,11 +82,15 @@ chmod 600 credential.bin
 
 The conversion:
 
+- decodes the current private record with the direct enrollment model;
 - validates and rewrites the personalized SINF into the macOS layout;
 - preserves its app key, signature, rights, and other private fields;
 - adds every SINF copy declared by Apple for encrypted frameworks and
   extensions; and
 - leaves all Mach-O executables byte-identical and encrypted.
+
+Model-based conversion supports the observed 440- and 448-byte private SINF
+records and the same bounded appended-rights geometry used by recovery.
 
 The result is still an IPA, not a macOS installer. A macOS iOS-app wrapper or
 compatible installer must preserve this basic layout:

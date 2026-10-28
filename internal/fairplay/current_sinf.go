@@ -137,45 +137,56 @@ func currentSINFPrivateKey(model currentSINFModel, sinf []byte, fields []sinfAto
 
 func currentSINFPrivateKeyLegacy(model currentSINFModel, source []byte) ([16]byte, error) {
 	var innerKey [16]byte
+	plaintext, err := currentSINFPrivatePlaintextLegacy(model, source)
+	if err != nil {
+		return innerKey, err
+	}
+	defer clear(plaintext)
+	copy(innerKey[:], plaintext[8:24])
+	return innerKey, nil
+}
+
+func currentSINFPrivatePlaintextLegacy(model currentSINFModel, source []byte) ([]byte, error) {
 	if len(source) < 48 {
-		return innerKey, fmt.Errorf("%w: priv source is too short", errCurrentSINFProfileMismatch)
+		return nil, fmt.Errorf("%w: priv source is too short", errCurrentSINFProfileMismatch)
 	}
 	bodyBytes := len(source) - aes.BlockSize
 	trailerBytes := bodyBytes % aes.BlockSize
 	ciphertextBytes := bodyBytes - trailerBytes
 	if ciphertextBytes < 2*aes.BlockSize || trailerBytes != 0 && trailerBytes != 8 {
-		return innerKey, fmt.Errorf("%w: priv block geometry is invalid", errCurrentSINFProfileMismatch)
+		return nil, fmt.Errorf("%w: priv block geometry is invalid", errCurrentSINFProfileMismatch)
 	}
 	encodedBytes := aes.BlockSize + ciphertextBytes
 	trailer := source[encodedBytes:]
 	for _, value := range trailer {
 		if value != 0 {
-			return innerKey, fmt.Errorf("%w: priv trailer is not zero", errCurrentSINFProfileMismatch)
+			return nil, fmt.Errorf("%w: priv trailer is not zero", errCurrentSINFProfileMismatch)
 		}
 	}
 
 	logical := make([]byte, encodedBytes)
-	plaintext := []byte(nil)
-	decrypted := []byte(nil)
-	defer func() {
-		clear(logical)
-		clear(plaintext)
-		clear(decrypted)
-	}()
+	defer clear(logical)
 	for index, value := range source[:encodedBytes] {
 		position := index % aes.BlockSize
 		external := value ^ model.whitening[position]
 		logical[index] = model.inputDecode[position*256+int(external)]
 	}
-	var err error
-	decrypted, err = aesCBCDecrypt(logical[aes.BlockSize:], model.key[:], logical[:aes.BlockSize])
+	decrypted, err := aesCBCDecrypt(logical[aes.BlockSize:], model.key[:], logical[:aes.BlockSize])
 	if err != nil {
-		return innerKey, fmt.Errorf("decode selected current SINF model: %w", err)
+		return nil, fmt.Errorf("decode selected current SINF model: %w", err)
 	}
-	plaintext = make([]byte, len(decrypted)+len(trailer))
+	defer clear(decrypted)
+	plaintext := make([]byte, len(decrypted)+len(trailer))
 	copy(plaintext, decrypted)
 	copy(plaintext[len(decrypted):], trailer)
+	if err := validateCurrentSINFPrivatePlaintext(plaintext); err != nil {
+		clear(plaintext)
+		return nil, err
+	}
+	return plaintext, nil
+}
 
+func validateCurrentSINFPrivatePlaintext(plaintext []byte) error {
 	expectedAtoms := [...]struct {
 		typ  string
 		size int
@@ -190,27 +201,24 @@ func currentSINFPrivateKeyLegacy(model currentSINFModel, source []byte) ([16]byt
 	for index, expected := range expectedAtoms {
 		atom, parseErr := parseClearAtom(plaintext, cursor, len(plaintext))
 		if parseErr != nil {
-			return innerKey, fmt.Errorf("%w: plaintext atom %d: %v", errCurrentSINFProfileMismatch, index, parseErr)
+			return fmt.Errorf("%w: plaintext atom %d: %v", errCurrentSINFProfileMismatch, index, parseErr)
 		}
 		if atom.typ != expected.typ {
-			return innerKey, fmt.Errorf("%w: plaintext has invalid %s atom", errCurrentSINFProfileMismatch, expected.typ)
+			return fmt.Errorf("%w: plaintext has invalid %s atom", errCurrentSINFProfileMismatch, expected.typ)
 		}
 		if atom.typ == "righ" {
 			if rightsErr := currentSINFRightsPayloadGeometry(plaintext[cursor+8 : atom.end]); rightsErr != nil {
-				return innerKey, fmt.Errorf("%w: plaintext has invalid rights: %v", errCurrentSINFProfileMismatch, rightsErr)
+				return fmt.Errorf("%w: plaintext has invalid rights: %v", errCurrentSINFProfileMismatch, rightsErr)
 			}
 		} else if atom.end-cursor != expected.size {
-			return innerKey, fmt.Errorf("%w: plaintext has invalid %s atom", errCurrentSINFProfileMismatch, expected.typ)
-		}
-		if index == 0 {
-			copy(innerKey[:], plaintext[cursor+8:atom.end])
+			return fmt.Errorf("%w: plaintext has invalid %s atom", errCurrentSINFProfileMismatch, expected.typ)
 		}
 		cursor = atom.end
 	}
 	if cursor != len(plaintext) {
-		return innerKey, fmt.Errorf("%w: plaintext has trailing data", errCurrentSINFProfileMismatch)
+		return fmt.Errorf("%w: plaintext has trailing data", errCurrentSINFProfileMismatch)
 	}
-	return innerKey, nil
+	return nil
 }
 
 func currentSINFPrivateKeyV3(model currentSINFModel, sinf []byte, fields []sinfAtom) ([16]byte, error) {

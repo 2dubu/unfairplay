@@ -62,7 +62,7 @@ func syntheticCurrentSINFFixture(t *testing.T, user, key uint32, righBytes int, 
 	types := [...]string{"key ", "iviv", "tmpr", "righ", "name"}
 	sizes := [...]int{24, 24, 24, righBytes, 264}
 	plaintext := make([]byte, 0, 432)
-	var visibleRights []byte
+	var visibleIVIV, visibleRights, visibleName []byte
 	for index, typ := range types {
 		atom := make([]byte, sizes[index])
 		binary.BigEndian.PutUint32(atom[:4], uint32(len(atom)))
@@ -71,7 +71,23 @@ func syntheticCurrentSINFFixture(t *testing.T, user, key uint32, righBytes int, 
 			copy(atom[8:], innerKey[:])
 		}
 		if typ == "righ" {
+			for rightIndex, name := range currentSINFRequiredRights {
+				copy(atom[8+rightIndex*8:8+rightIndex*8+4], name)
+			}
+			if len(atom)-8 >= 88 {
+				copy(atom[8+9*8:8+9*8+4], "hi32")
+			}
+			if len(atom)-8 >= 96 {
+				copy(atom[8+10*8:8+10*8+4], "xtra")
+			}
 			visibleRights = append([]byte(nil), atom[8:]...)
+		}
+		if typ == "iviv" {
+			visibleIVIV = append([]byte(nil), atom[8:]...)
+		}
+		if typ == "name" {
+			copy(atom[8:], "Synthetic")
+			visibleName = append([]byte(nil), atom[8:]...)
 		}
 		plaintext = append(plaintext, atom...)
 	}
@@ -107,7 +123,9 @@ func syntheticCurrentSINFFixture(t *testing.T, user, key uint32, righBytes int, 
 	binary.BigEndian.PutUint32(userPayload, user)
 	binary.BigEndian.PutUint32(keyPayload, key)
 	fields := append(testAtom("user", userPayload), testAtom("key ", keyPayload)...)
+	fields = append(fields, testAtom("iviv", visibleIVIV)...)
 	fields = append(fields, testAtom("righ", visibleRights)...)
+	fields = append(fields, testAtom("name", visibleName)...)
 	fields = append(fields, testAtom("priv", protected)...)
 	sinf := testAtom("sinf", testAtom("schi", fields))
 
