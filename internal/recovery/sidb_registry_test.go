@@ -1,0 +1,47 @@
+package recovery
+
+import (
+	"bytes"
+	"testing"
+)
+
+func TestParseDecodedSIDBRegistry(t *testing.T) {
+	data := make([]byte, 2*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
+	for index := range data {
+		data[index] = byte(index*29 + 7)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Records) != 2 {
+		t.Fatalf("records = %d, want 2", len(registry.Records))
+	}
+	for index, record := range registry.Records {
+		offset := index * decodedSIDBRecordBytes
+		if !bytes.Equal(record.Metadata[:], data[offset:offset+decodedSIDBMetadataBytes]) {
+			t.Fatalf("record %d metadata mismatch", index)
+		}
+		if !bytes.Equal(record.Payload[:], data[offset+decodedSIDBMetadataBytes:offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes]) {
+			t.Fatalf("record %d payload mismatch", index)
+		}
+		if !bytes.Equal(record.Tail[:], data[offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes:offset+decodedSIDBRecordBytes]) {
+			t.Fatalf("record %d tail mismatch", index)
+		}
+	}
+	if !bytes.Equal(registry.Footer[:], data[len(data)-decodedSIDBFooterBytes:]) {
+		t.Fatal("footer mismatch")
+	}
+}
+
+func TestParseDecodedSIDBRegistryRejectsUnknownGeometry(t *testing.T) {
+	for _, size := range []int{0, decodedSIDBFooterBytes, decodedSIDBFooterBytes + 1, decodedSIDBFooterBytes + decodedSIDBRecordBytes - 1} {
+		if _, err := parseDecodedSIDBRegistry(make([]byte, size)); err == nil {
+			t.Fatalf("accepted %d-byte registry", size)
+		}
+	}
+	tooMany := make([]byte, (maximumDecodedSIDBRecords+1)*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
+	if _, err := parseDecodedSIDBRegistry(tooMany); err == nil {
+		t.Fatal("accepted excessive record count")
+	}
+}

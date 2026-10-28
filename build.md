@@ -71,7 +71,7 @@ flattened native selector.
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
 | Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
 | SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
-| SINF | Portable AES/model decoding exists. The 16-byte registry payload-to-`valu` arithmetic and downstream two-input class consumer are typed Go. The enclosing record still has to supply four word masks and the secondary class key without native orchestration. |
+| SINF | Portable AES/model decoding exists. The decoded SIDB registry container, 16-byte registry payload-to-`valu` arithmetic, secondary operand representation, and downstream two-input class consumer are typed Go. Record selection and the enrollment parameter producer still use native orchestration. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
@@ -156,6 +156,15 @@ value. Those values vary across the enrollments, while the payload arithmetic,
 AES join, operand representation, and final material mask remain identical.
 The generated CFG currently constructs those parameters; it is the next
 normalization target.
+
+The decoded current SIDB registry is now parsed structurally as fixed 40-byte
+records followed by a 24-byte footer. Each record contains 20 bytes of
+selection/authentication metadata, a 16-byte `valu` payload, and a four-byte
+tail whose semantic role remains open. Both independent decoded registries are
+944 bytes: 23 records plus the footer, and the naturally selected record is
+aligned within that array. Production parsing rejects every other geometry;
+it does not use a native allocation address or record offset. Authentication
+and unique record selection remain separate required gates.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES
