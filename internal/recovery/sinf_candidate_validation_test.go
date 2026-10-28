@@ -107,3 +107,31 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 		t.Fatalf("wrong authenticated candidate: %+v", selected)
 	}
 }
+
+func TestSelectAuthenticatedWorkspaceClassPrecursor(t *testing.T) {
+	profile := embedded26A428ExecutionProfile().semantic
+	data := make([]byte, 2*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
+	for index := range data {
+		data[index] = byte(index*43 + 17)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const selectedRecord = 1
+	const selectedWindow = 4
+	workspaceValue := classWorkspaceOutputFromSeed(0)
+	parameters := classEnrollmentParameters{ClassValue: workspaceValue}
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(registry.Records[selectedRecord], selectedWindow, parameters.classKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, profile, precursor)
+	selected, err := selectAuthenticatedClassPrecursor(sinf, profile, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.RegistryIndex != 0 || selected.RecordIndex != selectedRecord || selected.WindowOffset != selectedWindow || selected.Precursor != precursor {
+		t.Fatalf("wrong workspace candidate: %+v", selected)
+	}
+}

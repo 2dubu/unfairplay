@@ -15,7 +15,9 @@ func applyOuterFrontCircuit(table *[outerTableWords]uint32, base uint32, state *
 		CodecSelector: 0x60319d93,
 	}
 	digestHardwareBase := (uint32(state.HardwareIndex) + 2) % 6
-	if !applyOuterDigestAtHardwareBase(&digest, &state.Hardware, &state.Codec, digestHardwareBase) {
+	var digestCodec [33]byte
+	copy(digestCodec[:], state.Codec[:len(digestCodec)])
+	if !applyOuterDigestAtHardwareBase(&digest, &state.Hardware, &digestCodec, digestHardwareBase) {
 		return false
 	}
 	derivedHooks, ok := deriveOuterHookSeeds(table, base, &digest)

@@ -1,9 +1,6 @@
 package recovery
 
-import (
-	"encoding/binary"
-	"fmt"
-)
+import "fmt"
 
 // currentOuterInitialTable is semantic enrollment data, not an instruction or
 // protected-register snapshot. Four independently signed v5 licenses with
@@ -56,28 +53,30 @@ func currentOuterInputs(container, hardware []byte) ([outerTableWords]uint32, ou
 		HardwareIndex: 0,
 	}
 	control := outerIterationControl{X1: currentOuterInitialX1, CounterSeed: currentOuterInitialCounterSeed}
-	if len(container) != selectionSIDBContainerBytes {
-		return table, state, control, fmt.Errorf("current SIDB container has %d bytes, want %d", len(container), selectionSIDBContainerBytes)
-	}
-	if binary.BigEndian.Uint32(container[:4]) != currentSIDBContainerVersion {
-		return table, state, control, fmt.Errorf("current SIDB container has unsupported version %#08x", binary.BigEndian.Uint32(container[:4]))
+	layout, err := currentSIDBLayoutForContainer(container)
+	if err != nil {
+		return table, state, control, err
 	}
 	if len(hardware) != len(state.Hardware) {
 		return table, state, control, fmt.Errorf("current hardware identity has %d bytes, want %d", len(hardware), len(state.Hardware))
 	}
 	copy(state.Hardware[:], hardware)
-	copy(state.Codec[4:], container[4:selectionSIDBPayloadOffset])
+	copy(state.Codec[4:4+layout.CodecBytes], container[4:4+layout.CodecBytes])
 	return table, state, control, nil
 }
 
 func deriveCurrentSelectionSource(container, hardware []byte) ([selectionSourceEnvelopeBytes]byte, int, error) {
 	var source [selectionSourceEnvelopeBytes]byte
+	layout, err := currentSIDBLayoutForContainer(container)
+	if err != nil {
+		return source, 0, err
+	}
 	table, state, control, err := currentOuterInputs(container, hardware)
 	if err != nil {
 		return source, 0, err
 	}
-	iterations, ok := applyOuterNaturalLoop(&table, &state, &control)
-	if !ok || iterations != outerNaturalIterationCount {
+	iterations, ok := applyOuterLoop(&table, &state, &control, layout.OuterIterations)
+	if !ok || iterations != layout.OuterIterations {
 		return source, iterations, fmt.Errorf("typed current outer stage did not reach its natural exit")
 	}
 	copy(source[:], state.Source[:])

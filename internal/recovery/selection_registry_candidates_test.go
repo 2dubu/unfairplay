@@ -9,12 +9,18 @@ import (
 
 func syntheticSelectionSIDBContainer(t *testing.T, plaintext [selectionSIDBPayloadBytes]byte, key [16]byte) []byte {
 	t.Helper()
+	container := make([]byte, selectionSIDBContainerBytes)
+	binary.BigEndian.PutUint32(container[:4], currentSIDBContainerVersion)
+	fillSyntheticSelectionSIDBContainer(t, container, selectionSIDBPayloadOffset, plaintext, key)
+	return container
+}
+
+func fillSyntheticSelectionSIDBContainer(t *testing.T, container []byte, payloadOffset int, plaintext [selectionSIDBPayloadBytes]byte, key [16]byte) {
+	t.Helper()
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
 		t.Fatal(err)
 	}
-	container := make([]byte, selectionSIDBContainerBytes)
-	binary.BigEndian.PutUint32(container[:4], currentSIDBContainerVersion)
 	var previousInput [selectionSIDBBlockBytes]byte
 	for offset := 0; offset < len(plaintext); offset += selectionSIDBBlockBytes {
 		var decoded, ciphertext [selectionSIDBBlockBytes]byte
@@ -25,12 +31,11 @@ func syntheticSelectionSIDBContainer(t *testing.T, plaintext [selectionSIDBPaylo
 			}
 		}
 		block.Encrypt(ciphertext[:], decoded[:])
-		copy(container[selectionSIDBPayloadOffset+offset:], ciphertext[:])
+		copy(container[payloadOffset+offset:], ciphertext[:])
 		for index := range previousInput {
 			previousInput[index] = ciphertext[index] ^ selectionSIDBInputMask[index]
 		}
 	}
-	return container
 }
 
 func TestDeriveSelectionRegistryCandidates(t *testing.T) {
@@ -67,5 +72,45 @@ func TestDeriveSelectionRegistryCandidates(t *testing.T) {
 	}
 	if matches != 1 {
 		t.Fatalf("typed SIDB selection found plaintext %d times, want 1", matches)
+	}
+}
+
+func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
+	container, hardware := syntheticExtendedCurrentOuterInputs()
+	for index := selectionSIDBExtendedPayloadOffset; index < selectionSIDBExtendedPayloadOffset+selectionSIDBPayloadBytes; index++ {
+		container[index] = 0
+	}
+	source, iterations, err := deriveCurrentSelectionSource(container, hardware)
+	if err != nil || iterations != selectionSIDBExtendedIterations {
+		t.Fatalf("derive extended selection source = %d/%v", iterations, err)
+	}
+	frames, err := enrollmentFrameCandidates(source[selectionSourcePrefixBytes:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	const selectedSlot = 8
+	var plaintext [selectionSIDBPayloadBytes]byte
+	for index := range plaintext {
+		plaintext[index] = byte(index*31 + 19)
+	}
+	fillSyntheticSelectionSIDBContainer(t, container, selectionSIDBExtendedPayloadOffset, plaintext, frames[selectedSlot].Key)
+	candidates, _, gotIterations, err := deriveCurrentSelectionRegistryCandidates(
+		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotIterations != selectionSIDBExtendedIterations {
+		t.Fatalf("extended selection iterations=%d", gotIterations)
+	}
+	matches := 0
+	for _, candidate := range candidates {
+		if bytes.Equal(candidate.Data, plaintext[:]) {
+			matches++
+		}
+	}
+	clearDecodedSIDBRegistryCandidates(candidates)
+	if matches != 1 {
+		t.Fatalf("extended typed SIDB selection found plaintext %d times, want 1", matches)
 	}
 }

@@ -2,15 +2,49 @@ package recovery
 
 import (
 	"crypto/aes"
+	"encoding/binary"
 	"fmt"
 )
 
 const (
-	selectionSIDBContainerBytes = 993
-	selectionSIDBPayloadOffset  = 33
-	selectionSIDBPayloadBytes   = 944
-	selectionSIDBBlockBytes     = aes.BlockSize
+	selectionSIDBContainerBytes        = 993
+	selectionSIDBExtendedBytes         = 1003
+	selectionSIDBPayloadOffset         = 33
+	selectionSIDBExtendedPayloadOffset = 43
+	selectionSIDBPayloadBytes          = 944
+	selectionSIDBBlockBytes            = aes.BlockSize
+	selectionSIDBExtendedTrailerBytes  = 16
+	selectionSIDBOuterIterations       = outerNaturalIterationCount
+	selectionSIDBExtendedIterations    = 427
 )
+
+type currentSIDBLayout struct {
+	CodecBytes      int
+	PayloadOffset   int
+	OuterIterations int
+}
+
+func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
+	if len(input) < 4 || binary.BigEndian.Uint32(input[:4]) != currentSIDBContainerVersion {
+		return currentSIDBLayout{}, fmt.Errorf("current SIDB container has an unsupported version")
+	}
+	switch len(input) {
+	case selectionSIDBContainerBytes:
+		return currentSIDBLayout{
+			CodecBytes:      selectionSIDBPayloadOffset - 4,
+			PayloadOffset:   selectionSIDBPayloadOffset,
+			OuterIterations: selectionSIDBOuterIterations,
+		}, nil
+	case selectionSIDBExtendedBytes:
+		return currentSIDBLayout{
+			CodecBytes:      selectionSIDBExtendedPayloadOffset - 4,
+			PayloadOffset:   selectionSIDBExtendedPayloadOffset,
+			OuterIterations: selectionSIDBExtendedIterations,
+		}, nil
+	default:
+		return currentSIDBLayout{}, fmt.Errorf("current SIDB container has unsupported size %d", len(input))
+	}
+}
 
 // These are build-global external encodings, not account material. The native
 // decoder applies each encoding as a byte-wise XOR around an ordinary AES-128
@@ -33,15 +67,22 @@ var selectionSIDBChainMask = [selectionSIDBBlockBytes]byte{
 	0x5d, 0x73, 0x61, 0xbc, 0x2f, 0xb9, 0x7c, 0x7e,
 }
 
-// The selection sweep reduces the 993-byte container to 59 encoded AES
-// blocks. Its only data transform is this repeating XOR mask.
+// The selection sweep reduces either structurally supported current container
+// to the same 59 encoded AES blocks. The extended layout has ten additional
+// codec bytes before the body and a 16-byte trailer after it. Neither belongs
+// to the encrypted registry body.
 func decodeSelectionSIDBContainer(input []byte) ([selectionSIDBPayloadBytes]byte, error) {
 	var output [selectionSIDBPayloadBytes]byte
-	if len(input) != selectionSIDBContainerBytes {
-		return output, fmt.Errorf("selection SIDB container has %d bytes, want %d", len(input), selectionSIDBContainerBytes)
+	layout, err := currentSIDBLayoutForContainer(input)
+	if err != nil {
+		return output, err
+	}
+	end := layout.PayloadOffset + len(output)
+	if end > len(input) {
+		return output, fmt.Errorf("selection SIDB body exceeds its container")
 	}
 	for index := range output {
-		output[index] = input[selectionSIDBPayloadOffset+index] ^ selectionSIDBInputMask[index%selectionSIDBBlockBytes]
+		output[index] = input[layout.PayloadOffset+index] ^ selectionSIDBInputMask[index%selectionSIDBBlockBytes]
 	}
 	return output, nil
 }

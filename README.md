@@ -173,6 +173,9 @@ Verified enrollment contracts: `25G83`, `26A428`/`26A434`, and `26B118`.
 execution is not required. Unknown arm64e builds are accepted only when model
 recovery and full IPA validation succeed.
 
+Both observed Mac SIDB layouts are supported: the compact current layout and
+the older extended layout used by some migrated Store enrollments.
+
 The evaluator source build is recorded for audit purposes. UnfairPlay does not
 load or run that fairplayd binary during recovery.
 

@@ -2,7 +2,6 @@ package recovery
 
 import (
 	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"sort"
 	"strings"
@@ -47,7 +46,10 @@ func currentSIDBContainerFiles(files map[string][]byte) ([]currentSIDBContainerF
 	var containers []currentSIDBContainerFile
 	seen := make(map[[sha256.Size]byte]bool)
 	for name, data := range files {
-		if !strings.HasSuffix(name, "SC Info.sidb") || len(data) != selectionSIDBContainerBytes || binary.BigEndian.Uint32(data[:4]) != currentSIDBContainerVersion {
+		if !strings.HasSuffix(name, "SC Info.sidb") {
+			continue
+		}
+		if _, err := currentSIDBLayoutForContainer(data); err != nil {
 			continue
 		}
 		digest := sha256.Sum256(data)
@@ -156,12 +158,19 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 	hash := sha256.New()
 	seenRegistries := make(map[[sha256.Size]byte]bool)
 	var result []decodedSIDBRegistryCandidate
+	reportedIterations := 0
 	for _, container := range containers {
 		source, iterations, err := deriveCurrentSelectionSource(container.data, hardware)
 		if err != nil {
 			clearDecodedSIDBRegistryCandidates(result)
 			return nil, "", iterations, err
 		}
+		if reportedIterations != 0 && iterations != reportedIterations {
+			clear(source[:])
+			clearDecodedSIDBRegistryCandidates(result)
+			return nil, "", 0, fmt.Errorf("typed SIDB selection found mixed container layouts")
+		}
+		reportedIterations = iterations
 		containerDigest := sha256.Sum256(container.data)
 		_, _ = hash.Write(containerDigest[:])
 		_, _ = hash.Write(source[:])
@@ -173,7 +182,7 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 		}
 	}
 	if len(result) == 0 {
-		return nil, "", outerNaturalIterationCount, fmt.Errorf("typed SIDB selection found no decoded registry candidate")
+		return nil, "", reportedIterations, fmt.Errorf("typed SIDB selection found no decoded registry candidate")
 	}
-	return result, fmt.Sprintf("%x", hash.Sum(nil)), outerNaturalIterationCount, nil
+	return result, fmt.Sprintf("%x", hash.Sum(nil)), reportedIterations, nil
 }

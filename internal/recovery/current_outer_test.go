@@ -18,6 +18,16 @@ func syntheticCurrentOuterInputs() ([]byte, []byte) {
 	return container, hardware
 }
 
+func syntheticExtendedCurrentOuterInputs() ([]byte, []byte) {
+	container := make([]byte, selectionSIDBExtendedBytes)
+	binary.BigEndian.PutUint32(container[:4], currentSIDBContainerVersion)
+	for index := 4; index < len(container); index++ {
+		container[index] = byte(index*29 + 7)
+	}
+	hardware := []byte{0x03, 0x14, 0x25, 0x36, 0x47, 0x58}
+	return container, hardware
+}
+
 func TestCurrentOuterInputsAreTypedAndStructural(t *testing.T) {
 	container, hardware := syntheticCurrentOuterInputs()
 	table, state, control, err := currentOuterInputs(container, hardware)
@@ -28,7 +38,7 @@ func TestCurrentOuterInputsAreTypedAndStructural(t *testing.T) {
 		control != (outerIterationControl{X1: currentOuterInitialX1, CounterSeed: currentOuterInitialCounterSeed}) {
 		t.Fatal("current outer constants differ")
 	}
-	if !bytes.Equal(state.Hardware[:], hardware) || !bytes.Equal(state.Codec[4:], container[4:selectionSIDBPayloadOffset]) {
+	if !bytes.Equal(state.Hardware[:], hardware) || !bytes.Equal(state.Codec[4:33], container[4:selectionSIDBPayloadOffset]) || !bytes.Equal(state.Codec[33:], make([]byte, 10)) {
 		t.Fatal("current outer runtime inputs differ")
 	}
 	var encoded [outerTableWords * 4]byte
@@ -69,6 +79,42 @@ func TestDeriveCurrentSelectionSourceDependencies(t *testing.T) {
 	hardwareSource, _, err := deriveCurrentSelectionSource(container, hardwareMutation)
 	if err != nil || hardwareSource == baseline {
 		t.Fatal("hardware identity did not change the outer source")
+	}
+}
+
+func TestDeriveExtendedCurrentSelectionSourceDependencies(t *testing.T) {
+	container, hardware := syntheticExtendedCurrentOuterInputs()
+	_, state, _, err := currentOuterInputs(container, hardware)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(state.Codec[4:], container[4:selectionSIDBExtendedPayloadOffset]) {
+		t.Fatal("extended current outer codec differs")
+	}
+	baseline, iterations, err := deriveCurrentSelectionSource(container, hardware)
+	if err != nil || iterations != selectionSIDBExtendedIterations {
+		t.Fatalf("derive extended current source = %d/%v", iterations, err)
+	}
+
+	payloadMutation := append([]byte(nil), container...)
+	payloadMutation[selectionSIDBExtendedPayloadOffset+17] ^= 0x80
+	payloadSource, _, err := deriveCurrentSelectionSource(payloadMutation, hardware)
+	if err != nil || payloadSource != baseline {
+		t.Fatal("extended SIDB encrypted payload changed the outer source")
+	}
+
+	trailerMutation := append([]byte(nil), container...)
+	trailerMutation[len(trailerMutation)-1] ^= 0x80
+	trailerSource, _, err := deriveCurrentSelectionSource(trailerMutation, hardware)
+	if err != nil || trailerSource != baseline {
+		t.Fatal("extended SIDB trailer changed the outer source")
+	}
+
+	codecMutation := append([]byte(nil), container...)
+	codecMutation[selectionSIDBPayloadOffset+2] ^= 1
+	codecSource, _, err := deriveCurrentSelectionSource(codecMutation, hardware)
+	if err != nil || codecSource == baseline {
+		t.Fatal("extended SIDB codec tail did not change the outer source")
 	}
 }
 

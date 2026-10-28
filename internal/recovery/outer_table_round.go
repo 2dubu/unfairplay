@@ -8,7 +8,7 @@ type outerTableRoundState struct {
 	Words          [5]uint32
 	Hardware       [6]byte
 	HardwareIndex  uint8
-	Codec          [33]byte
+	Codec          [43]byte
 	Source         [224]byte
 	Tail           [140]byte
 	Writer         [140]byte
@@ -179,12 +179,16 @@ func advanceOuterSeed(seed, iterations uint32) uint32 {
 }
 
 func applyOuterNaturalLoop(table *[outerTableWords]uint32, state *outerTableRoundState, control *outerIterationControl) (int, bool) {
-	if table == nil || state == nil || control == nil {
+	return applyOuterLoop(table, state, control, outerNaturalIterationCount)
+}
+
+func applyOuterLoop(table *[outerTableWords]uint32, state *outerTableRoundState, control *outerIterationControl, iterations int) (int, bool) {
+	if table == nil || state == nil || control == nil || iterations < 1 {
 		return 0, false
 	}
 	base := outerTableInitialBase
 	cycleIndex := uint32(0)
-	for iteration := 1; iteration <= outerNaturalIterationCount; iteration++ {
+	for iteration := 1; iteration <= iterations; iteration++ {
 		next, ok := applyOuterFullIteration(table, base, state, control)
 		if !ok {
 			return iteration - 1, false
@@ -198,5 +202,5 @@ func applyOuterNaturalLoop(table *[outerTableWords]uint32, state *outerTableRoun
 			control.X1 = 0x60319d87
 		}
 	}
-	return outerNaturalIterationCount, true
+	return iterations, true
 }

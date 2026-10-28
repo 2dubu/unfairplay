@@ -2,7 +2,7 @@
 package recovery
 
 func applyOuterCycle(state *outerTableRoundState, cycleIndex uint32) bool {
-	if state == nil || state.HardwareIndex >= 6 || cycleIndex == 0 {
+	if state == nil || state.HardwareIndex >= 6 || cycleIndex == 0 || int(cycleIndex)+3 >= len(state.Codec) {
 		return false
 	}
 	t0 := uint64(((uint64(state.Hardware[(int(state.HardwareIndex)+2)%6])) >> 0) & 0x3)
