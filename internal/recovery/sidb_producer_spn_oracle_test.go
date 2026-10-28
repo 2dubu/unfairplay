@@ -23,7 +23,7 @@ func (model sidbProducerSPN) apply(input [16]byte) [16]byte {
 	return state
 }
 
-//go:embed profiles/current-sidb-producer-spn.bin.gz
+//go:embed profiles/macos26a428-sidb-producer-spn-oracle.bin.gz
 var sidbProducerSPNProfileCompressed []byte
 
 var currentSIDBProducerSPN = func() sidbProducerSPN {
@@ -98,9 +98,4 @@ func parseSIDBProducerSPNProfile(encoded []byte) (sidbProducerSPN, error) {
 		return result, fmt.Errorf("SIDB producer SPN profile has trailing data")
 	}
 	return result, nil
-}
-
-func deriveSelectionSIDBKey(state [16]byte) [16]byte {
-	frameState := currentFrameAES.apply(frameCore(state))
-	return currentSIDBProducerSPN.apply(frameState)
 }

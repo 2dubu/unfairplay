@@ -79,21 +79,33 @@ SHA-256 `33b7a8b3d13d7d5d09d665f52f5f887c426bd04e119b604d09136585b2ae0945`.
 The test-only affine-SPN oracle remains 17,024 bytes with SHA-256
 `f1cb13c0056a4125387f98a575c21cc6129438580e48c76373e333df614ea963`.
 
-## Normalized SIDB producer SPN
+## Sparse SIDB-key producer
 
-The candidate-frame-to-SIDB-key producer is a normalized semantic function
-derived from chosen-state controls. It contains no daemon addresses or
-register state. Its private research files are not committed:
+Production composes away the protected producer's separate stage input and
+output encodings. The result is ten ordinary AES S-box layers separated by
+nine sparse byte-linear layers, plus compact first and final affine layers.
+Verify all 4,096 deterministic controls against the larger test-only SPN with:
+
+```sh
+go test ./internal/recovery -run '^TestSIDBProducerSparseMatchesSPNOracle$' -count=1
+```
+
+Expected size: 877 bytes. Expected compressed SHA-256:
+`e3b45b3a2677158c3d81410a92853d1a29c9533d023a29bc8cc75c0160f79348`.
+The decoded checked profile is 6,088 bytes including its checksum, with
+SHA-256 `5e11f0d44fd2830bfcbaefdafbb459a8a94add9a069408719449afc6e4145001`.
+
+The original private controls can regenerate the larger normalization oracle:
 
 ```sh
 UNFAIRPLAY_SIDB_PRODUCER_PROFILE=/private/path/producer.bin.gz \
 UNFAIRPLAY_SIDB_KEY_LAYER_PROFILE=/private/path/key-layer.bin \
 UNFAIRPLAY_SIDB_KEY_REPORT_INPUT=/private/path/key-controls.json \
-UNFAIRPLAY_SIDB_PRODUCER_SPN_OUTPUT="$PWD/internal/recovery/profiles/current-sidb-producer-spn.bin.gz" \
+UNFAIRPLAY_SIDB_PRODUCER_SPN_OUTPUT="$PWD/internal/recovery/profiles/macos26a428-sidb-producer-spn-oracle.bin.gz" \
 go test ./internal/recovery -run '^TestSIDBProducerSPNResearch$' -count=1
 ```
 
-Expected size: 1,618 bytes. Expected compressed SHA-256:
+The test-only oracle is 1,618 bytes. Its compressed SHA-256 is
 `7f31d8e3b36bcd2981ff2edd8d742d83616c925a9a5c744c868af8e576edc904`.
 The 43,392-byte decoded profile has SHA-256
 `f9362ea765534d3a3e578f5e40d3814d8cfa57dc67306aadf0e0e698b4344954`.
