@@ -46,6 +46,20 @@ decryption across other accounts and app layouts. The command fails on any
 changed hash, image count, page count, or incomplete decryption. Use it before
 creating a release tag.
 
+## IORegistry hardware identity control
+
+On macOS, compare live hardware discovery with a previously verified six-byte
+`IOMACAddress` file from the same Mac:
+
+```sh
+UNFAIRPLAY_IOMAC_FILE=/private/path/iomac.bin \
+go test ./internal/fairplay -run '^TestExternalIORegistryHardwareMAC$' -count=1 -v
+```
+
+This exercises the filtered `ioreg` query and checks the built-in `en0`
+interface's parent address. The test prints neither the address nor its hash.
+Do not commit the private control or a full IORegistry dump.
+
 ## macOS IPA conversion control
 
 The private conversion control proves that a version-2 enrollment model derives
@@ -59,8 +73,26 @@ go test ./internal/fairplay \
   -run TestExternalMacOSCredentialFromEnrollmentModel -count=1 -v
 ```
 
-Use an IPA containing exactly one current 448-byte private SINF for this
-control. Do not commit the model, IPA, SINF, credential, or converted output.
+Run available controls for the observed 440- and 448-byte private SINF forms.
+Also test bounded extended-rights records when a private control exists. Do not
+commit the model, IPA, SINF, credential, or converted output.
+
+## ARMv7 decryption control
+
+Use one private IPA that contains encrypted ARMv7 and ARM64 slices. Require
+every ARMv7 report entry to contain:
+
+```text
+architecture=armv7
+cryptid_after=0
+first_page_audit=armv7-thumb-instruction-structure
+first_page_structurally_plausible=true
+```
+
+Prefer the same app version from two independent Store enrollments. All Mach-O
+members must decrypt byte-identically; only personalized SINF and Store
+metadata may differ. Retain a wrong-page-key test that must fail the ARMv7
+audit. A pure 32-bit IPA is still desirable before a stable release.
 
 ## Compact frame AES profile
 

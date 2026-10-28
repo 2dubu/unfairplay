@@ -51,6 +51,10 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
+The beta also decrypts ARMv7 slices. It validates Thumb-2 or classic ARM
+instruction structure and fails closed when a page key produces implausible
+code. ARMv6/Thumb-1-only apps are not yet verified.
+
 ### Convert an IPA for macOS
 
 This requires an encrypted IPA personalized for the same Store enrollment as
@@ -134,9 +138,10 @@ Each app still has its own key inside its personalized SINF.
 
 ### Why might another macOS build fail?
 
-Apple can change enrollment state layouts and semantic tables. UnfairPlay fails
-closed when an input layout is unknown. It never publishes a recovered model
-until the matching IPA decrypts and passes validation.
+Apple can change enrollment state layouts or semantic tables. UnfairPlay
+discovers bounded SIDB and SINF layouts structurally, but fails closed if the
+version or authenticated record format is genuinely different. It never
+publishes a model until the matching IPA decrypts and passes validation.
 
 Patches and test reports are welcome. Include the macOS build, UnfairPlay
 commit, and complete error. Never share SIDB, SINF, hardware
@@ -160,9 +165,12 @@ Recovery is not selected by the macOS build or a fairplayd hash. It uses typed
 Go algorithms and does not load or execute fairplayd. Unknown inputs are
 accepted only when structural recovery and full IPA validation succeed.
 
-All three observed Mac SIDB geometries are supported: the older 630-byte
-layout and the current 993- and 1003-byte layouts. This covers the tested new
-and migrated older Store enrollments.
+All three observed Mac SIDB geometries are supported: 630, 993, and 1003 bytes.
+Other containers in the same semantic family are discovered from their codec,
+encrypted registry, record/footer, and trailer geometry. Current SINF records
+support the observed short and standard forms plus bounded appended rights.
+Every discovered layout still requires complete SINF authentication and IPA
+validation.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.
@@ -173,6 +181,14 @@ the same enrollment. Account or selector mismatches are rejected.
 Keep capture and model files private. Do not share SIDB, SINF, hardware data,
 recovery models, or decrypted apps. Decrypted IPAs are analysis files and need
 signing before installation.
+
+## Branch beta testing
+
+The build-independent beta is on `research/direct-enrollment-algorithm`.
+Build it from source and run `setup` normally. Reports should include only the
+macOS build, commit, SIDB byte count, SINF `priv`/`righ` byte counts, and the
+complete error. Never attach SIDB, SINF, hardware identity, models, credentials,
+or decrypted IPAs to a public issue.
 
 ## Releases
 
