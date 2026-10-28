@@ -23,6 +23,12 @@ type imageReport struct {
 	FirstPageInstructionWords      int                  `json:"first_page_instruction_words,omitempty"`
 	FirstPageStructurallyPlausible bool                 `json:"first_page_structurally_plausible"`
 	FirstPageMnemonics             map[string]int       `json:"first_page_mnemonics"`
+	ARM32AuditMode                 string               `json:"arm32_audit_mode,omitempty"`
+	ARM32AuditedBytes              int                  `json:"arm32_audited_bytes,omitempty"`
+	ARM32InstructionCount          int                  `json:"arm32_instruction_count,omitempty"`
+	ARM32WideInstructionCount      int                  `json:"arm32_wide_instruction_count,omitempty"`
+	ARM32TrapInstructionCount      int                  `json:"arm32_trap_instruction_count,omitempty"`
+	ARM32ValidARMInstructionCount  int                  `json:"arm32_valid_arm_instruction_count,omitempty"`
 	OrderedPageKeysSHA256          string               `json:"ordered_page_keys_sha256"`
 	AppMaskSHA256                  string               `json:"app_mask_sha256"`
 	CodeDirectories                []codeDirectoryAudit `json:"code_directories"`

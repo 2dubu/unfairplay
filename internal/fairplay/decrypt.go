@@ -18,13 +18,28 @@ import (
 	"strings"
 	"sync"
 
+	"golang.org/x/arch/arm/armasm"
 	"golang.org/x/arch/arm64/arm64asm"
 )
 
 const (
 	pageBytes                           = 4096
 	minimumARM64InstructionValidPercent = 90
+	// Random Thumb halfwords produce about 9.4% wide prefixes and 11.7 traps
+	// per mille. Seven independent ARMv7 plaintext images measured 22.9-43.9%
+	// wide prefixes and 0.1-6.2 traps per mille. Require both signals so inline
+	// data cannot fail an otherwise coherent instruction stream by itself.
+	minimumARM32ThumbWidePercent = 12
+	maximumARM32TrapPermille     = 8
+	minimumARM32InstructionCount = 1024
+	minimumARM32ARMValidPercent  = 90
 )
+
+type arm32PlaintextAudit struct {
+	mode                       string
+	auditedBytes, instructions int
+	wide, traps, valid         int
+}
 
 type encryptedImage struct {
 	member, supfMember, sinfMember string
@@ -627,6 +642,109 @@ func auditAdditionalARM64Pages(output []byte, start, count, auditedIndex int, ra
 	return nil
 }
 
+func arm32InstructionIntersections(start, end int, ranges []machoFileRange, textOnly bool) [][2]int {
+	var result [][2]int
+	for _, section := range ranges {
+		if textOnly && (section.segment != "__TEXT" || section.section != "__text") {
+			continue
+		}
+		low := max(uint64(start), section.offset)
+		high := min(uint64(end), section.offset+section.size)
+		low = (low + 1) &^ 1
+		high &^= 1
+		if low < high {
+			result = append(result, [2]int{int(low), int(high)})
+		}
+	}
+	return result
+}
+
+func auditARM32Thumb(output []byte, start, end int, ranges []machoFileRange) arm32PlaintextAudit {
+	result := arm32PlaintextAudit{mode: "armv7-thumb"}
+	intersections := arm32InstructionIntersections(start, end, ranges, true)
+	if len(intersections) == 0 {
+		intersections = arm32InstructionIntersections(start, end, ranges, false)
+	}
+	for _, intersection := range intersections {
+		result.auditedBytes += intersection[1] - intersection[0]
+		for cursor := intersection[0]; cursor+2 <= intersection[1]; {
+			halfword := binary.LittleEndian.Uint16(output[cursor : cursor+2])
+			result.instructions++
+			if halfword&0xff00 == 0xbe00 || halfword&0xff00 == 0xde00 || halfword&0xff00 == 0xdf00 {
+				result.traps++
+			}
+			if halfword&0xf800 == 0xe800 || halfword&0xf800 == 0xf000 || halfword&0xf800 == 0xf800 {
+				if cursor+4 > intersection[1] {
+					result.traps++
+					cursor += 2
+					continue
+				}
+				result.wide++
+				cursor += 4
+				continue
+			}
+			cursor += 2
+		}
+	}
+	return result
+}
+
+func auditARM32ARM(output []byte, start, end int, ranges []machoFileRange) arm32PlaintextAudit {
+	result := arm32PlaintextAudit{mode: "armv7-arm"}
+	intersections := arm32InstructionIntersections(start, end, ranges, true)
+	if len(intersections) == 0 {
+		intersections = arm32InstructionIntersections(start, end, ranges, false)
+	}
+	for _, intersection := range intersections {
+		low := (intersection[0] + 3) &^ 3
+		high := intersection[1] &^ 3
+		if low >= high {
+			continue
+		}
+		result.auditedBytes += high - low
+		for cursor := low; cursor+4 <= high; cursor += 4 {
+			result.instructions++
+			instruction, err := armasm.Decode(output[cursor:cursor+4], armasm.ModeARM)
+			if err != nil {
+				continue
+			}
+			result.valid++
+			operation := instruction.Op.String()
+			if strings.HasPrefix(operation, "UDF") || strings.HasPrefix(operation, "BKPT") || strings.HasPrefix(operation, "SVC") {
+				result.traps++
+			}
+		}
+	}
+	return result
+}
+
+func plausibleARM32Audit(audit arm32PlaintextAudit) bool {
+	if audit.instructions < minimumARM32InstructionCount || audit.auditedBytes < minimumARM32InstructionCount*2 ||
+		audit.traps*1000 > audit.instructions*maximumARM32TrapPermille {
+		return false
+	}
+	if audit.mode == "armv7-thumb" {
+		return audit.wide*100 >= audit.instructions*minimumARM32ThumbWidePercent
+	}
+	return audit.valid*100 >= audit.instructions*minimumARM32ARMValidPercent
+}
+
+func auditARM32Plaintext(output []byte, start, end int, ranges []machoFileRange) (arm32PlaintextAudit, error) {
+	thumb := auditARM32Thumb(output, start, end, ranges)
+	if plausibleARM32Audit(thumb) {
+		return thumb, nil
+	}
+	arm := auditARM32ARM(output, start, end, ranges)
+	if plausibleARM32Audit(arm) {
+		return arm, nil
+	}
+	return arm32PlaintextAudit{}, fmt.Errorf(
+		"ARMv7 plaintext audit failed (thumb wide=%d/%d traps=%d/%d bytes=%d; arm valid=%d/%d traps=%d/%d bytes=%d)",
+		thumb.wide, thumb.instructions, thumb.traps, thumb.instructions, thumb.auditedBytes,
+		arm.valid, arm.instructions, arm.traps, arm.instructions, arm.auditedBytes,
+	)
+}
+
 func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask [16]byte, deriver *pageKeyDeriver) (*imageReport, error) {
 	if image.layout.cryptID != 1 {
 		return nil, fmt.Errorf("%s: expected cryptid 1", image.member)
@@ -671,6 +789,7 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 	auditPageStart := start
 	valid, instructionWords, mnemonics := 0, 0, map[string]int(nil)
 	structurallyPlausible := false
+	var arm32Audit arm32PlaintextAudit
 	if isARM64InstructionSet(image.layout.cpuType) {
 		bestValid, bestWords, bestStart := 0, 0, start
 		bestFullValid, bestFullWords, bestFullStart := 0, 0, 0
@@ -730,6 +849,15 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 		if err := auditAdditionalARM64Pages(output, start, len(records), auditedPageIndex, image.layout.instructionRanges); err != nil {
 			return nil, fmt.Errorf("%s: %w", image.member, err)
 		}
+	} else if image.layout.cpuType == cpuTypeARM {
+		arm32Audit, err = auditARM32Plaintext(output, start, end, image.layout.instructionRanges)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", image.member, err)
+		}
+		structurallyPlausible = true
+		if page, ok := firstARM64AuditPage(start, end, image.layout.instructionRanges); ok {
+			auditPageStart = page
+		}
 	}
 	auditedPageIndex := (auditPageStart - start) / pageBytes
 	first := output[auditPageStart : auditPageStart+pageBytes]
@@ -748,6 +876,9 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 		CryptOffset: image.layout.cryptOffset, CryptSize: image.layout.cryptSize, Pages: len(records),
 		FirstPlaintextPageSHA256: digest(first), AuditedPageIndex: auditedPageIndex, FirstPageValidARM64Words: valid,
 		FirstPageStructurallyPlausible: structurallyPlausible, FirstPageMnemonics: mnemonics,
+		ARM32AuditMode: arm32Audit.mode, ARM32AuditedBytes: arm32Audit.auditedBytes,
+		ARM32InstructionCount: arm32Audit.instructions, ARM32WideInstructionCount: arm32Audit.wide,
+		ARM32TrapInstructionCount: arm32Audit.traps, ARM32ValidARMInstructionCount: arm32Audit.valid,
 		OrderedPageKeysSHA256: hex.EncodeToString(keysHash.Sum(nil)), AppMaskSHA256: digest(mask[:]),
 		CodeDirectories: audits, CryptIDBefore: 1, CryptIDAfter: 0, ExactMutationScope: true,
 	}
@@ -757,6 +888,8 @@ func decryptImage(output []byte, image encryptedImage, records [][32]byte, mask 
 			report.FirstPageAudit = "arm64-first-executable-page-instruction-decode"
 		}
 		report.FirstPageInstructionWords = instructionWords
+	} else if image.layout.cpuType == cpuTypeARM {
+		report.FirstPageAudit = arm32Audit.mode + "-instruction-structure"
 	} else {
 		report.FirstPageAudit = "not-performed"
 	}
@@ -962,7 +1095,7 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		Complete: len(imageReports) == len(inventory.images),
 		Warnings: []string{
 			"Complete means every inventoried encrypted image was processed; plaintext correctness is not authenticated.",
-			"Only ARM64 first pages are checked for instruction plausibility; ARMv7 plaintext, SUPF records, and subsequent plaintext are not authenticated.",
+			"ARM64 decoding and ARMv7 Thumb/ARM structure checks are heuristic; plaintext and SUPF records are not cryptographically authenticated.",
 			"CodeDirectory checks compare encrypted bytes with embedded hashes, not an authenticated Apple signature; those hashes are stale after decryption.",
 			"Analysis IPA requires recursive re-signing before installation.",
 		},

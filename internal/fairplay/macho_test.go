@@ -216,6 +216,10 @@ func TestMachOEncryptionClassification(t *testing.T) {
 	if _, err := parseThinMachO(thinHeader(true, true), 8204); err != nil {
 		t.Fatal(err)
 	}
+	armv7, err := parseThinMachO(thinARM32Header(true, true), 8204)
+	if err != nil || machoArchitecture(armv7.cpuType, armv7.cpuSubtype) != "armv7" || armv7.cryptID != 1 {
+		t.Fatalf("encrypted ARMv7 image: %+v, %v", armv7, err)
+	}
 	arm64_32 := thinARM32Header(true, true)
 	binary.LittleEndian.PutUint32(arm64_32[4:], cpuTypeARM64_32)
 	binary.LittleEndian.PutUint32(arm64_32[8:], 1)
