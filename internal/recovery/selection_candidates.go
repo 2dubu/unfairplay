@@ -17,7 +17,7 @@ func enrollmentFrameCandidates(source []byte) ([]enrollmentFrameCandidate, error
 	}
 	result := make([]enrollmentFrameCandidate, 0, realSlots)
 	for slot := 0; slot < realSlots; slot++ {
-		frame, err := frameTransform(nil, states[slot])
+		frame, err := frameTransform(states[slot])
 		if err != nil {
 			return nil, err
 		}

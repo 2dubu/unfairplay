@@ -63,7 +63,7 @@ func syntheticCurrentSINFForPrecursor(t *testing.T, profile *semanticBuildProfil
 }
 
 func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
-	profile := embedded26A428ExecutionProfile().semantic
+	profile := portableCurrentSemanticProfile()
 	data := make([]byte, decodedSIDBRecordBytes+decodedSIDBFooterBytes)
 	for index := range data {
 		data[index] = byte(index*31 + 7)
@@ -109,7 +109,7 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 }
 
 func TestSelectAuthenticatedWorkspaceClassPrecursor(t *testing.T) {
-	profile := embedded26A428ExecutionProfile().semantic
+	profile := portableCurrentSemanticProfile()
 	data := make([]byte, 2*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
 	for index := range data {
 		data[index] = byte(index*43 + 17)

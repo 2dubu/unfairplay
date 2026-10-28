@@ -59,7 +59,7 @@ func Recover(options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	pack, err := currentEnrollmentPack(inputs.files, portableCurrentSemanticProfile(), rawSourceBinaryHash, registries)
+	pack, err := currentEnrollmentPack(inputs.files, portableCurrentSemanticProfile(), registries)
 	if err != nil {
 		clearDecodedSIDBRegistryCandidates(registries)
 		return Result{}, err
@@ -69,42 +69,4 @@ func Recover(options Options) (Result, error) {
 		EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations,
 		DecodedRegistryCandidates: len(registries),
 	}, nil
-}
-
-func clearPrivateRecoveryState(value *model) {
-	if lastRawSourceState != nil {
-		for _, page := range lastRawSourceState.writable {
-			clear(page)
-		}
-		for _, page := range lastRawSourceState.mapped {
-			clear(page)
-		}
-		clear(lastRawSourceState.writable)
-		clear(lastRawSourceState.mapped)
-		clear(lastRawSourceState.initialized)
-		for index := range lastRawSourceState.accountDigests {
-			clear(lastRawSourceState.accountDigests[index][:])
-		}
-		clear(lastRawSourceState.accountDigests)
-		lastRawSourceState = nil
-	}
-	if activeRawSourceRuntime != nil {
-		for name, data := range activeRawSourceRuntime.files {
-			clear(data)
-			delete(activeRawSourceRuntime.files, name)
-		}
-		clear(activeRawSourceRuntime.mac)
-		for key, item := range activeRawSourceRuntime.fakeCFValues {
-			clear(item.data)
-			delete(activeRawSourceRuntime.fakeCFValues, key)
-		}
-		activeRawSourceRuntime = nil
-	}
-	if value != nil {
-		for address, page := range value.pages {
-			clear(page)
-			delete(value.pages, address)
-		}
-		clear(value.registers[:])
-	}
 }

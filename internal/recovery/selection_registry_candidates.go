@@ -115,41 +115,6 @@ func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, se
 	return result, nil
 }
 
-// deriveSelectionRegistryCandidates replaces native SIDB candidate selection.
-// It evaluates both supported source layouts and every structurally current
-// SIDB container. Personalized SINF authentication later promotes exactly one
-// decoded registry/record/window tuple.
-func deriveSelectionRegistryCandidates(s *state, runtime *rawSourceRuntime) ([]decodedSIDBRegistryCandidate, error) {
-	if s == nil || runtime == nil {
-		return nil, fmt.Errorf("typed SIDB selection state is unavailable")
-	}
-	profile, err := executionProfileForModel(s.model)
-	if err != nil {
-		return nil, err
-	}
-	source, err := s.outputBytes(profile.sourceAddress, 224)
-	if err != nil {
-		return nil, fmt.Errorf("typed SIDB selection source: %w", err)
-	}
-	defer clear(source)
-
-	containers, err := currentSIDBContainerFiles(runtime.files)
-	if err != nil {
-		return nil, err
-	}
-
-	seenRegistries := make(map[[sha256.Size]byte]bool)
-	var result []decodedSIDBRegistryCandidate
-	for _, container := range containers {
-		result, err = appendSelectionRegistryCandidates(result, seenRegistries, source, container)
-		if err != nil {
-			clearDecodedSIDBRegistryCandidates(result)
-			return nil, err
-		}
-	}
-	return result, nil
-}
-
 func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware []byte) ([]decodedSIDBRegistryCandidate, string, int, error) {
 	containers, err := currentSIDBContainerFiles(files)
 	if err != nil {

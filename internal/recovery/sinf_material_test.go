@@ -10,10 +10,11 @@ func TestCurrentSINFMaterialProjection(t *testing.T) {
 	material := currentSINFMaterialFromPrecursor(precursor)
 	key := currentSINFModelKeyFromPrecursor(precursor)
 	for index := range key {
-		if got, want := material[index]^generatedCurrentSINFKeyMask[index], key[index]; got != want {
+		keyMask := currentSINFMaterialMask[index] ^ 0x1b
+		if got, want := material[index]^keyMask, key[index]; got != want {
 			t.Fatalf("key byte %d=%#x, want %#x", index, got, want)
 		}
-		if got, want := currentSINFMaterialMask[index]^generatedCurrentSINFKeyMask[index], byte(0x1b); got != want {
+		if got, want := currentSINFMaterialMask[index]^keyMask, byte(0x1b); got != want {
 			t.Fatalf("combined mask byte %d=%#x, want %#x", index, got, want)
 		}
 	}

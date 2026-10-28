@@ -62,27 +62,6 @@ go test ./internal/fairplay \
 Use an IPA containing exactly one current 448-byte private SINF for this
 control. Do not commit the model, IPA, SINF, credential, or converted output.
 
-## Legacy exact-build research profile
-
-Regenerate the fail-closed 26A428/26A434 fallback only from the hash-matching
-arm64e `fairplayd`:
-
-```sh
-go run ./tools/compact-kernel \
-  --macho /private/path/fairplayd.arm64e \
-  --seed-profile internal/recovery/profiles/macos26a428-compact-cfg.bin.gz \
-  --seed-start 0x1000103a8 --seed-start 0x1007ead40 \
-  --seed-start 0x1007eadc0 --seed-start 0x1008fe5d4 \
-  --seed-start 0x10093fe44 --seed-start 0x10093ff14 \
-  --seed-start 0x1009f0994 \
-  --compact-output --section-id 11 \
-  --output internal/recovery/profiles/macos26a428-safe-extracted.bin.gz
-```
-
-Expected output: 52,496 blocks, 1,726 rejected blocks, compressed SHA-256
-`40be55e94f23df470ccb51a8e98f910fa0ba7731ceb20ce070d551eac06d7f96`.
-Production recovery does not load this profile or require a fairplayd binary.
-
 ## Normalized frame SPN profile
 
 The production frame transform uses AES S-boxes and affine 128-bit stages. It

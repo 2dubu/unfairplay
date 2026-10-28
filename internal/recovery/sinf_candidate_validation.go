@@ -14,15 +14,15 @@ type authenticatedClassPrecursor struct {
 }
 
 func currentSINFPrivateSource(sinf []byte) ([]byte, error) {
-	rootStart, rootEnd, err := rawSourceAtom(sinf, 0, len(sinf), "sinf")
+	rootStart, rootEnd, err := enrollmentAtom(sinf, 0, len(sinf), "sinf")
 	if err != nil || rootStart != 8 || rootEnd != len(sinf) {
 		return nil, fmt.Errorf("SINF root is invalid")
 	}
-	schiStart, schiEnd, err := rawSourceAtom(sinf, rootStart, rootEnd, "schi")
+	schiStart, schiEnd, err := enrollmentAtom(sinf, rootStart, rootEnd, "schi")
 	if err != nil {
 		return nil, err
 	}
-	privateStart, privateEnd, err := rawSourceAtom(sinf, schiStart, schiEnd, "priv")
+	privateStart, privateEnd, err := enrollmentAtom(sinf, schiStart, schiEnd, "priv")
 	if err != nil {
 		return nil, err
 	}
