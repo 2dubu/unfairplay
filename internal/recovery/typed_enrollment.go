@@ -8,7 +8,15 @@ import (
 
 const typedEnrollmentModelBytes = 8 + 4 + 4 + 32 + 4 + 4 + 16 + 16 + 16*256
 
-var typedEnrollmentSourceHash = [32]byte{0x1e, 0x58, 0xd3, 0x7e, 0x96, 0x02, 0xdd, 0x0c, 0xa5, 0xe2, 0x4b, 0x14, 0x76, 0x20, 0x63, 0xb6, 0xc3, 0x10, 0x24, 0x8b, 0x4d, 0x3a, 0x94, 0x27, 0x27, 0x71, 0xd8, 0x15, 0xe4, 0xea, 0x17, 0x84}
+// typedEnrollmentAlgorithmIdentity is the SHA-256 of
+// "unfairplay/typed-current-enrollment/v1". It identifies the portable
+// algorithm carried by the model, not any Apple executable or OS build.
+var typedEnrollmentAlgorithmIdentity = [32]byte{
+	0xa3, 0xaa, 0x88, 0x17, 0x49, 0x84, 0x86, 0x36,
+	0xd8, 0x8a, 0x8b, 0x0e, 0xc0, 0x2a, 0xdb, 0x35,
+	0xb7, 0x71, 0x01, 0xd0, 0xa0, 0x01, 0xde, 0xa6,
+	0xa0, 0x67, 0x16, 0x96, 0xd8, 0x59, 0x54, 0x02,
+}
 
 func enrollmentAtom(blob []byte, start, limit int, name string) (int, int, error) {
 	for cursor := start; cursor < limit; {
@@ -71,12 +79,12 @@ func currentEnrollmentPack(files map[string][]byte, profile *semanticBuildProfil
 	if err != nil {
 		return nil, err
 	}
-	pack, err := enrollmentPackForPrecursor(profile, typedEnrollmentSourceHash, user, keyID, selected.Precursor)
+	pack, err := enrollmentPackForPrecursor(profile, typedEnrollmentAlgorithmIdentity, user, keyID, selected.Precursor)
 	clear(selected.Precursor[:])
 	return pack, err
 }
 
-func enrollmentPackForPrecursor(profile *semanticBuildProfile, binaryHash [32]byte, user, keyID uint32, precursor [16]byte) ([]byte, error) {
+func enrollmentPackForPrecursor(profile *semanticBuildProfile, algorithmIdentity [32]byte, user, keyID uint32, precursor [16]byte) ([]byte, error) {
 	if profile == nil {
 		return nil, fmt.Errorf("semantic enrollment profile is unavailable")
 	}
@@ -87,7 +95,7 @@ func enrollmentPackForPrecursor(profile *semanticBuildProfile, binaryHash [32]by
 	pack = append(pack, word[:]...)
 	binary.LittleEndian.PutUint32(word[:], typedEnrollmentModelBytes)
 	pack = append(pack, word[:]...)
-	pack = append(pack, binaryHash[:]...)
+	pack = append(pack, algorithmIdentity[:]...)
 	binary.LittleEndian.PutUint32(word[:], user)
 	pack = append(pack, word[:]...)
 	binary.LittleEndian.PutUint32(word[:], keyID)

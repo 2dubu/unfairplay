@@ -14,23 +14,6 @@ These rules apply to the whole repository.
 - Do not describe mechanically extracted or inferred code as verified. State
   exactly how each new execution path was established.
 
-## Recovery profiles
-
-- A verified fallback block must match the supported `fairplayd` instruction
-  stream exactly and have a focused regression test.
-- Verified fallback blocks and the large mechanically extracted fallback profile
-  must remain disjoint. When promoting a block:
-  1. add its address as a `--seed-start` in the generation recipe in `QA.md`;
-  2. regenerate the extracted profile;
-  3. update the pinned block count, rejected count, and SHA-256;
-  4. update external extraction geometry tests; and
-  5. retain the test that rejects overlap between the two profiles.
-- Do not broaden exact-build or reference-binary policy using an evaluator,
-  model, or profile hash unless that hash is proven to identify the source
-  binary. Preserve separate tests for policy and for block semantics.
-- Generated profiles must have a reproducible command and pinned digest in the
-  same pull request.
-
 ## Pull requests
 
 - Keep changes narrow. Do not mix a new recovery path with unrelated cleanup.

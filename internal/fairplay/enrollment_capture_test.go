@@ -72,57 +72,20 @@ func TestInspectSINFAndModel(t *testing.T) {
 	}
 }
 
-func TestFairPlayBuildRecoverySupport(t *testing.T) {
-	legacy, ok := LookupFairPlayBuild(FairPlayBuild25G83Hash)
-	if !ok || !legacy.Recovery || !legacy.Decrypt || legacy.Status != "portable-semantic-verified" ||
-		legacy.ValidationBasis != "canonical-contract-with-portable-semantic-evaluator" || legacy.EvaluatorSHA256 != FairPlayBuild26A428Hash {
-		t.Fatalf("25G83 support = %#v, %v", legacy, ok)
-	}
-	stable, ok := LookupFairPlayBuild(FairPlayBuild26A428Hash)
-	if !ok || !stable.Recovery || !stable.Decrypt {
-		t.Fatalf("26A428 support = %#v, %v", stable, ok)
-	}
-	compat, ok := LookupFairPlayBuild(FairPlayBuild26B118Hash)
-	if !ok || !compat.Recovery || !compat.Decrypt || compat.Profile != "portable-current-sinf" || compat.Status != "portable-semantic-verified" || compat.EvaluatorSHA256 != FairPlayBuild26A428Hash {
-		t.Fatalf("26B118 support = %#v, %v", compat, ok)
-	}
-}
-
-func TestUnknownFairPlayBuildUsesPortableValidation(t *testing.T) {
+func TestFairPlayBuildIdentityDoesNotSelectAlgorithm(t *testing.T) {
 	typed, known := ResolveFairPlayBuildSupport("", "future-build")
-	if known || !typed.Recovery || !typed.Decrypt || typed.Status != "typed-semantic" || typed.Profile != "typed-current-enrollment" || typed.EvaluatorSHA256 != "" {
+	if known || !typed.Recovery || !typed.Decrypt || typed.Status != "typed-semantic" || typed.Profile != "typed-current-enrollment" {
 		t.Fatalf("binary-independent support = %#v, known=%v", typed, known)
 	}
 	const unknownHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	support, known := ResolveFairPlayBuildSupport(unknownHash, "future-build")
-	if known || !support.Recovery || support.Decrypt || support.Status != "portable-semantic-validation-required" ||
-		support.EvaluatorSHA256 != FairPlayBuild26A428Hash {
+	if known || !support.Recovery || !support.Decrypt || support.Status != "typed-semantic" ||
+		support.Profile != "typed-current-enrollment" {
 		t.Fatalf("unknown build support = %#v, known=%v", support, known)
 	}
 	invalid, known := ResolveFairPlayBuildSupport("not-a-sha256", "future-build")
 	if known || invalid.Recovery || invalid.Status != "invalid-fairplayd-identity" {
 		t.Fatalf("invalid build support = %#v, known=%v", invalid, known)
-	}
-	profile := &FairPlayBinaryProfile{StructuralFamily: "family-v1", PortableCandidate: true}
-	matched := applyFairPlayBinaryProfile(support, false, profile)
-	if matched.Profile != "family-v1" || matched.Status != "portable-semantic-structure-matched" || !matched.Recovery || matched.Decrypt {
-		t.Fatalf("structurally matched support = %#v", matched)
-	}
-}
-
-func TestSemanticEvaluatorModelMatchesCapture(t *testing.T) {
-	if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, &EnrollmentCaptureManifest{}) {
-		t.Fatal("typed model did not match a binary-independent capture")
-	}
-	capture := &EnrollmentCaptureManifest{
-		FairPlayd: EnrollmentCaptureFile{SHA256: FairPlayBuild26B118Hash},
-		FairPlay:  supportedFairPlayHashes[FairPlayBuild26B118Hash],
-	}
-	if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, capture) {
-		t.Fatal("portable semantic evaluator model did not match the 26B118 capture")
-	}
-	if modelMatchesCaptureEvaluator("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", capture) {
-		t.Fatal("unrelated evaluator model matched the capture")
 	}
 }
 
@@ -161,28 +124,6 @@ func TestBinaryIndependentManifestOmitsFairPlayd(t *testing.T) {
 	}
 }
 
-func TestPortableSemanticEvaluatorMatrix(t *testing.T) {
-	for _, hash := range []string{FairPlayBuild25G83Hash, FairPlayBuild26A428Hash, FairPlayBuild26B118Hash} {
-		support, ok := LookupFairPlayBuild(hash)
-		if !ok || support.EvaluatorProfile != "macos26a428" || support.EvaluatorSHA256 != FairPlayBuild26A428Hash {
-			t.Fatalf("build %s evaluator metadata: %#v", hash, support)
-		}
-		capture := &EnrollmentCaptureManifest{FairPlayd: EnrollmentCaptureFile{SHA256: hash}, FairPlay: support}
-		if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, capture) {
-			t.Fatalf("portable evaluator did not match build %s", hash)
-		}
-	}
-	support, _ := LookupFairPlayBuild(FairPlayBuild26B118Hash)
-	encoded, err := json.Marshal(support)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(encoded)
-	if !strings.Contains(text, `"evaluator_profile":"macos26a428"`) || !strings.Contains(text, `"evaluator_source_sha256":"`+FairPlayBuild26A428Hash+`"`) || strings.Contains(text, "compatib") {
-		t.Fatalf("unexpected semantic evaluator metadata: %s", text)
-	}
-}
-
 func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "capture")
 	if err := os.Mkdir(directory, 0o700); err != nil {
@@ -196,7 +137,7 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	digest := sha256.Sum256(private)
 	manifest := EnrollmentCaptureManifest{
 		Schema:    EnrollmentCaptureSchema,
-		FairPlayd: EnrollmentCaptureFile{SHA256: FairPlayBuild26B118Hash},
+		FairPlayd: EnrollmentCaptureFile{SHA256: strings.Repeat("ab", sha256.Size)},
 		FairPlay:  FairPlayBuildSupport{Status: "stale-research-only"},
 		Files: []EnrollmentCaptureFile{{
 			Path: "private.bin", Bytes: int64(len(private)), SHA256: hex.EncodeToString(digest[:]), Mode: "0600",
@@ -213,7 +154,7 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.FairPlay.Status != "portable-semantic-verified" || loaded.FairPlay.EvaluatorSHA256 != FairPlayBuild26A428Hash {
+	if loaded.FairPlay.Status != "typed-semantic" || loaded.FairPlay.Profile != "typed-current-enrollment" {
 		t.Fatalf("capture support metadata was not refreshed: %#v", loaded.FairPlay)
 	}
 	if err := os.WriteFile(privatePath, []byte("changed"), 0o600); err != nil {
@@ -245,7 +186,7 @@ func TestLoadLegacyCaptureSchemas(t *testing.T) {
 			manifest := EnrollmentCaptureManifest{
 				Schema: schema,
 				FairPlayd: EnrollmentCaptureFile{
-					SHA256: FairPlayBuild26A428Hash,
+					SHA256: strings.Repeat("cd", sha256.Size),
 				},
 			}
 			encoded, err := json.Marshal(manifest)

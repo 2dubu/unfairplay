@@ -30,8 +30,8 @@ func testAtom(typ string, payload []byte) []byte {
 
 func syntheticLegacyModel() currentSINFModel {
 	model := currentSINFModel{version: 1}
-	for index := range model.fairplaydHash {
-		model.fairplaydHash[index] = byte(index + 1)
+	for index := range model.modelIdentity {
+		model.modelIdentity[index] = byte(index + 1)
 	}
 	model.key = [16]byte{0x61, 0x19, 0xe4, 0x72, 0x0b, 0xce, 0x35, 0xa8, 0xd7, 0x43, 0x9a, 0xf0, 0x26, 0x58, 0xbd, 0x8c}
 	model.whitening = [16]byte{0x11, 0x23, 0x35, 0x47, 0x59, 0x6b, 0x7d, 0x8f, 0x90, 0xa2, 0xb4, 0xc6, 0xd8, 0xea, 0xfc, 0x0e}
@@ -48,7 +48,7 @@ func legacyModelPack(model currentSINFModel) []byte {
 	copy(pack[:8], enrollmentModelV1Magic)
 	binary.LittleEndian.PutUint32(pack[8:12], 1)
 	binary.LittleEndian.PutUint32(pack[12:16], uint32(len(pack)))
-	copy(pack[16:48], model.fairplaydHash[:])
+	copy(pack[16:48], model.modelIdentity[:])
 	copy(pack[48:64], model.key[:])
 	copy(pack[64:80], model.whitening[:])
 	copy(pack[80:], model.inputDecode[:])
@@ -119,7 +119,7 @@ func selectorBoundModelPack(t *testing.T, selector SINFSelector) []byte {
 	copy(pack[:8], enrollmentModelV2Magic)
 	binary.LittleEndian.PutUint32(pack[8:12], 2)
 	binary.LittleEndian.PutUint32(pack[12:16], uint32(len(pack)))
-	copy(pack[16:48], model.fairplaydHash[:])
+	copy(pack[16:48], model.modelIdentity[:])
 	binary.LittleEndian.PutUint32(pack[48:52], selector.User)
 	binary.LittleEndian.PutUint32(pack[52:56], selector.Key)
 	copy(pack[56:72], model.key[:])

@@ -99,24 +99,12 @@ services that are not present on macOS.
 ## Advanced commands
 
 `collect` and `recover` expose the two setup stages for diagnostics and
-archived captures. `doctor` checks a capture, IPA, or model. `profile` is an
-optional reverse-engineering command for comparing arm64e fairplayd builds.
+archived captures. `doctor` checks a capture, IPA, or model.
 
 ```sh
 sudo ./unfairplay collect --app /Applications/App.app --ipa App.ipa --output App.capture
 ./unfairplay recover --capture App.capture --output App.recovery
 ```
-
-Create a code profile for an exact fairplayd binary:
-
-```sh
-./unfairplay profile --binary /path/to/fairplayd.arm64e \
-  --recovery-profile-output fairplayd.recovery-profile.gz
-```
-
-The profile contains code locations and import names. It contains no account
-data and does not execute fairplayd. Normal collection and recovery do not need
-this file.
 
 ## FAQ
 
@@ -168,10 +156,9 @@ not enabled until equivalent private-file permission checks are implemented.
 
 ## Support
 
-Verified build controls include `25G83`, `26A428`/`26A434`, and `26B118`.
-Recovery uses typed Go algorithms and does not load or execute fairplayd.
-Unknown inputs are accepted only when structural recovery and full IPA
-validation succeed.
+Recovery is not selected by the macOS build or a fairplayd hash. It uses typed
+Go algorithms and does not load or execute fairplayd. Unknown inputs are
+accepted only when structural recovery and full IPA validation succeed.
 
 Both observed Mac SIDB layouts are supported: the compact current layout and
 the older extended layout used by some migrated Store enrollments.

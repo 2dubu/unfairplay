@@ -11,7 +11,7 @@ import (
 
 func TestCommandsAreRegistered(t *testing.T) {
 	root := newRootCommand()
-	for _, name := range []string{"setup", "collect", "recover", "decrypt", "convert-ipa-macos", "verify", "doctor", "profile"} {
+	for _, name := range []string{"setup", "collect", "recover", "decrypt", "convert-ipa-macos", "verify", "doctor"} {
 		command, _, err := root.Find([]string{name})
 		if err != nil || command == root || command.Name() != name {
 			t.Fatalf("command %s is not registered: %v", name, err)

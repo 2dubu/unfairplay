@@ -32,7 +32,7 @@ func newRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		Version:       version,
 	}
-	root.AddCommand(newSetupCommand(), newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newConvertIPAMacOSCommand(), newVerifyCommand(), newDoctorCommand(), newProfileCommand())
+	root.AddCommand(newSetupCommand(), newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newConvertIPAMacOSCommand(), newVerifyCommand(), newDoctorCommand())
 	return root
 }
 
@@ -432,45 +432,5 @@ func newDoctorCommand() *cobra.Command {
 	flags.StringVar(&ipa, "ipa", "", "Personalized encrypted IPA")
 	flags.StringVar(&model, "model", "", "Private enrollment model file or directory")
 	flags.StringVar(&reportPath, "report", "", "New private JSON diagnostic report")
-	return command
-}
-
-func newProfileCommand() *cobra.Command {
-	var binaryPath, outputPath, recoveryProfilePath string
-	command := &cobra.Command{
-		Use:   "profile",
-		Short: "Inspect an arm64e fairplayd without executing it",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			profile, err := fairplay.InspectFairPlayBinaryProfile(binaryPath)
-			if err != nil {
-				return err
-			}
-			if recoveryProfilePath != "" {
-				encoded, summary, err := fairplay.BuildFairPlayRecoveryCodeProfile(binaryPath)
-				if err != nil {
-					return err
-				}
-				defer clear(encoded)
-				if err := writePrivateFile(recoveryProfilePath, encoded); err != nil {
-					return err
-				}
-				profile.RecoveryCodeProfile = &summary
-			}
-			if outputPath != "" {
-				document, err := json.MarshalIndent(profile, "", "  ")
-				if err != nil {
-					return err
-				}
-				if err := writePrivateFile(outputPath, append(document, '\n')); err != nil {
-					return err
-				}
-			}
-			return printJSON(profile)
-		},
-	}
-	command.Flags().StringVar(&binaryPath, "binary", "", "arm64e or universal fairplayd Mach-O")
-	command.Flags().StringVar(&outputPath, "output", "", "New private JSON profile")
-	command.Flags().StringVar(&recoveryProfilePath, "recovery-profile-output", "", "New hash-bound recovery code profile")
-	_ = command.MarkFlagRequired("binary")
 	return command
 }

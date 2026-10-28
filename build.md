@@ -86,6 +86,17 @@ copies fairplayd, profiles its CFG, or records a daemon hash as a recovery
 requirement. Recovery no longer accepts a reference-binary override. Legacy
 capture manifests that contain the old diagnostic binary remain readable.
 
+New enrollment models also no longer identify themselves with the 26A428
+fairplayd hash. Their 32-byte identity field is now the SHA-256 of the semantic
+domain string `unfairplay/typed-current-enrollment/v1`:
+`a3aa881749848636d88a8b0ec02adb35b77101d0a001dea6a0671696d8595402`.
+Model selection does not compare this value with a capture or host daemon;
+the selector and complete personalized SINF authentication are authoritative.
+Existing version-1, version-2, and version-3 models remain readable. A retained
+pre-change version-2 model still verified the same 10 images and 11,004 pages,
+with decrypted-IPA SHA-256
+`0eafcbac1502c38aeaa069a627e2d6592f0f2a19b42222361c392a85d77f79ea`.
+
 The prior per-enrollment SIDB DFA is no longer a semantic requirement. At the
 pre-consumer boundary, sixteen encoded bytes decode to the complete AES-128
 round-10 key. Reversing the standard key schedule reproduces the SIDB decoder
@@ -203,7 +214,7 @@ has replaced the native selector and the stack-offset SINF-material adapter in
 model recovery. On the independent 26B118 control, 20 bounded registry-shaped
 objects collapsed to one record/window candidate, produced a byte-identical
 enrollment model with SHA-256
-`78048f583dec3637404c24a9ed7bc6ae3313860c75207e81b8fabe3a45dc24b8`,
+`8f51445492f796d16033d8dec4ae2c91b22be4fc5c10c346b6f4156612851c8c`,
 and decrypted 39 images and 10,080 pages. The decrypted IPA SHA-256 remained
 `73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`;
 no extracted fallback block ran.
@@ -223,7 +234,7 @@ registry, and a 16-byte trailer. Its 39-byte codec drives 427 outer iterations;
 the registry uses the same typed SIDB input, output, and chaining masks as the
 compact layout. On the independent 26A434 control, the typed path produced a
 byte-identical enrollment model with SHA-256
-`fe606ad27ca4650a72f3f0832b067a9723880787d575ba3f61d030d0de32a84e`,
+`90cc761860b803ccfb0b82b202e10e5d479d1d84de058c615d24d3c95b72c9c8`,
 selected one authenticated record/window from 26 decoded registry candidates,
 and decrypted 10 images and 11,004 pages. The current decryption output had
 SHA-256 `0eafcbac1502c38aeaa069a627e2d6592f0f2a19b42222361c392a85d77f79ea`;
@@ -258,7 +269,7 @@ account/bootstrap CFG, and stack-offset adapter dependencies have been removed.
 
 On the independent 26B118 current-layout control, this zero-offset path still
 produced byte-identical enrollment-model SHA-256
-`78048f583dec3637404c24a9ed7bc6ae3313860c75207e81b8fabe3a45dc24b8`,
+`8f51445492f796d16033d8dec4ae2c91b22be4fc5c10c346b6f4156612851c8c`,
 decrypted 39 images and 10,080 pages, and retained decrypted-IPA SHA-256
 `73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`.
 No native or extracted block ran.
@@ -296,8 +307,8 @@ build support:
 - Therefore cross-build work is used to remove obfuscation-dependent details,
   not to add one implementation per binary.
 
-At least five independently hashed release, RC, and update builds must receive
-stage-level differential validation before this work is complete.
+At least five independently hashed stable release and update builds must
+receive stage-level differential validation before this work is complete.
 
 ## Proof requirements
 
@@ -313,7 +324,7 @@ Every promoted transformation needs suitable evidence:
 ## Next work
 
 1. Canonicalize the fixed semantic profile across at least five independent
-   release, RC, and update builds; replace any differing protected
+   stable release and update builds; replace any differing protected
    representation with its shared algorithm or genuine data.
 2. Run exact private QA across multiple enrollment layouts and all five builds.
 

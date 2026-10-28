@@ -28,58 +28,25 @@ const (
 	legacyEnrollmentCaptureSchema           = "ipatool-fairplay-native-enrollment-capture-v1"
 )
 
-const (
-	FairPlayBuild25G83Hash  = "93b8db9c7140cedbd04a3bbbce297b68ba9060e8a4f39ef52a1017964f3da4c5"
-	FairPlayBuild26A428Hash = "1e58d37e9602dd0ca5e24b14762063b6c310248b4d3a94272771d815e4ea1784"
-	FairPlayBuild26B118Hash = "f68e4407e90af5466d2766e1b1c4637260d08cb0518f991e1797ac6c4964439d"
-)
-
 type FairPlayBuildSupport struct {
-	Profile          string `json:"profile"`
-	Build            string `json:"build"`
-	Status           string `json:"status"`
-	ValidationBasis  string `json:"validation_basis,omitempty"`
-	Recovery         bool   `json:"recovery"`
-	Decrypt          bool   `json:"end_to_end_decryption"`
-	EvaluatorProfile string `json:"evaluator_profile,omitempty"`
-	EvaluatorSHA256  string `json:"evaluator_source_sha256,omitempty"`
+	Profile         string `json:"profile"`
+	Build           string `json:"build"`
+	Status          string `json:"status"`
+	ValidationBasis string `json:"validation_basis,omitempty"`
+	Recovery        bool   `json:"recovery"`
+	Decrypt         bool   `json:"end_to_end_decryption"`
 }
 
-var supportedFairPlayHashes = map[string]FairPlayBuildSupport{
-	FairPlayBuild25G83Hash: {
-		Profile: "portable-current-sinf", Build: "25G83", Status: "portable-semantic-verified", ValidationBasis: "canonical-contract-with-portable-semantic-evaluator", Recovery: true, Decrypt: true,
-		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
-	},
-	FairPlayBuild26A428Hash: {
-		Profile: "macos26a428", Build: "26A428", Status: "supported", ValidationBasis: "exact-binary-profile-and-canonical-contract", Recovery: true, Decrypt: true,
-		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
-	},
-	FairPlayBuild26B118Hash: {
-		Profile: "portable-current-sinf", Build: "26B118", Status: "portable-semantic-verified", ValidationBasis: "canonical-contract-with-portable-semantic-evaluator", Recovery: true, Decrypt: true,
-		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
-	},
-}
-
-func LookupFairPlayBuild(hash string) (FairPlayBuildSupport, bool) {
-	result, ok := supportedFairPlayHashes[strings.ToLower(hash)]
-	return result, ok
-}
-
-// ResolveFairPlayBuildSupport returns exact validation metadata for known
-// builds and a fail-closed portable recovery candidate for every other build.
-// The portable path does not execute the captured daemon. It consumes the
-// captured enrollment inputs with the portable semantic evaluator and promotes a model
-// only after complete SINF and IPA validation succeeds.
+// ResolveFairPlayBuildSupport validates an optional legacy daemon identity and
+// always returns the same typed recovery contract. The daemon hash is
+// provenance only; it never selects an algorithm.
 func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool) {
 	if hash == "" {
 		return FairPlayBuildSupport{
 			Profile: "typed-current-enrollment", Build: build, Status: "typed-semantic",
 			ValidationBasis: "structural-enrollment-plus-complete-ipa-validation",
-			Recovery:        true, Decrypt: true, EvaluatorProfile: "typed-current-enrollment",
+			Recovery:        true, Decrypt: true,
 		}, false
-	}
-	if support, ok := LookupFairPlayBuild(hash); ok {
-		return support, true
 	}
 	normalized := strings.ToLower(hash)
 	decoded, err := hex.DecodeString(normalized)
@@ -87,25 +54,13 @@ func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool
 		return FairPlayBuildSupport{Build: build, Status: "invalid-fairplayd-identity"}, false
 	}
 	return FairPlayBuildSupport{
-		Profile:          "portable-current-sinf",
-		Build:            build,
-		Status:           "portable-semantic-validation-required",
-		ValidationBasis:  "portable-semantic-evaluator-plus-complete-ipa-promotion-gate",
-		Recovery:         true,
-		Decrypt:          false,
-		EvaluatorProfile: "macos26a428",
-		EvaluatorSHA256:  FairPlayBuild26A428Hash,
+		Profile:         "typed-current-enrollment",
+		Build:           build,
+		Status:          "typed-semantic",
+		ValidationBasis: "structural-enrollment-plus-personalized-sinf-and-complete-ipa-validation",
+		Recovery:        true,
+		Decrypt:         true,
 	}, false
-}
-
-func applyFairPlayBinaryProfile(support FairPlayBuildSupport, known bool, profile *FairPlayBinaryProfile) FairPlayBuildSupport {
-	if known || profile == nil || !profile.PortableCandidate {
-		return support
-	}
-	support.Profile = profile.StructuralFamily
-	support.Status = "portable-semantic-structure-matched"
-	support.ValidationBasis = "structural-profile-plus-portable-semantic-promotion-gate"
-	return support
 }
 
 type EnrollmentCaptureFile struct {
@@ -133,7 +88,6 @@ type EnrollmentCaptureManifest struct {
 	BuildVersion   string                  `json:"build_version"`
 	FairPlayd      EnrollmentCaptureFile   `json:"fairplayd,omitzero"`
 	FairPlay       FairPlayBuildSupport    `json:"enrollment_support"`
-	BinaryProfile  *FairPlayBinaryProfile  `json:"fairplay_binary_profile,omitempty"`
 	HardwareMAC    EnrollmentCaptureFile   `json:"hardware_iomac"`
 	App            EnrollmentCaptureApp    `json:"app"`
 	IPA            *EnrollmentCaptureFile  `json:"ipa,omitempty"`
@@ -723,18 +677,9 @@ func LoadEnrollmentCapture(path string, verify bool) (EnrollmentCaptureManifest,
 	}
 	if manifest.FairPlayd.SHA256 == "" {
 		manifest.FairPlay, _ = ResolveFairPlayBuildSupport("", manifest.BuildVersion)
-		manifest.BinaryProfile = nil
 	} else {
-		support, known := ResolveFairPlayBuildSupport(manifest.FairPlayd.SHA256, manifest.BuildVersion)
+		support, _ := ResolveFairPlayBuildSupport(manifest.FairPlayd.SHA256, manifest.BuildVersion)
 		manifest.FairPlay = support
-		if manifest.BinaryProfile == nil {
-			if full, pathErr := captureFilePath(path, manifest.FairPlayd.Path); pathErr == nil {
-				if profile, profileErr := InspectFairPlayBinaryProfile(full); profileErr == nil {
-					manifest.BinaryProfile = &profile
-				}
-			}
-		}
-		manifest.FairPlay = applyFairPlayBinaryProfile(manifest.FairPlay, known, manifest.BinaryProfile)
 	}
 	if !verify {
 		return manifest, nil

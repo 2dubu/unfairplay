@@ -22,7 +22,7 @@ var errCurrentSINFProfileMismatch = errors.New("SINF does not match the selected
 
 type currentSINFModel struct {
 	version       uint32
-	fairplaydHash [32]byte
+	modelIdentity [32]byte
 	selector      SINFSelector
 	hasSelector   bool
 	key           [16]byte
@@ -47,13 +47,13 @@ func parseCurrentSINFModel(pack []byte) (currentSINFModel, error) {
 		(string(pack[:8]) == legacySINFModelMagic || string(pack[:8]) == enrollmentModelV1Magic) &&
 		binary.LittleEndian.Uint32(pack[8:12]) == 1:
 		model.version = 1
-		copy(model.fairplaydHash[:], pack[16:48])
+		copy(model.modelIdentity[:], pack[16:48])
 		payloadOffset = 48
 	case len(pack) == currentSINFModelV2Bytes &&
 		string(pack[:8]) == enrollmentModelV2Magic &&
 		binary.LittleEndian.Uint32(pack[8:12]) == 2:
 		model.version = 2
-		copy(model.fairplaydHash[:], pack[16:48])
+		copy(model.modelIdentity[:], pack[16:48])
 		model.selector = SINFSelector{
 			User: binary.LittleEndian.Uint32(pack[48:52]),
 			Key:  binary.LittleEndian.Uint32(pack[52:56]),
@@ -64,7 +64,7 @@ func parseCurrentSINFModel(pack []byte) (currentSINFModel, error) {
 		string(pack[:8]) == enrollmentModelV3Magic &&
 		binary.LittleEndian.Uint32(pack[8:12]) == 3:
 		model.version = 3
-		copy(model.fairplaydHash[:], pack[16:48])
+		copy(model.modelIdentity[:], pack[16:48])
 		model.selector = SINFSelector{
 			User: binary.LittleEndian.Uint32(pack[48:52]),
 			Key:  binary.LittleEndian.Uint32(pack[52:56]),
