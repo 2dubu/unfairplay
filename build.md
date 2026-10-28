@@ -73,7 +73,7 @@ flattened native selector.
 | SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
 | SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, both semantic class-value families, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
-| Build portability | Both 993-byte and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, or per-enrollment DFA. Five-build validation remains open. |
+| Build portability | Both 993-byte and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, or per-enrollment DFA. The five-build account-entry static matrix is complete; downstream frame and SIDB-key differential validation remains open. |
 
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
@@ -319,7 +319,27 @@ needed.
 Local binaries already show that CFG identity is not a useful definition of
 build support:
 
-- 26A428 and 26B118 have very different normalized anchors and flattened CFGs.
+- The stable account-entry control matrix now spans five independently hashed
+  releases:
+
+  | Build | arm64e SHA-256 | `__text` SHA-256 | Words identical to 26A428 |
+  | --- | --- | --- | ---: |
+  | 22A380 | `b09ad07348949aa0dbcfad8058cf1871a95e45caed575c58db9f9c78ba600c66` | `9d9637c9c5e0e91c886a494b3c7c08c9554156b145992b4c1210ae06f3eb4e85` | 9,710 / 9,779 |
+  | 23A344 | `07e2b83fbeee23df0a2262188d55f9bda19f0c0dec0a78b5839b74a6b940f546` | `d53d844510c676bf002671d6543221428dc9789d4065357b0db3a32ed7a92dfa` | 9,684 / 9,779 |
+  | 24A335 | `df4986011a9dff6f8078dc99d9d0cd27d8fd0af248e2034145b30ebd6041d18b` | `466b359399c23243e21387465e2f1ae96e8870014b88bfdf92345e2b7f89cff3` | 9,684 / 9,779 |
+  | 25G83 | `93b8db9c7140cedbd04a3bbbce297b68ba9060e8a4f39ef52a1017964f3da4c5` | `425d914b6164320bb06fb9ae891d522dd0aeab719ca577825f8076490be30f7e` | 9,684 / 9,779 |
+  | 26A428 | `1e58d37e9602dd0ca5e24b14762063b6c310248b4d3a94272771d815e4ea1784` | `eb9214dd24610e71505223d41c7627575952de101e44d474dd2fc06bea9045a4` | reference |
+
+  Every complete account-entry function has 9,779 instructions and normalized
+  SHA-256
+  `b0dc6ba4f1e4f57a4e9385c65774dfa5bf27040e4ee9f60c3e3128b10f463da2`.
+  For 23A344 through 25G83, all 95 non-identical words are relocated
+  references: 47 `ADRP`, 29 `LDR`, 18 `ADD`, and one `BL`. For 22A380, the
+  corresponding counts are 21, 29, 18, and one. No arithmetic or control
+  instruction differs. This is full static differential evidence for the
+  account-entry implementation across four major-version boundaries. It does
+  not yet prove equal runtime outputs or validate the downstream frame and
+  SIDB-key stages.
 - The recovered SHA-1, Montgomery, byte-mask, word-mask, selection-state, and
   SINF algorithms remain valid semantic operations.
 - Therefore cross-build work is used to remove obfuscation-dependent details,
