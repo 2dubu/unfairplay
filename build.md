@@ -73,7 +73,7 @@ flattened native selector.
 | SIDB | Container projection, candidate-state-to-key production, and the 36- or 59-block AES consumer are typed. The unused frame output encoding is gone. The producer is now ten direct AES inverse-S-box layers, nine fixed `InvShiftRows + InvMixColumns` operations, four final XOR graphs, and compact endpoint maps. Its protected stage encodings and per-enrollment DFA are no longer semantic requirements. |
 | SINF | Portable AES/model decoding exists. Decoded SIDB discovery, current and older payload-to-`valu` arithmetic, all semantic class-value families, AES class join, exhaustive record/window or mask-phase evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
-| Build portability | The 630-, 993-, and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, per-enrollment DFA, or iPhone-derived secret. The five-build account-entry static matrix is complete; downstream frame and SIDB-key differential validation remains open. |
+| Build portability | The 630-, 993-, and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, per-enrollment DFA, or iPhone-derived secret. The five-build account-entry static matrix is complete; structurally locating the downstream frame and SIDB-key stages in independent builds remains open. |
 
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
@@ -400,25 +400,75 @@ build support:
 - Therefore cross-build work is used to remove obfuscation-dependent details,
   not to add one implementation per binary.
 
-The downstream static anchor map now spans the same five stable builds. BinDiff
-was run against independently analyzed IDA databases and paired the complete
-one-block frame constructor, repeated selection transform, and SIDB consumer
-front half. Addresses below are research evidence only; production does not
-contain or consult them.
+The former downstream BinDiff anchor map is rejected. Its one-block matches
+were mnemonic-shape false positives, not typed dataflow matches. The clearest
+control is the proposed 25G83 frame candidate at `0x100a6ef30`: BinDiff paired
+it with 26A428 `0x1002fbb24` at similarity `0.428845` and confidence
+`0.622459`, but the correspondence fails at the semantic boundary. Where the
+26A428 path reads the sixteen input bytes, 25G83 performs 32-bit shifts and
+bit slicing into a stack word schedule. The proposed 25G83 path continues for
+4,136 instructions into a multiword compression-shaped loop and never exposes
+the reference function's sixteen-byte input/output geometry. Matching mnemonic
+counts therefore do not locate a protected stage. The associated 22A380,
+23A344, and 24A335 candidates are demoted too until structural dataflow proves
+them independently.
 
-| Build | Frame constructor | Same mnemonic | Selection transform | Same mnemonic | SIDB consumer | Same mnemonic |
-| --- | --- | ---: | --- | ---: | --- | ---: |
-| 22A380 | `0x1004d03c8` | 2,271 / 2,271 | `0x100a7ccd4` | 1,128 / 1,128 | `0x100d27efc` | 2,408 / 2,409 |
-| 23A344 | `0x100089040` | 2,499 / 2,502 | `0x100118f1c` | 1,456 / 1,456 | `0x1009b8ed4` | 2,420 / 2,420 |
-| 24A335 | `0x100d2b680` | 2,520 / 2,521 | `0x100459764` | 1,502 / 1,502 | `0x10038ea20` | 2,366 / 2,366 |
-| 25G83 | `0x100a6ef30` | 1,856 / 1,856 | `0x100068bb0` | 1,079 / 1,080 | `0x10032eb24` | 2,280 / 2,280 |
-| 26A428 | `0x1002fbb24` | reference | `0x100132a94` | reference | `0x10008a644` | reference |
+Cross-build discovery must start from semantic invariants: one structurally
+identified sixteen-byte input, one sixteen-byte output, complete causal
+diffusion, and normalization to the typed Go stage. Function similarity,
+address proximity, and flattened-handler roots may rank candidates, but cannot
+promote one.
 
-Across the twelve non-reference function pairs, normalized operand shapes also
-match 45.6% to 70.7%, while only 32 paired instruction words are byte-identical
-in total. This locates the same stage families while showing that registers,
-immediates, and MBA encodings were regenerated. It is strong static homology
-evidence, but it is not yet the required stage-output differential proof.
+That structural search has now recovered a narrower, evidence-ranked set:
+
+- The proven 26A428 suffix at `0x1002fbb24..0x1002ff8d8` and the 25G83 path at
+  `0x100086a70..0x10008a834` both contain exactly 3,953 instructions. The
+  25G83 path has the same complete sixteen-byte input/output geometry, a
+  mnemonic-histogram overlap of 3,905/3,953, and a mnemonic sequence ratio of
+  `0.736403`. This is a credible local frame-family candidate, but it is not a
+  proved natural-path match and its semantic output still needs normalization
+  against the typed Go stage.
+- The 22A380, 23A344, and 24A335 images each contain roughly eighty protected
+  functions with the same ten-round shape: 160 indexed 32-bit table loads,
+  sixteen-byte input and output geometry, and complete causal diffusion.
+  Representative members at 22A380 `0x100c1c824`, 23A344 `0x10071bc74`, and
+  24A335 `0x1001a0704` execute deterministically in the exact offline images.
+  This proves a shared white-box family, not that any representative is the
+  enrollment-frame instance. Apple includes many alternate or decoy instances,
+  so diffusion and table counts cannot select the semantic path.
+- Pointer-table ranks, selector ordinals, and effective table-address order are
+  randomized between 25G83 and 26A428. All three can drive valid-looking
+  sixteen-byte transforms, but none normalizes to the typed frame core. They
+  are therefore rejected as cross-build identities. The exact natural caller
+  state must select the instance and its tables.
+- Local predecessor matching is insufficient too. The exact 26A428 frame path
+  enters through `0x100242ea8`, loops through `0x1003d0dd8`, and reaches its
+  descriptor caller at `0x100433434`. The independently top-ranked 25G83
+  lookalikes are `0x100030084`, `0x1000d9778`, and `0x100034d60`, but they do
+  not form one coherent protected chain. Under the only dispatch-table base and
+  entry state that send the first block to the proposed loop, that loop's next
+  encoded index points outside the same static fixup table. This rejects the
+  composed match; it does not prove a new algorithm. Cross-build discovery must
+  preserve one coherent dispatcher state from entry through frame output.
+
+The formerly top-ranked 22A380 candidate at
+`0x10061d8c8..0x100623954` is rejected. It has attractive instruction counts,
+sixteen-byte reads, and a `0.927677` mnemonic-histogram overlap, but changing
+each apparent input byte caused zero output changes. This is the concrete
+control showing why geometry and mnemonic similarity are insufficient without
+causal mutation.
+
+These are research controls, not build-specific production profiles. Promotion
+requires showing that an exact natural path decodes to the same semantic Go
+operation. The addresses, table order, selector values, register allocation,
+and dispatcher encodings must not enter production.
+
+A separate 64-byte-state plus 16-byte-input helper family is explicitly not
+the frame. It appears at 22A380 `0x100b2e8a0`, 24A335 `0x100efd024`, and
+25G83 `0x100bf2928`, and produces byte-identical chosen-control outputs across
+those builds. Its sixteen 32-bit block loads and compression-shaped dataflow
+make it a useful cross-build control, but its 64+16-to-16 contract is the wrong
+semantic boundary. Do not promote it as enrollment evidence.
 
 At least five independently hashed stable release and update builds must
 receive stage-level differential validation before this work is complete.
@@ -440,10 +490,16 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Use the five-build static anchor map to replay identical typed boundary
-   controls at the frame and SIDB-key stage outputs. Compare semantic outputs,
-   not protected registers or instruction words, and classify any genuine
-   constant changes as input data rather than build selectors.
+1. Structurally locate the true frame and SIDB-key boundaries in the independent
+   builds. First recover one coherent 25G83 dispatcher path from entry through
+   the descriptor caller and normalize its frame against the typed Go stage;
+   do not compose independently ranked lookalike blocks. Use the resulting
+   semantic fingerprint to select the enrollment member from the many 22A380,
+   23A344, and 24A335 white-box-family controls. Require sixteen-byte
+   input/output geometry, causal dataflow, coherent control state, and exact
+   semantic agreement; compare outputs, not protected registers, instruction
+   words, selector ranks, or table addresses. Classify any genuine constant
+   change as input data rather than a build selector.
 2. Run exact private QA across multiple enrollment layouts after each promoted
    cross-build normalization. The three older binaries are differential
    controls and do not require private account enrollment on those OS releases.
