@@ -133,12 +133,18 @@ Production now has this operation as a typed Go function; the protected core
 must not be shipped or recovered again.
 
 The preceding `valu` producer is typed too. Each four-byte payload word is
-read big-endian, combined with one enrollment-supplied word mask, passed
-through two exact 32-bit arithmetic stages, and converted to one semantic
-`valu` word. The first protected masked subtract/add stage was proved to be
-only XOR `0xce757bc5`; the final byte codec plus its following representation
-mask reduces to one word XOR. A clean implementation of this composition
-matches the unreduced arithmetic over 4,096 deterministic controls.
+read big-endian and combined with one enrollment-supplied word mask. The
+entire remaining protected arithmetic, byte codec, and following
+representation mask reduce to one modular affine operation:
+
+```text
+semantic_word = 0xa46fd0ff * (payload_word XOR word_mask) + 0xfe063531
+                modulo 2^32
+```
+
+The intermediate XOR/add/multiply/mask MBA was removed. Its key identities
+were proved with 32-bit Z3 bit-vectors, and the direct operation matches the
+unreduced protected arithmetic over 4,096 deterministic controls.
 
 Together these stages reduce the remaining SINF seam to the enclosing
 registry record's parameter producer: its metadata must yield four 32-bit
