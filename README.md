@@ -99,8 +99,8 @@ services that are not present on macOS.
 ## Advanced commands
 
 `collect` and `recover` expose the two setup stages for diagnostics and
-archived captures. `doctor` checks a capture, IPA, or model. `profile` inspects
-an arm64e fairplayd without executing it.
+archived captures. `doctor` checks a capture, IPA, or model. `profile` is an
+optional reverse-engineering command for comparing arm64e fairplayd builds.
 
 ```sh
 sudo ./unfairplay collect --app /Applications/App.app --ipa App.ipa --output App.capture
@@ -115,8 +115,8 @@ Create a code profile for an exact fairplayd binary:
 ```
 
 The profile contains code locations and import names. It contains no account
-data and does not execute fairplayd. It helps add native support for new macOS
-builds, but creating it alone does not enable decryption.
+data and does not execute fairplayd. Normal collection and recovery do not need
+this file.
 
 ## FAQ
 
@@ -146,12 +146,12 @@ Each app still has its own key inside its personalized SINF.
 
 ### Why might another macOS build fail?
 
-Apple changes fairplayd code and state layouts between builds. UnfairPlay fails
-closed when a path is not verified. It never publishes a recovered model until
-the matching IPA decrypts and passes validation.
+Apple can change enrollment state layouts and semantic tables. UnfairPlay fails
+closed when an input layout is unknown. It never publishes a recovered model
+until the matching IPA decrypts and passes validation.
 
-Patches and test reports are welcome. Include the macOS build, fairplayd
-SHA-256, UnfairPlay commit, and complete error. Never share SIDB, SINF, hardware
+Patches and test reports are welcome. Include the macOS build, UnfairPlay
+commit, and complete error. Never share SIDB, SINF, hardware
 identity, enrollment models, decrypted apps, or Apple credentials.
 
 ### Can decryption run on another operating system?
@@ -159,8 +159,8 @@ identity, enrollment models, decrypted apps, or Apple credentials.
 Yes. Collection must start on an enrolled Mac. You can either run `setup` on
 that Mac and securely copy the resulting model, or copy a complete private
 `collect` bundle and run `recover` elsewhere. The bundle contains the installed
-license files, system SC Info state, built-in IOMACAddress, matching IPA, macOS
-build metadata, and hash-checked fairplayd reference bytes.
+license files, system SC Info state, built-in IOMACAddress, matching IPA, and
+macOS build metadata.
 
 The recovered model and personalized IPAs can then be used on macOS or Linux;
 fairplayd is never executed. Windows builds compile, but Windows decryption is
@@ -168,16 +168,13 @@ not enabled until equivalent private-file permission checks are implemented.
 
 ## Support
 
-Verified enrollment contracts: `25G83`, `26A428`/`26A434`, and `26B118`.
-`25G83` and `26B118` use the portable semantic evaluator; native fairplayd
-execution is not required. Unknown arm64e builds are accepted only when model
-recovery and full IPA validation succeed.
+Verified build controls include `25G83`, `26A428`/`26A434`, and `26B118`.
+Recovery uses typed Go algorithms and does not load or execute fairplayd.
+Unknown inputs are accepted only when structural recovery and full IPA
+validation succeed.
 
 Both observed Mac SIDB layouts are supported: the compact current layout and
 the older extended layout used by some migrated Store enrollments.
-
-The evaluator source build is recorded for audit purposes. UnfairPlay does not
-load or run that fairplayd binary during recovery.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.

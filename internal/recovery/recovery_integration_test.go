@@ -28,10 +28,7 @@ func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 	if stateFiles == 0 {
 		t.Fatal("capture has no FairPlay state")
 	}
-	options := recovery.Options{
-		FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(),
-		SelectionMaxBlocks: 20_000_000,
-	}
+	options := recovery.Options{FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath()}
 	first, err := recovery.Recover(options)
 	if err != nil {
 		t.Fatal(err)
@@ -42,8 +39,7 @@ func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clear(second.EnrollmentModel)
-	if first.StateSHA256 != second.StateSHA256 || first.Iterations != second.Iterations ||
-		first.ExtractedBlockHits != second.ExtractedBlockHits || !bytes.Equal(first.EnrollmentModel, second.EnrollmentModel) {
+	if first.StateSHA256 != second.StateSHA256 || first.Iterations != second.Iterations || !bytes.Equal(first.EnrollmentModel, second.EnrollmentModel) {
 		t.Fatal("repeated recovery in one process was not deterministic")
 	}
 	if manifest.IPA == nil {

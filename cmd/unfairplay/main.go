@@ -105,7 +105,6 @@ func newCollectCommand() *cobra.Command {
 	flags.StringVar(&options.InstalledExecutablePath, "installed-executable-path", "", "Original absolute executable path for an archived app")
 	flags.StringVar(&options.IPAPath, "ipa", "", "Matching personalized encrypted IPA")
 	flags.StringVar(&options.OutputPath, "output", "", "New private capture directory")
-	flags.StringVar(&options.FairPlaydPath, "fairplayd", "", "fairplayd Mach-O (defaults to the system CoreFP framework)")
 	flags.StringVar(&options.SystemStatePath, "system-state", "", "System SC Info directory")
 	flags.StringVar(&options.SharedStatePath, "shared-state", "", "Shared SC Info directory")
 	flags.StringVar(&options.ADIPath, "adi-state", "", "Native ADI state directory")
@@ -119,12 +118,8 @@ func newCollectCommand() *cobra.Command {
 }
 
 type recoverOptions struct {
-	Reference          string
-	SelectionMaxBlocks int
-	Capture            string
-	Output             string
-	TraceStages        bool
-	TraceValues        bool
+	Capture string
+	Output  string
 }
 
 func newRecoverCommand() *cobra.Command {
@@ -136,30 +131,11 @@ func newRecoverCommand() *cobra.Command {
 			return recoverEnrollment(command.Context(), options)
 		},
 	}
-	command.Flags().StringVar(&options.Reference, "reference-binary", "", "Override hash-matched fairplayd reference code")
-	command.Flags().IntVar(&options.SelectionMaxBlocks, "selection-max-blocks", 2_000_000, "Selection execution limit (1..20000000)")
 	command.Flags().StringVar(&options.Capture, "capture", "", "Private capture directory")
 	command.Flags().StringVar(&options.Output, "output", "", "New private recovery directory")
-	command.Flags().BoolVar(&options.TraceStages, "trace-stages", false, "Write a private stage-contract trace for algorithm recovery")
-	command.Flags().BoolVar(&options.TraceValues, "trace-values", false, "Include private register and memory values in the stage trace")
 	_ = command.MarkFlagRequired("capture")
 	_ = command.MarkFlagRequired("output")
 	return command
-}
-
-func recoveryReference(options recoverOptions, manifest fairplay.EnrollmentCaptureManifest) (string, string, error) {
-	if options.Reference != "" {
-		return options.Reference, "explicit-binary", nil
-	}
-	if manifest.FairPlay.EvaluatorSHA256 == "" || !strings.EqualFold(manifest.FairPlay.EvaluatorSHA256, manifest.FairPlayd.SHA256) {
-		return "", "embedded-profile", nil
-	}
-	relative := filepath.FromSlash(manifest.FairPlayd.Path)
-	clean := filepath.Clean(relative)
-	if relative == "" || filepath.IsAbs(relative) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", "", fmt.Errorf("capture contains an unsafe fairplayd path")
-	}
-	return filepath.Join(options.Capture, clean), "captured-exact-binary", nil
 }
 
 type enrollmentRecoveryOutcome struct {
@@ -213,8 +189,6 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 		}
 		recovered, err = recovery.Recover(recovery.Options{
 			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(),
-			SelectionMaxBlocks: options.SelectionMaxBlocks,
-			TraceStages:        options.TraceStages || options.TraceValues, TraceValues: options.TraceValues,
 		})
 		if err == nil {
 			selectedProfile = inputProfile.name
@@ -243,39 +217,20 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	if err := os.Rename(candidate, enrollment); err != nil {
 		return outcome, err
 	}
-	traceReport := ""
-	if options.TraceStages || options.TraceValues {
-		traceDocument, marshalErr := json.MarshalIndent(map[string]any{
-			"schema": "unfairplay-recovery-stage-trace-v1", "stages": recovered.StageTraces,
-		}, "", "  ")
-		if marshalErr != nil {
-			return outcome, marshalErr
-		}
-		traceReport = filepath.Join(options.Output, "stage-trace.json")
-		if err := writePrivateFile(traceReport, append(traceDocument, '\n')); err != nil {
-			return outcome, err
-		}
-	}
 	summary := map[string]any{
 		"schema": "unfairplay-enrollment-recovery-v1", "success": true,
-		"selector": manifest.App.SelectorID, "fairplayd_sha256": manifest.FairPlayd.SHA256,
-		"fairplayd_status": manifest.FairPlay.Status, "validation_basis": manifest.FairPlay.ValidationBasis,
-		"evaluator_profile": "typed-current-enrollment", "evaluator_source_sha256": manifest.FairPlay.EvaluatorSHA256,
+		"selector":          manifest.App.SelectorID,
+		"enrollment_status": manifest.FairPlay.Status, "validation_basis": manifest.FairPlay.ValidationBasis,
+		"evaluator_profile":           "typed-current-enrollment",
 		"portable_semantic_evaluator": true,
 		"canonical_contract":          canonical.Contract, "canonical_input_sha256": canonical.FingerprintSHA256,
 		"enrollment_model": enrollment, "decrypted_ipa": decrypted,
 		"decrypted_ipa_sha256": result.OutputSHA256, "encrypted_images": result.EncryptedImages,
 		"decrypted_pages": result.DecryptedPages, "input_profile": selectedProfile,
 		"recovery_iterations": recovered.Iterations, "recovery_state_sha256": recovered.StateSHA256,
-		"exact_extracted_block_hits":  recovered.ExtractedBlockHits,
-		"account_digest_candidates":   recovered.AccountDigestCandidates,
 		"decoded_registry_candidates": recovered.DecodedRegistryCandidates,
 		"promotion_gate":              "complete-sinf-and-ipa-validation",
 		"reference_code_source":       referenceSource,
-	}
-	if traceReport != "" {
-		summary["stage_trace"] = traceReport
-		summary["stage_trace_count"] = len(recovered.StageTraces)
 	}
 	document, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {

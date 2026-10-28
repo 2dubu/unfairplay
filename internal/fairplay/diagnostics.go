@@ -60,7 +60,7 @@ type FairPlayDoctorReport struct {
 type EnrollmentCaptureDiagnostic struct {
 	ProductVersion    string                 `json:"product_version"`
 	BuildVersion      string                 `json:"build_version"`
-	FairPlaydSHA256   string                 `json:"fairplayd_sha256"`
+	FairPlaydSHA256   string                 `json:"fairplayd_sha256,omitempty"`
 	EnrollmentSupport FairPlayBuildSupport   `json:"enrollment_support"`
 	BinaryProfile     *FairPlayBinaryProfile `json:"fairplay_binary_profile,omitempty"`
 	SelectorID        string                 `json:"selector_id"`
@@ -329,7 +329,8 @@ func validatedModelForSINF(ipaPath, member, modelPath string,
 }
 
 func modelMatchesCaptureEvaluator(modelHash string, capture *EnrollmentCaptureManifest) bool {
-	return capture == nil || modelHash == capture.FairPlayd.SHA256 ||
+	return capture == nil || capture.FairPlayd.SHA256 == "" && capture.FairPlay.EvaluatorSHA256 == "" ||
+		modelHash == capture.FairPlayd.SHA256 ||
 		capture.FairPlay.EvaluatorSHA256 != "" && modelHash == capture.FairPlay.EvaluatorSHA256
 }
 

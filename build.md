@@ -80,6 +80,11 @@ semantic memory-layout adapters are now legacy research-oracle infrastructure.
 `Recover` does not load or execute them. They remain in the source tree only
 until the dead research implementation is removed.
 
+New captures contain only structural enrollment inputs. Collection no longer
+copies fairplayd, profiles its CFG, or records a daemon hash as a recovery
+requirement. Recovery no longer accepts a reference-binary override. Legacy
+capture manifests that contain the old diagnostic binary remain readable.
+
 The prior per-enrollment SIDB DFA is no longer a semantic requirement. At the
 pre-consumer boundary, sixteen encoded bytes decode to the complete AES-128
 round-10 key. Reversing the standard key schedule reproduces the SIDB decoder
@@ -309,14 +314,12 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Remove native executable and `fairplayd` requirements from capture
-   normalization and public recovery reports.
-2. Delete the now-dead generated account/bootstrap/selection CFG and compact
+1. Delete the now-dead generated account/bootstrap/selection CFG and compact
    interpreter source now that both enrollment layouts have typed parity.
-3. Canonicalize the fixed semantic profile across at least five independent
+2. Canonicalize the fixed semantic profile across at least five independent
    release, RC, and update builds; replace any differing protected
    representation with its shared algorithm or genuine data.
-4. Run exact private QA across multiple enrollment layouts and all five builds.
+3. Run exact private QA across multiple enrollment layouts and all five builds.
 
 Update this file whenever a stage becomes typed, an offset is removed, a
 cross-build invariant is proved, or a completion requirement changes state.

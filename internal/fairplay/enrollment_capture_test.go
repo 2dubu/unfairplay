@@ -89,6 +89,10 @@ func TestFairPlayBuildRecoverySupport(t *testing.T) {
 }
 
 func TestUnknownFairPlayBuildUsesPortableValidation(t *testing.T) {
+	typed, known := ResolveFairPlayBuildSupport("", "future-build")
+	if known || !typed.Recovery || !typed.Decrypt || typed.Status != "typed-semantic" || typed.Profile != "typed-current-enrollment" || typed.EvaluatorSHA256 != "" {
+		t.Fatalf("binary-independent support = %#v, known=%v", typed, known)
+	}
 	const unknownHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	support, known := ResolveFairPlayBuildSupport(unknownHash, "future-build")
 	if known || !support.Recovery || support.Decrypt || support.Status != "portable-semantic-validation-required" ||
@@ -107,6 +111,9 @@ func TestUnknownFairPlayBuildUsesPortableValidation(t *testing.T) {
 }
 
 func TestSemanticEvaluatorModelMatchesCapture(t *testing.T) {
+	if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, &EnrollmentCaptureManifest{}) {
+		t.Fatal("typed model did not match a binary-independent capture")
+	}
 	capture := &EnrollmentCaptureManifest{
 		FairPlayd: EnrollmentCaptureFile{SHA256: FairPlayBuild26B118Hash},
 		FairPlay:  supportedFairPlayHashes[FairPlayBuild26B118Hash],
@@ -116,6 +123,41 @@ func TestSemanticEvaluatorModelMatchesCapture(t *testing.T) {
 	}
 	if modelMatchesCaptureEvaluator("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", capture) {
 		t.Fatal("unrelated evaluator model matched the capture")
+	}
+}
+
+func TestBinaryIndependentManifestOmitsFairPlayd(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "capture")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	private := []byte("private fixture")
+	if err := os.WriteFile(filepath.Join(directory, "private.bin"), private, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(private)
+	manifest := EnrollmentCaptureManifest{
+		Schema: EnrollmentCaptureSchema,
+		Files: []EnrollmentCaptureFile{{
+			Path: "private.bin", Bytes: int64(len(private)), SHA256: hex.EncodeToString(digest[:]), Mode: "0600",
+		}},
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "fairplayd") {
+		t.Fatalf("binary-independent manifest retained fairplayd: %s", encoded)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "manifest.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadEnrollmentCapture(directory, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.FairPlay.Status != "typed-semantic" || !loaded.FairPlay.Recovery || !loaded.FairPlay.Decrypt {
+		t.Fatalf("binary-independent capture support = %#v", loaded.FairPlay)
 	}
 }
 
@@ -193,25 +235,29 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyIpatoolCaptureSchema(t *testing.T) {
-	directory := filepath.Join(t.TempDir(), "capture")
-	if err := os.Mkdir(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	manifest := EnrollmentCaptureManifest{
-		Schema: legacyEnrollmentCaptureSchema,
-		FairPlayd: EnrollmentCaptureFile{
-			SHA256: FairPlayBuild26A428Hash,
-		},
-	}
-	encoded, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "manifest.json"), encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadEnrollmentCapture(directory, false); err != nil {
-		t.Fatalf("legacy ipatool capture schema was rejected: %v", err)
+func TestLoadLegacyCaptureSchemas(t *testing.T) {
+	for _, schema := range []string{legacyUnfairPlayEnrollmentCaptureSchema, legacyEnrollmentCaptureSchema} {
+		t.Run(schema, func(t *testing.T) {
+			directory := filepath.Join(t.TempDir(), "capture")
+			if err := os.Mkdir(directory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			manifest := EnrollmentCaptureManifest{
+				Schema: schema,
+				FairPlayd: EnrollmentCaptureFile{
+					SHA256: FairPlayBuild26A428Hash,
+				},
+			}
+			encoded, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "manifest.json"), encoded, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadEnrollmentCapture(directory, false); err != nil {
+				t.Fatalf("legacy capture schema was rejected: %v", err)
+			}
+		})
 	}
 }

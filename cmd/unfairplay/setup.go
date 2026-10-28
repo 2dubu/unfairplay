@@ -211,7 +211,7 @@ func setupEnrollment(ctx context.Context, options setupOptions) error {
 	}
 	recoveryDirectory := filepath.Join(work, "recovery")
 	recovered, err := recoverEnrollmentResult(ctx, recoverOptions{
-		Capture: capture, Output: recoveryDirectory, SelectionMaxBlocks: 2_000_000,
+		Capture: capture, Output: recoveryDirectory,
 	})
 	if err != nil {
 		return err

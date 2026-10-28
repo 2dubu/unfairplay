@@ -23,8 +23,7 @@ Example manifest:
       "capture": "/private/path/App.capture",
       "expected_model_sha256": "...",
       "expected_ipa_sha256": "...",
-      "expected_evaluator_source_sha256": "...",
-      "expected_reference_code_source": "embedded-profile",
+      "expected_reference_code_source": "typed-go",
       "expected_images": 10,
       "expected_pages": 11004
     },
@@ -63,7 +62,7 @@ go test ./internal/fairplay \
 Use an IPA containing exactly one current 448-byte private SINF for this
 control. Do not commit the model, IPA, SINF, credential, or converted output.
 
-## Exact-build fallback profile
+## Legacy exact-build research profile
 
 Regenerate the fail-closed 26A428/26A434 fallback only from the hash-matching
 arm64e `fairplayd`:
@@ -82,8 +81,7 @@ go run ./tools/compact-kernel \
 
 Expected output: 52,496 blocks, 1,726 rejected blocks, compressed SHA-256
 `40be55e94f23df470ccb51a8e98f910fa0ba7731ceb20ce070d551eac06d7f96`.
-The runtime loads this profile only when the capture includes the exact
-hash-matching reference binary.
+Production recovery does not load this profile or require a fairplayd binary.
 
 ## Normalized frame SPN profile
 

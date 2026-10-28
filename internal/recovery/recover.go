@@ -9,11 +9,8 @@ import (
 // Options describes the private runtime inputs used to derive one
 // selector-bound enrollment model. FileMappings use SUFFIX=FILE syntax.
 type Options struct {
-	FileMappings       []string
-	HardwarePath       string
-	SelectionMaxBlocks int
-	TraceStages        bool
-	TraceValues        bool
+	FileMappings []string
+	HardwarePath string
 }
 
 // Result is the output of one bounded enrollment recovery.
@@ -21,10 +18,7 @@ type Result struct {
 	EnrollmentModel           []byte
 	StateSHA256               string
 	Iterations                int
-	ExtractedBlockHits        int
-	AccountDigestCandidates   int
 	DecodedRegistryCandidates int
-	StageTraces               []RecoveryStageTrace
 }
 
 var recoveryMu sync.Mutex
@@ -53,10 +47,6 @@ func Recover(options Options) (Result, error) {
 	if options.HardwarePath == "" {
 		return Result{}, fmt.Errorf("recovery requires a hardware identity file")
 	}
-	_, err := selectionBlockLimit(options.SelectionMaxBlocks)
-	if err != nil {
-		return Result{}, err
-	}
 	inputs, err := loadCurrentRecoveryInputs(options.FileMappings, options.HardwarePath)
 	if err != nil {
 		return Result{}, err
@@ -77,22 +67,8 @@ func Recover(options Options) (Result, error) {
 	clearDecodedSIDBRegistryCandidates(registries)
 	return Result{
 		EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations,
-		ExtractedBlockHits: 0, AccountDigestCandidates: 0,
-		DecodedRegistryCandidates: len(registries), StageTraces: nil,
+		DecodedRegistryCandidates: len(registries),
 	}, nil
-}
-
-const defaultSelectionMaxBlocks = 2_000_000
-const maximumSelectionMaxBlocks = 20_000_000
-
-func selectionBlockLimit(requested int) (int, error) {
-	if requested == 0 {
-		return defaultSelectionMaxBlocks, nil
-	}
-	if requested < 1 || requested > maximumSelectionMaxBlocks {
-		return 0, fmt.Errorf("selection block limit must be between 1 and %d", maximumSelectionMaxBlocks)
-	}
-	return requested, nil
 }
 
 func clearPrivateRecoveryState(value *model) {

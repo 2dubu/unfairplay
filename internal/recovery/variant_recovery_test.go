@@ -268,21 +268,6 @@ func TestSafeExtractedProfileIsExactReferenceOnly(t *testing.T) {
 	}
 }
 
-func TestSelectionBlockLimit(t *testing.T) {
-	for _, test := range []struct {
-		requested, want int
-		bad             bool
-	}{
-		{0, 2_000_000, false}, {1, 1, false}, {20_000_000, 20_000_000, false},
-		{-1, 0, true}, {20_000_001, 0, true},
-	} {
-		got, err := selectionBlockLimit(test.requested)
-		if (err != nil) != test.bad || !test.bad && got != test.want {
-			t.Fatalf("limit %d => %d, %v", test.requested, got, err)
-		}
-	}
-}
-
 func TestEmbeddedExecutionProfileGeometry(t *testing.T) {
 	profile := embedded26A428ExecutionProfile()
 	if profile.name != "macos26a428" || profile.binaryHash != rawSourceBinaryHash || profile.semantic == nil ||
