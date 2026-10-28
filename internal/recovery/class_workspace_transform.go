@@ -49,6 +49,74 @@ func classWorkspaceGaloisMultiply(left, right byte) (result byte) {
 	return result
 }
 
+// classWorkspacePowerFactor reduces the squared norm of three semantic
+// residues, then applies the fixed exponent used by the class workspace. The
+// native 65,536-entry protected decoder is exactly this x^45 operation modulo
+// 32767 on its accepted representation.
+func classWorkspacePowerFactor(components [3]uint16) uint16 {
+	var norm uint64
+	for _, component := range components {
+		value := uint64(component)
+		norm += value * value
+	}
+	norm %= uint64(classWorkspaceModulus)
+	square := norm * norm % uint64(classWorkspaceModulus)
+	fourth := square * square % uint64(classWorkspaceModulus)
+	eighth := fourth * fourth % uint64(classWorkspaceModulus)
+	sixteenth := eighth * eighth % uint64(classWorkspaceModulus)
+	thirtySecond := sixteenth * sixteenth % uint64(classWorkspaceModulus)
+	return uint16(thirtySecond * eighth % uint64(classWorkspaceModulus) * fourth % uint64(classWorkspaceModulus) * norm % uint64(classWorkspaceModulus))
+}
+
+// classWorkspaceDrift replaces the native 150-value decoder. Five has order
+// 150 in the relevant residue ring, so reducing the exponent is exact.
+func classWorkspaceDrift(value uint16) uint16 {
+	base := uint64(5)
+	result := uint64(1)
+	for exponent := value % 150; exponent != 0; exponent >>= 1 {
+		if exponent&1 != 0 {
+			result = result * base % uint64(classWorkspaceModulus)
+		}
+		base = base * base % uint64(classWorkspaceModulus)
+	}
+	return uint16((0x39a5*result + 0x0c7e) % uint64(classWorkspaceModulus))
+}
+
+// classWorkspaceInteractionStep applies one in-place 3x3 interaction pass.
+// Cells are visited column-major, matching the mathematical dependency order:
+// every cell observes the already-updated cells that precede it. Each of the
+// other two rows contributes its coordinate difference multiplied by the
+// 45th power of the rows' squared distance. Product accumulation intentionally
+// wraps at 32 bits, matching the algorithm before reduction modulo 32767.
+func classWorkspaceInteractionStep(matrix [9]uint16) [9]uint16 {
+	for column := range 3 {
+		for row := range 3 {
+			position := row*3 + column
+			force := uint32(0)
+			for other := range 3 {
+				if other == row {
+					continue
+				}
+				var difference [3]uint16
+				for coordinate := range 3 {
+					left := uint32(matrix[row*3+coordinate])
+					right := uint32(matrix[other*3+coordinate])
+					difference[coordinate] = uint16((left + classWorkspaceModulus - right) % classWorkspaceModulus)
+				}
+				weight := uint32(classWorkspacePowerFactor(difference))
+				delta := uint32(matrix[other*3+column]) - uint32(matrix[position])
+				force += delta * weight
+			}
+			matrix[position] = uint16((uint64(matrix[position]) + uint64(classWorkspaceDrift(matrix[position])) + uint64(force%classWorkspaceModulus)) % uint64(classWorkspaceModulus))
+		}
+	}
+	return matrix
+}
+
+func classWorkspaceEnrollmentValue(matrix [9]uint16) [8]byte {
+	return classWorkspaceClassValue(classWorkspaceInteractionStep(matrix))
+}
+
 // classWorkspaceClassValue maps the semantic polynomial product to the
 // enrollment-global eight-byte class value. It is one affine circulant matrix
 // over GF(2^8), using the AES reduction polynomial, not a white-box cipher.

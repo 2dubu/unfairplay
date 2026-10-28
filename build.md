@@ -185,8 +185,22 @@ over `GF(2^8)` using the AES reduction polynomial. It needs only one eight-byte
 column and one eight-byte affine offset. A direct typed Go implementation
 matches the recovered 64x32 affine map over 65,536 deterministic controls and
 the exact natural class value. The other 32-bit native source word is proven
-non-causal by one-bit controls in all four bytes. The enclosing schedule that
-produces each 32-bit multiplication term is now the remaining class-value seam.
+non-causal by one-bit controls in all four bytes. One more protected schedule
+stage is normalized: three semantic residues are squared and summed modulo
+`32767`, then raised to the fixed exponent `45`. The 99-value native decoder's
+complete 65,536-input image and preimage-count distribution are exactly the
+`x^45 mod 32767` power map, and all 16 natural schedule invocations match it.
+Typed Go now uses a short modular-exponentiation chain. The enclosing 3x3
+interaction is typed as well. It visits cells column-major and, for each of the
+other two rows, multiplies the current-coordinate difference by the 45th power
+of the rows' squared distance. The two contributions are accumulated with the
+algorithm's 32-bit wrapping before reduction. The per-cell drift is no longer
+open either: it is exactly
+`0x39a5 * 5^cell + 0x0c7e mod 32767`; exponentiation has period 150, matching
+the protected decoder's complete 32,767-input image. Typed Go now maps one
+semantic 3x3 matrix directly to the exact eight-byte class value. Producing
+that initial matrix from structural enrollment input is the remaining
+class-value seam.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of

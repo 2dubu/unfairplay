@@ -182,3 +182,74 @@ func TestClassWorkspaceNativeWordBiasCancels(t *testing.T) {
 		t.Fatalf("native biases do not cancel")
 	}
 }
+
+func referenceClassWorkspacePowerFactor(components [3]uint16) uint16 {
+	var norm uint64
+	for _, component := range components {
+		value := uint64(component)
+		norm += value * value
+	}
+	norm %= uint64(classWorkspaceModulus)
+	result := uint64(1)
+	for exponent := 45; exponent != 0; exponent >>= 1 {
+		if exponent&1 != 0 {
+			result = result * norm % uint64(classWorkspaceModulus)
+		}
+		norm = norm * norm % uint64(classWorkspaceModulus)
+	}
+	return uint16(result)
+}
+
+func TestClassWorkspacePowerFactorMatchesModularExponentiation(t *testing.T) {
+	controls := [][3]uint16{{}, {1, 2, 3}, {0x7ffe, 0x7ffe, 0x7ffe}}
+	random := rand.New(rand.NewSource(0x26574))
+	for range 1 << 16 {
+		controls = append(controls, [3]uint16{
+			uint16(random.Uint32() % classWorkspaceModulus),
+			uint16(random.Uint32() % classWorkspaceModulus),
+			uint16(random.Uint32() % classWorkspaceModulus),
+		})
+	}
+	for index, control := range controls {
+		got := classWorkspacePowerFactor(control)
+		want := referenceClassWorkspacePowerFactor(control)
+		if got != want {
+			t.Fatalf("control %d = %#x, want %#x", index, got, want)
+		}
+	}
+}
+
+func TestClassWorkspaceInteractionStepSyntheticControl(t *testing.T) {
+	matrix := [9]uint16{1, 2, 3, 4, 5, 6, 7, 8, 9}
+	want := [9]uint16{0x0328, 0x6a0c, 0x7164, 0x6fd2, 0x5aad, 0x5812, 0x5ce7, 0x659f, 0x11df}
+	if got := classWorkspaceInteractionStep(matrix); got != want {
+		t.Fatalf("interaction step = %#v, want %#v", got, want)
+	}
+}
+
+func modularPowerReference(base, exponent, modulus uint64) uint64 {
+	result := uint64(1)
+	for exponent != 0 {
+		if exponent&1 != 0 {
+			result = result * base % modulus
+		}
+		base = base * base % modulus
+		exponent >>= 1
+	}
+	return result
+}
+
+func TestClassWorkspaceDriftMatchesPowerFormula(t *testing.T) {
+	seen := make(map[uint16]struct{})
+	for value := range uint16(classWorkspaceModulus) {
+		got := classWorkspaceDrift(value)
+		want := uint16((0x39a5*modularPowerReference(5, uint64(value), uint64(classWorkspaceModulus)) + 0x0c7e) % uint64(classWorkspaceModulus))
+		if got != want {
+			t.Fatalf("drift(%#x) = %#x, want %#x", value, got, want)
+		}
+		seen[got] = struct{}{}
+	}
+	if len(seen) != 150 {
+		t.Fatalf("drift image contains %d values, want 150", len(seen))
+	}
+}
