@@ -253,3 +253,14 @@ func TestClassWorkspaceDriftMatchesPowerFormula(t *testing.T) {
 		t.Fatalf("drift image contains %d values, want 150", len(seen))
 	}
 }
+
+func TestClassWorkspaceSeedMatrixSyntheticControl(t *testing.T) {
+	want := [9]uint16{0x0000, 0x0001, 0x0400, 0x459b, 0x0020, 0x5ed6, 0x6e2c, 0x3751, 0x0001}
+	if got := classWorkspaceSeedMatrix(0); got != want {
+		t.Fatalf("seed matrix = %#v, want %#v", got, want)
+	}
+	wantValue := [8]byte{0xf5, 0x24, 0x95, 0x06, 0x52, 0x76, 0x20, 0xe4}
+	if got := classWorkspaceEnrollmentValueFromSeed(0); got != wantValue {
+		t.Fatalf("enrollment value = %x, want %x", got, wantValue)
+	}
+}

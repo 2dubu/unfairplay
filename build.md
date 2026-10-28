@@ -198,9 +198,12 @@ algorithm's 32-bit wrapping before reduction. The per-cell drift is no longer
 open either: it is exactly
 `0x39a5 * 5^cell + 0x0c7e mod 32767`; exponentiation has period 150, matching
 the protected decoder's complete 32,767-input image. Typed Go now maps one
-semantic 3x3 matrix directly to the exact eight-byte class value. Producing
-that initial matrix from structural enrollment input is the remaining
-class-value seam.
+semantic 3x3 matrix directly to the exact eight-byte class value. The matrix
+producer is normalized too: its nine row-major cells are
+`(seed + index)^1000 mod 32767`. The retained native seed's additive encoding
+cancels to the semantic seed before this step. The full typed path is now one
+16-bit semantic seed to the exact eight-byte class value. Producing that seed
+from structural enrollment input is the remaining class-value seam.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of

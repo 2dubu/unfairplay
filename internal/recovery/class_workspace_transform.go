@@ -68,18 +68,32 @@ func classWorkspacePowerFactor(components [3]uint16) uint16 {
 	return uint16(thirtySecond * eighth % uint64(classWorkspaceModulus) * fourth % uint64(classWorkspaceModulus) * norm % uint64(classWorkspaceModulus))
 }
 
+func classWorkspaceModularPower(base, exponent uint16) uint16 {
+	value := uint64(base)
+	result := uint64(1)
+	for exponent != 0 {
+		if exponent&1 != 0 {
+			result = result * value % uint64(classWorkspaceModulus)
+		}
+		value = value * value % uint64(classWorkspaceModulus)
+		exponent >>= 1
+	}
+	return uint16(result)
+}
+
 // classWorkspaceDrift replaces the native 150-value decoder. Five has order
 // 150 in the relevant residue ring, so reducing the exponent is exact.
 func classWorkspaceDrift(value uint16) uint16 {
-	base := uint64(5)
-	result := uint64(1)
-	for exponent := value % 150; exponent != 0; exponent >>= 1 {
-		if exponent&1 != 0 {
-			result = result * base % uint64(classWorkspaceModulus)
-		}
-		base = base * base % uint64(classWorkspaceModulus)
-	}
+	result := uint64(classWorkspaceModularPower(5, value%150))
 	return uint16((0x39a5*result + 0x0c7e) % uint64(classWorkspaceModulus))
+}
+
+func classWorkspaceSeedMatrix(seed uint16) (matrix [9]uint16) {
+	for index := range matrix {
+		base := uint16((uint32(seed) + uint32(index)) % classWorkspaceModulus)
+		matrix[index] = classWorkspaceModularPower(base, 1000)
+	}
+	return matrix
 }
 
 // classWorkspaceInteractionStep applies one in-place 3x3 interaction pass.
@@ -115,6 +129,10 @@ func classWorkspaceInteractionStep(matrix [9]uint16) [9]uint16 {
 
 func classWorkspaceEnrollmentValue(matrix [9]uint16) [8]byte {
 	return classWorkspaceClassValue(classWorkspaceInteractionStep(matrix))
+}
+
+func classWorkspaceEnrollmentValueFromSeed(seed uint16) [8]byte {
+	return classWorkspaceEnrollmentValue(classWorkspaceSeedMatrix(seed))
 }
 
 // classWorkspaceClassValue maps the semantic polynomial product to the
