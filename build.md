@@ -64,16 +64,16 @@ flattened native selector.
 
 | Area | Status |
 | --- | --- |
-| Outer transform | Typed Go constructs its complete input from validated SIDB geometry and the six-byte hardware identity. The legacy stack/register adapter is no longer used by production recovery. |
+| Outer transform | Typed Go constructs its complete input from validated 630-, 993-, or 1003-byte SIDB geometry and the six-byte hardware identity. The legacy stack/register adapter is no longer used by production recovery. |
 | Digest, pair, tail, writer | Typed Go algorithms are recovered and differential-tested. |
 | Account entry | Replaced by structural X.509 parsing and pinned-CA SUPF authentication. The legacy account-entry CFG has been removed. |
 | Bootstrap | Replaced by one typed semantic outer profile plus SIDB/hardware runtime fields. The legacy bootstrap CFG has been removed. |
-| Selection | The 192-byte body and 224-byte envelope are parsed structurally. Candidate state/key transforms, SIDB-key production, the 59-block SIDB AES consumer, and authenticated candidate promotion are typed Go. Native selection orchestration is no longer executed by model recovery. |
+| Selection | The 192-byte body and 224-byte envelope are parsed structurally. Candidate state/key transforms, SIDB-key production, the 36- or 59-block SIDB AES consumer, and authenticated candidate promotion are typed Go. Native selection orchestration is no longer executed by model recovery. |
 | Enrollment frame | The independent-key AES-shaped core and its suffix are normalized to direct keyed AES S-box transitions and sparse `GF(2^8)` mixing layers. The larger generalized and affine-SPN models are test-only. |
-| SIDB | Container projection, candidate-state-to-key production, and the 59-block AES consumer are typed. The unused frame output encoding is gone. The producer is now ten direct AES inverse-S-box layers, nine fixed `InvShiftRows + InvMixColumns` operations, four final XOR graphs, and compact endpoint maps. Its protected stage encodings and per-enrollment DFA are no longer semantic requirements. |
-| SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, both semantic class-value families, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
+| SIDB | Container projection, candidate-state-to-key production, and the 36- or 59-block AES consumer are typed. The unused frame output encoding is gone. The producer is now ten direct AES inverse-S-box layers, nine fixed `InvShiftRows + InvMixColumns` operations, four final XOR graphs, and compact endpoint maps. Its protected stage encodings and per-enrollment DFA are no longer semantic requirements. |
+| SINF | Portable AES/model decoding exists. Decoded SIDB discovery, current and older payload-to-`valu` arithmetic, all semantic class-value families, AES class join, exhaustive record/window or mask-phase evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
-| Build portability | Both 993-byte and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, or per-enrollment DFA. The five-build account-entry static matrix is complete; downstream frame and SIDB-key differential validation remains open. |
+| Build portability | The 630-, 993-, and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, per-enrollment DFA, or iPhone-derived secret. The five-build account-entry static matrix is complete; downstream frame and SIDB-key differential validation remains open. |
 
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
@@ -213,6 +213,34 @@ Production does not reconstruct the native account-digest path. Its only
 downstream effect is the workspace seed, whose complete 32,767-value semantic
 domain is cheap to enumerate. Personalized-SINF authentication selects the
 single coherent value, so the old SHA-1 writer and its CFG are unnecessary.
+
+The older 630-byte enrollment family is closed separately without that seed
+enumeration. Its semantic account digest is ordinary SHA-1 over a typed
+45-byte message: a fixed 17-byte prefix, the six-byte built-in IOMACAddress
+plus two zero bytes, one reserved zero byte, the one-byte SINF key selector,
+the big-endian SINF user selector, two `0xff` bytes, and a fixed 12-byte
+suffix. The final two big-endian digest pairs are reduced modulo 32767 and
+each drives one direct 3x3 coordinate/velocity recurrence. The two resulting
+polynomial words are combined by one circulant `GF(2^8)` map with column
+`e1 2e 9b b9 e8 6d ff df`; the result is repeated to form the AES class key.
+The native three-matrix limb encodings, word biases, byte tables, and final
+XOR-`0x1b` transport have all been removed.
+
+The older `valu` path is the same four-word modular affine transform used by
+current records. It consumes the complete 16-byte payload and starts the fixed
+record mask at phase 8. Production evaluates all sixteen bounded mask phases
+and lets complete personalized-SINF authentication select the unique coherent
+record and phase, so phase selection does not depend on a native offset or
+dispatcher.
+
+The independent older private control recovered from its 630-byte Mac SIDB,
+IOMACAddress, installed license, and personalized IPA with no iPhone or iOS 16
+material. The new typed model SHA-256 was
+`6f9888452b6f9f0acf5466d32b71ee52f6b4ddca3d1e27027879b4f18336ef74`.
+It decrypted one encrypted image and one page; decrypted-IPA SHA-256 was
+`d71c1a150acc334b0dc0bf9532bc8501aa8c2020cb7d906b9b4cb5b212ce0f53`,
+and logical-key SHA-256 matched the established independent result
+`0cc0921e90789a30c7cce2ba80c75ced64dd334af31ff6744dc714923a14ac32`.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of

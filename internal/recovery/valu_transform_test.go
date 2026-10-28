@@ -84,6 +84,32 @@ func TestDeriveClassValuWindowMatchesProtectedArithmetic(t *testing.T) {
 	}
 }
 
+func TestDeriveLegacyClassValuMatchesMaskedReference(t *testing.T) {
+	var record decodedSIDBRecord
+	for index := range record.Payload {
+		record.Payload[index] = byte(index*29 + 7)
+	}
+	for phase := range len(currentClassRecordMask) {
+		var masked [16]byte
+		for index, value := range record.Payload {
+			masked[index] = value ^ currentClassRecordMask[(phase+index)%len(currentClassRecordMask)]
+		}
+		want := deriveClassValuFromMaskedWords(masked)
+		got, err := deriveLegacyClassValu(record, phase)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("legacy phase %d = %x, want %x", phase, got, want)
+		}
+	}
+	for _, phase := range []int{-1, len(currentClassRecordMask)} {
+		if _, err := deriveLegacyClassValu(record, phase); err == nil {
+			t.Fatalf("legacy class phase %d was accepted", phase)
+		}
+	}
+}
+
 func TestDeriveCurrentSINFPrecursorFromRecordWindow(t *testing.T) {
 	record := decodedSIDBRecord{
 		Payload: [16]byte{0x3d, 0x79, 0x22, 0x11, 0x48, 0x61, 0xa7, 0xc4, 0x6a, 0xb0, 0x52, 0x8f, 0x10, 0x39, 0xde, 0x72},

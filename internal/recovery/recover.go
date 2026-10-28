@@ -59,7 +59,7 @@ func Recover(options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	pack, err := currentEnrollmentPack(inputs.files, registries)
+	pack, err := currentEnrollmentPack(inputs.files, registries, inputs.hardware)
 	if err != nil {
 		clearDecodedSIDBRegistryCandidates(registries)
 		return Result{}, err

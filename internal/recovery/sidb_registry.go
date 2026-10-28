@@ -3,12 +3,13 @@ package recovery
 import "fmt"
 
 const (
-	decodedSIDBRecordBytes    = 40
-	decodedSIDBMetadataBytes  = 20
-	decodedSIDBPayloadBytes   = 16
-	decodedSIDBTailBytes      = 4
-	decodedSIDBFooterBytes    = 24
-	maximumDecodedSIDBRecords = 4096
+	decodedSIDBRecordBytes      = 40
+	decodedSIDBMetadataBytes    = 20
+	decodedSIDBPayloadBytes     = 16
+	decodedSIDBTailBytes        = 4
+	decodedSIDBOlderFooterBytes = 16
+	decodedSIDBFooterBytes      = 24
+	maximumDecodedSIDBRecords   = 4096
 )
 
 // decodedSIDBRecord is the build-independent geometry of one current SIDB
@@ -29,11 +30,14 @@ type decodedSIDBRegistry struct {
 // parseDecodedSIDBRegistry parses only authenticated, already-decoded SIDB
 // bytes. It does not guess a native object address or select an app record.
 func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
-	if len(data) <= decodedSIDBFooterBytes ||
-		(len(data)-decodedSIDBFooterBytes)%decodedSIDBRecordBytes != 0 {
+	footerBytes := decodedSIDBFooterBytes
+	if len(data) > decodedSIDBOlderFooterBytes && (len(data)-decodedSIDBOlderFooterBytes)%decodedSIDBRecordBytes == 0 {
+		footerBytes = decodedSIDBOlderFooterBytes
+	}
+	if len(data) <= footerBytes || (len(data)-footerBytes)%decodedSIDBRecordBytes != 0 {
 		return decodedSIDBRegistry{}, fmt.Errorf("decoded SIDB registry has invalid geometry: %d bytes", len(data))
 	}
-	count := (len(data) - decodedSIDBFooterBytes) / decodedSIDBRecordBytes
+	count := (len(data) - footerBytes) / decodedSIDBRecordBytes
 	if count == 0 || count > maximumDecodedSIDBRecords {
 		return decodedSIDBRegistry{}, fmt.Errorf("decoded SIDB registry has invalid record count: %d", count)
 	}
@@ -45,6 +49,6 @@ func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
 		copy(record.Payload[:], data[offset+decodedSIDBMetadataBytes:offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes])
 		copy(record.Tail[:], data[offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes:offset+decodedSIDBRecordBytes])
 	}
-	copy(result.Footer[:], data[len(data)-decodedSIDBFooterBytes:])
+	copy(result.Footer[:], data[len(data)-footerBytes:])
 	return result, nil
 }

@@ -133,6 +133,27 @@ func (probe currentSINFModelKeyProbe) accepts(modelKey [aes.BlockSize]byte) (boo
 	return bytes.Equal(first[:8], []byte{0, 0, 0, 24, 'k', 'e', 'y', ' '}), nil
 }
 
+func authenticateClassValu(probe currentSINFModelKeyProbe, sinf []byte, block cipher.Block, valu [aes.BlockSize]byte) ([aes.BlockSize]byte, bool, error) {
+	var modelKey [aes.BlockSize]byte
+	block.Decrypt(modelKey[:], valu[:])
+	possible, err := probe.accepts(modelKey)
+	if err != nil || !possible {
+		clear(modelKey[:])
+		return [aes.BlockSize]byte{}, false, err
+	}
+	var precursor [aes.BlockSize]byte
+	for index := range precursor {
+		precursor[index] = applyCurrentFairPlayByteMask(modelKey[index])
+	}
+	clear(modelKey[:])
+	accepted, err := validateCurrentSINFPrecursor(sinf, precursor)
+	if err != nil || !accepted {
+		clear(precursor[:])
+		return [aes.BlockSize]byte{}, false, err
+	}
+	return precursor, true, nil
+}
+
 func selectAuthenticatedClassPrecursor(sinf []byte, registries []decodedSIDBRegistryCandidate) (authenticatedClassPrecursor, error) {
 	var selected authenticatedClassPrecursor
 	probe, err := newCurrentSINFModelKeyProbe(sinf)
@@ -183,28 +204,11 @@ func selectAuthenticatedClassPrecursor(sinf []byte, registries []decodedSIDBRegi
 			return selected, err
 		}
 		for _, candidate := range candidates {
-			var modelKey [aes.BlockSize]byte
-			classBlock.Decrypt(modelKey[:], candidate.valu[:])
-			possible, err := probe.accepts(modelKey)
+			precursor, accepted, err := authenticateClassValu(probe, sinf, classBlock, candidate.valu)
 			if err != nil {
-				return selected, err
-			}
-			if !possible {
-				clear(modelKey[:])
-				continue
-			}
-			var precursor [aes.BlockSize]byte
-			for index := range precursor {
-				precursor[index] = applyCurrentFairPlayByteMask(modelKey[index])
-			}
-			clear(modelKey[:])
-			accepted, err := validateCurrentSINFPrecursor(sinf, precursor)
-			if err != nil {
-				clear(precursor[:])
 				return selected, err
 			}
 			if !accepted {
-				clear(precursor[:])
 				continue
 			}
 			matches++
@@ -227,4 +231,76 @@ func selectAuthenticatedClassPrecursor(sinf []byte, registries []decodedSIDBRegi
 		return authenticatedClassPrecursor{}, fmt.Errorf("authenticated SINF accepted no class precursor")
 	}
 	return selected, nil
+}
+
+func selectAuthenticatedLegacyClassPrecursor(sinf []byte, registries []decodedSIDBRegistryCandidate, hardware []byte, user, keyID uint32) (authenticatedClassPrecursor, error) {
+	var selected authenticatedClassPrecursor
+	digest, err := legacyAccountDigest(hardware, user, keyID)
+	if err != nil {
+		return selected, err
+	}
+	parameters := classEnrollmentParameters{ClassValue: legacyClassWorkspaceValue(digest)}
+	classKey := parameters.classKey()
+	classBlock, err := aes.NewCipher(classKey[:])
+	clear(classKey[:])
+	clear(digest[:])
+	if err != nil {
+		return selected, err
+	}
+	probe, err := newCurrentSINFModelKeyProbe(sinf)
+	if err != nil {
+		return selected, err
+	}
+	matches := 0
+	for registryIndex, registry := range registries {
+		for recordIndex, record := range registry.Registry.Records {
+			for maskPhase := range len(currentClassRecordMask) {
+				valu, err := deriveLegacyClassValu(record, maskPhase)
+				if err != nil {
+					return selected, err
+				}
+				precursor, accepted, err := authenticateClassValu(probe, sinf, classBlock, valu)
+				if err != nil {
+					return selected, err
+				}
+				if !accepted {
+					continue
+				}
+				matches++
+				selected = authenticatedClassPrecursor{
+					classPrecursorCandidate: classPrecursorCandidate{
+						RecordIndex:  recordIndex,
+						WindowOffset: maskPhase,
+						Record:       record,
+						Precursor:    precursor,
+					},
+					RegistryIndex: registryIndex,
+				}
+				if matches > 1 {
+					clear(selected.Precursor[:])
+					return authenticatedClassPrecursor{}, fmt.Errorf("authenticated SINF accepted multiple legacy class precursors")
+				}
+			}
+		}
+	}
+	if matches != 1 {
+		return authenticatedClassPrecursor{}, fmt.Errorf("authenticated SINF accepted no legacy class precursor")
+	}
+	return selected, nil
+}
+
+func selectAuthenticatedEnrollmentClassPrecursor(sinf []byte, registries []decodedSIDBRegistryCandidate, hardware []byte, user, keyID uint32) (authenticatedClassPrecursor, error) {
+	if len(registries) == 0 {
+		return authenticatedClassPrecursor{}, fmt.Errorf("class precursor selection requires one decoded registry")
+	}
+	older := len(registries[0].Data) == selectionSIDBOlderPayloadBytes
+	for _, registry := range registries[1:] {
+		if (len(registry.Data) == selectionSIDBOlderPayloadBytes) != older {
+			return authenticatedClassPrecursor{}, fmt.Errorf("class precursor selection found mixed registry layouts")
+		}
+	}
+	if older {
+		return selectAuthenticatedLegacyClassPrecursor(sinf, registries, hardware, user, keyID)
+	}
+	return selectAuthenticatedClassPrecursor(sinf, registries)
 }

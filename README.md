@@ -160,8 +160,9 @@ Recovery is not selected by the macOS build or a fairplayd hash. It uses typed
 Go algorithms and does not load or execute fairplayd. Unknown inputs are
 accepted only when structural recovery and full IPA validation succeed.
 
-Both observed Mac SIDB layouts are supported: the compact current layout and
-the older extended layout used by some migrated Store enrollments.
+All three observed Mac SIDB geometries are supported: the older 630-byte
+layout and the current 993- and 1003-byte layouts. This covers the tested new
+and migrated older Store enrollments.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.

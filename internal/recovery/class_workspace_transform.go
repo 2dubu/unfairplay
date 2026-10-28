@@ -1,5 +1,7 @@
 package recovery
 
+import "encoding/binary"
+
 const (
 	classWorkspaceModulus        = uint32(0x7fff)
 	classWorkspaceSampleCutoff   = uint16(0x7b0f)
@@ -10,6 +12,8 @@ const (
 
 var classWorkspaceValueColumn = [8]byte{0xfc, 0x24, 0x94, 0x78, 0xca, 0xe1, 0x7a, 0x5b}
 var classWorkspaceValueOffset = [8]byte{0xc2, 0x87, 0xa5, 0xfb, 0x4c, 0x3e, 0xea, 0x35}
+
+var legacyClassWorkspaceColumn = [8]byte{0xe1, 0x2e, 0x9b, 0xb9, 0xe8, 0x6d, 0xff, 0xdf}
 
 type classWorkspaceLimbOutputs struct {
 	Forward  uint16
@@ -69,6 +73,10 @@ func classWorkspacePowerFactor(components [3]uint16) uint16 {
 }
 
 func classWorkspaceModularPower(base, exponent uint16) uint16 {
+	return classWorkspaceModularPower32(base, uint32(exponent))
+}
+
+func classWorkspaceModularPower32(base uint16, exponent uint32) uint16 {
 	value := uint64(base)
 	result := uint64(1)
 	for exponent != 0 {
@@ -79,6 +87,63 @@ func classWorkspaceModularPower(base, exponent uint16) uint16 {
 		exponent >>= 1
 	}
 	return uint16(result)
+}
+
+// legacyClassWorkspaceWord is the semantic 3x3 recurrence used by the older
+// 630-byte enrollment layout. The native implementation transports three
+// differently encoded matrices through a protected limb kernel; this direct
+// form retains only the coordinates whose polynomial product is consumed.
+func legacyClassWorkspaceWord(residue uint16) uint32 {
+	residue %= uint16(classWorkspaceModulus)
+	var coordinates, velocities [9]uint16
+	for index := uint16(0); index < uint16(len(coordinates)); index++ {
+		base := uint16((uint32(residue) + uint32(index) + 1) % classWorkspaceModulus)
+		coordinates[index] = classWorkspaceModularPower32(base, uint32(residue)+1)
+		velocities[index] = residue
+	}
+	for column := range 3 {
+		for row := range 3 {
+			position := row*3 + column
+			accumulator := uint32(0x08e513f9)
+			for other := range 3 {
+				if other == row {
+					continue
+				}
+				var distance uint32
+				for component := range 3 {
+					difference := int32(coordinates[row*3+component]) - int32(coordinates[other*3+component])
+					distance += uint32(difference * difference)
+				}
+				coefficient := classWorkspaceModularPower32(uint16(distance%classWorkspaceModulus), 0x10001ffd)
+				difference := int32(coordinates[other*3+column]) - int32(coordinates[position])
+				accumulator += uint32(difference) * uint32(coefficient)
+			}
+			exponent := uint32(coordinates[position]) + uint32(residue) + uint32(velocities[position])
+			direct := classWorkspaceModularPower32(5, exponent)
+			impulse := uint16((accumulator + uint32(direct) + uint32(residue) + 0xf71aec07) % classWorkspaceModulus)
+			velocities[position] = uint16((uint32(velocities[position]) + uint32(impulse)) % classWorkspaceModulus)
+			coordinates[position] = uint16((uint32(coordinates[position]) + uint32(velocities[position])) % classWorkspaceModulus)
+		}
+	}
+	return classWorkspacePolynomialWord(coordinates)
+}
+
+// legacyClassWorkspaceValue maps the final two digest-derived polynomial
+// words to the eight-byte class value. It is one circulant linear map over
+// GF(2^8); the native byte tables and XOR-0x1b transport cancel completely.
+func legacyClassWorkspaceValue(digest [20]byte) (result [8]byte) {
+	var input [8]byte
+	for index := range 2 {
+		residue := uint16(uint32(binary.BigEndian.Uint16(digest[16+index*2:])) % classWorkspaceModulus)
+		binary.LittleEndian.PutUint32(input[index*4:], legacyClassWorkspaceWord(residue))
+	}
+	for inputIndex, value := range input {
+		for outputIndex := range result {
+			columnIndex := (outputIndex - inputIndex + len(result)) % len(result)
+			result[outputIndex] ^= classWorkspaceGaloisMultiply(legacyClassWorkspaceColumn[columnIndex], value)
+		}
+	}
+	return result
 }
 
 // classWorkspaceDrift replaces the native 150-value decoder. Five has order

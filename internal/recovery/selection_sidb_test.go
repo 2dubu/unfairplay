@@ -12,9 +12,11 @@ func TestDecodeSelectionSIDBContainer(t *testing.T) {
 		name          string
 		containerSize int
 		payloadOffset int
+		payloadBytes  int
 	}{
-		{name: "compact", containerSize: selectionSIDBContainerBytes, payloadOffset: selectionSIDBPayloadOffset},
-		{name: "extended", containerSize: selectionSIDBExtendedBytes, payloadOffset: selectionSIDBExtendedPayloadOffset},
+		{name: "older", containerSize: selectionSIDBOlderContainerBytes, payloadOffset: selectionSIDBOlderPayloadOffset, payloadBytes: selectionSIDBOlderPayloadBytes},
+		{name: "compact", containerSize: selectionSIDBContainerBytes, payloadOffset: selectionSIDBPayloadOffset, payloadBytes: selectionSIDBPayloadBytes},
+		{name: "extended", containerSize: selectionSIDBExtendedBytes, payloadOffset: selectionSIDBExtendedPayloadOffset, payloadBytes: selectionSIDBPayloadBytes},
 	} {
 		t.Run(control.name, func(t *testing.T) {
 			input := make([]byte, control.containerSize)
@@ -25,6 +27,9 @@ func TestDecodeSelectionSIDBContainer(t *testing.T) {
 			output, err := decodeSelectionSIDBContainer(input)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if len(output) != control.payloadBytes {
+				t.Fatalf("decoded payload bytes = %d, want %d", len(output), control.payloadBytes)
 			}
 			for index, value := range output {
 				want := input[control.payloadOffset+index] ^ selectionSIDBInputMask[index%selectionSIDBBlockBytes]
@@ -68,7 +73,7 @@ func TestDecryptSelectionSIDBPayload(t *testing.T) {
 		0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
 		0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff,
 	}
-	output, err := decryptSelectionSIDBPayload(input, key)
+	output, err := decryptSelectionSIDBPayload(input[:], key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +85,7 @@ func TestDecryptSelectionSIDBPayload(t *testing.T) {
 	// its independent AES decryption.
 	mutated := input
 	mutated[0] ^= 1
-	changed, err := decryptSelectionSIDBPayload(mutated, key)
+	changed, err := decryptSelectionSIDBPayload(mutated[:], key)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -55,7 +55,7 @@ func enrollmentSINFSelector(blob []byte) (uint32, uint32, error) {
 	return values[0], values[1], nil
 }
 
-func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegistryCandidate) ([]byte, error) {
+func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegistryCandidate, hardware []byte) ([]byte, error) {
 	var sinf []byte
 	for suffix, data := range files {
 		if strings.HasSuffix(suffix, ".sinf") {
@@ -72,7 +72,7 @@ func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegi
 	if err != nil {
 		return nil, err
 	}
-	selected, err := selectAuthenticatedClassPrecursor(sinf, registries)
+	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, registries, hardware, user, keyID)
 	if err != nil {
 		return nil, err
 	}

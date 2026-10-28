@@ -140,3 +140,54 @@ func TestSelectAuthenticatedWorkspaceClassPrecursor(t *testing.T) {
 		t.Fatalf("wrong workspace candidate: %+v", selected)
 	}
 }
+
+func TestSelectAuthenticatedLegacyClassPrecursor(t *testing.T) {
+	data := make([]byte, 14*decodedSIDBRecordBytes+decodedSIDBOlderFooterBytes)
+	for index := range data {
+		data[index] = byte(index*37 + 11)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hardware := []byte{1, 2, 3, 4, 5, 6}
+	const user = uint32(0x12345678)
+	const keyID = uint32(5)
+	digest, err := legacyAccountDigest(hardware, user, keyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parameters := classEnrollmentParameters{ClassValue: legacyClassWorkspaceValue(digest)}
+	clear(digest[:])
+	const selectedRecord = 7
+	const selectedPhase = 8
+	valu, err := deriveLegacyClassValu(registry.Records[selectedRecord], selectedPhase)
+	if err != nil {
+		t.Fatal(err)
+	}
+	precursor, err := deriveCurrentSINFPrecursorFromClass(parameters.classKey(), valu)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	rootStart, rootEnd, err := enrollmentAtom(sinf, 0, len(sinf), "sinf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	schiStart, schiEnd, err := enrollmentAtom(sinf, rootStart, rootEnd, "schi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyStart, keyEnd, err := enrollmentAtom(sinf, schiStart, schiEnd, "key ")
+	if err != nil || keyEnd-keyStart != 4 {
+		t.Fatalf("synthetic key atom: %v", err)
+	}
+	binary.BigEndian.PutUint32(sinf[keyStart:keyEnd], keyID)
+	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}}, hardware, user, keyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.RegistryIndex != 0 || selected.RecordIndex != selectedRecord || selected.WindowOffset != selectedPhase || selected.Precursor != precursor {
+		t.Fatalf("wrong legacy candidate: %+v", selected)
+	}
+}

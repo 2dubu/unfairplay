@@ -45,3 +45,20 @@ func TestParseDecodedSIDBRegistryRejectsUnknownGeometry(t *testing.T) {
 		t.Fatal("accepted excessive record count")
 	}
 }
+
+func TestParseDecodedOlderSIDBRegistry(t *testing.T) {
+	data := make([]byte, 14*decodedSIDBRecordBytes+decodedSIDBOlderFooterBytes)
+	for index := range data {
+		data[index] = byte(index*17 + 5)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Records) != 14 {
+		t.Fatalf("older records = %d, want 14", len(registry.Records))
+	}
+	if !bytes.Equal(registry.Footer[:decodedSIDBOlderFooterBytes], data[len(data)-decodedSIDBOlderFooterBytes:]) || !bytes.Equal(registry.Footer[decodedSIDBOlderFooterBytes:], make([]byte, decodedSIDBFooterBytes-decodedSIDBOlderFooterBytes)) {
+		t.Fatal("older footer mismatch")
+	}
+}

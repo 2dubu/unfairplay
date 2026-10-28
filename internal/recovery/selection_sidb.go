@@ -7,6 +7,10 @@ import (
 )
 
 const (
+	selectionSIDBOlderContainerBytes   = 630
+	selectionSIDBOlderPayloadOffset    = 38
+	selectionSIDBOlderPayloadBytes     = 576
+	selectionSIDBOlderIterations       = 372
 	selectionSIDBContainerBytes        = 993
 	selectionSIDBExtendedBytes         = 1003
 	selectionSIDBPayloadOffset         = 33
@@ -21,6 +25,7 @@ const (
 type currentSIDBLayout struct {
 	CodecBytes      int
 	PayloadOffset   int
+	PayloadBytes    int
 	OuterIterations int
 }
 
@@ -29,16 +34,25 @@ func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
 		return currentSIDBLayout{}, fmt.Errorf("current SIDB container has an unsupported version")
 	}
 	switch len(input) {
+	case selectionSIDBOlderContainerBytes:
+		return currentSIDBLayout{
+			CodecBytes:      selectionSIDBOlderPayloadOffset - 4,
+			PayloadOffset:   selectionSIDBOlderPayloadOffset,
+			PayloadBytes:    selectionSIDBOlderPayloadBytes,
+			OuterIterations: selectionSIDBOlderIterations,
+		}, nil
 	case selectionSIDBContainerBytes:
 		return currentSIDBLayout{
 			CodecBytes:      selectionSIDBPayloadOffset - 4,
 			PayloadOffset:   selectionSIDBPayloadOffset,
+			PayloadBytes:    selectionSIDBPayloadBytes,
 			OuterIterations: selectionSIDBOuterIterations,
 		}, nil
 	case selectionSIDBExtendedBytes:
 		return currentSIDBLayout{
 			CodecBytes:      selectionSIDBExtendedPayloadOffset - 4,
 			PayloadOffset:   selectionSIDBExtendedPayloadOffset,
+			PayloadBytes:    selectionSIDBPayloadBytes,
 			OuterIterations: selectionSIDBExtendedIterations,
 		}, nil
 	default:
@@ -67,19 +81,19 @@ var selectionSIDBChainMask = [selectionSIDBBlockBytes]byte{
 	0x5d, 0x73, 0x61, 0xbc, 0x2f, 0xb9, 0x7c, 0x7e,
 }
 
-// The selection sweep reduces either structurally supported current container
-// to the same 59 encoded AES blocks. The extended layout has ten additional
-// codec bytes before the body and a 16-byte trailer after it. Neither belongs
-// to the encrypted registry body.
-func decodeSelectionSIDBContainer(input []byte) ([selectionSIDBPayloadBytes]byte, error) {
-	var output [selectionSIDBPayloadBytes]byte
+// The selection sweep reduces each structurally supported container to its
+// encoded AES blocks. The two current layouts contain 59 blocks; the older
+// 630-byte layout contains 36. Codec prefixes and optional trailers do not
+// belong to the encrypted registry body.
+func decodeSelectionSIDBContainer(input []byte) ([]byte, error) {
 	layout, err := currentSIDBLayoutForContainer(input)
 	if err != nil {
-		return output, err
+		return nil, err
 	}
+	output := make([]byte, layout.PayloadBytes)
 	end := layout.PayloadOffset + len(output)
 	if end > len(input) {
-		return output, fmt.Errorf("selection SIDB body exceeds its container")
+		return nil, fmt.Errorf("selection SIDB body exceeds its container")
 	}
 	for index := range output {
 		output[index] = input[layout.PayloadOffset+index] ^ selectionSIDBInputMask[index%selectionSIDBBlockBytes]
@@ -87,13 +101,16 @@ func decodeSelectionSIDBContainer(input []byte) ([selectionSIDBPayloadBytes]byte
 	return output, nil
 }
 
-// decryptSelectionSIDBPayload replaces the protected 59-block white-box loop
-// once its per-enrollment AES key has been recovered by the upstream producer.
-func decryptSelectionSIDBPayload(input [selectionSIDBPayloadBytes]byte, key [selectionSIDBBlockBytes]byte) ([selectionSIDBPayloadBytes]byte, error) {
-	var output [selectionSIDBPayloadBytes]byte
+// decryptSelectionSIDBPayload replaces the protected block loop once its
+// per-enrollment AES key has been recovered by the upstream producer.
+func decryptSelectionSIDBPayload(input []byte, key [selectionSIDBBlockBytes]byte) ([]byte, error) {
+	if len(input) == 0 || len(input)%selectionSIDBBlockBytes != 0 {
+		return nil, fmt.Errorf("selection SIDB payload has invalid size %d", len(input))
+	}
+	output := make([]byte, len(input))
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
-		return output, err
+		return nil, err
 	}
 	for offset := 0; offset < len(input); offset += selectionSIDBBlockBytes {
 		var encodedInput, decodedOutput [selectionSIDBBlockBytes]byte

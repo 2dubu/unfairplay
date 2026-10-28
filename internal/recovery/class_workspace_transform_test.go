@@ -307,3 +307,30 @@ func TestClassWorkspaceOutputFromDigestComposesTypedStages(t *testing.T) {
 		t.Fatalf("digest enrollment value = %x, want %x", got, want)
 	}
 }
+
+func TestLegacyClassWorkspaceWordsMatchIndependentControls(t *testing.T) {
+	controls := []struct {
+		residue uint16
+		word    uint32
+	}{
+		{0x0000, 0x2405ecc0},
+		{0x0001, 0x42f36f91},
+		{0x1234, 0xe00199de},
+		{0x7ffe, 0x480341d7},
+	}
+	for _, control := range controls {
+		if got := legacyClassWorkspaceWord(control.residue); got != control.word {
+			t.Fatalf("legacy workspace word(%#04x) = %#08x, want %#08x", control.residue, got, control.word)
+		}
+	}
+}
+
+func TestLegacyClassWorkspaceValueSyntheticControl(t *testing.T) {
+	var digest [20]byte
+	binary.BigEndian.PutUint16(digest[16:18], 0x1234)
+	binary.BigEndian.PutUint16(digest[18:20], 0x7ffe)
+	want := [8]byte{0x3d, 0x34, 0x45, 0xb2, 0xf0, 0x3e, 0x53, 0x7f}
+	if got := legacyClassWorkspaceValue(digest); got != want {
+		t.Fatalf("legacy class value = %x, want %x", got, want)
+	}
+}

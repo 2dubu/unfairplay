@@ -45,6 +45,20 @@ func deriveClassValuWindow(record decodedSIDBRecord, windowOffset int) ([16]byte
 	return deriveClassValuFromMaskedWords(masked), nil
 }
 
+// deriveLegacyClassValu evaluates one mask phase over the complete 16-byte
+// payload used by older registries. Personalized-SINF authentication selects
+// the unique coherent phase, so recovery does not depend on a native selector.
+func deriveLegacyClassValu(record decodedSIDBRecord, maskPhase int) ([16]byte, error) {
+	if maskPhase < 0 || maskPhase >= len(currentClassRecordMask) {
+		return [16]byte{}, fmt.Errorf("legacy class mask phase is invalid: %d", maskPhase)
+	}
+	var masked [16]byte
+	for index, value := range record.Payload {
+		masked[index] = value ^ currentClassRecordMask[(maskPhase+index)%len(currentClassRecordMask)]
+	}
+	return deriveClassValuFromMaskedWords(masked), nil
+}
+
 func deriveCurrentSINFPrecursorFromRecordWindow(record decodedSIDBRecord, windowOffset int, classKey [16]byte) ([16]byte, error) {
 	valu, err := deriveClassValuWindow(record, windowOffset)
 	if err != nil {
