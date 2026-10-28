@@ -165,14 +165,18 @@ arithmetic, AES join, operand representation, and final material mask remain
 identical. The generated CFG currently constructs that class value; it is the
 next normalization target.
 
-The first natural kernel inside that class-value producer is normalized too.
-It combines two represented 16-bit samples with two schedule terms, reduces
-the sum modulo `32767`, and stores the residue XOR `0xe748`. The native
-multiply-high division sequence and masked output arithmetic are therefore
-encoding noise, not a new primitive. The typed recurrence matches the exact
-protected arithmetic over 65,536 deterministic controls and the retained
-natural boundary. The surrounding limb schedule and final nine-limb-to-eight-
-byte packing remain open.
+The complete three-residue limb kernel inside that class-value producer is
+normalized too. Its first residue combines two represented 16-bit samples
+with two schedule terms modulo `32767`. The second adds the decoded current
+limb, and the third adds the represented previous limb plus the shared right
+schedule term. Their stored representations are respectively XOR `0xe748`,
+addition by `0x54ce`, and addition by `0x7b0f`. The native multiply-high
+division sequences and masked output arithmetic are therefore encoding noise,
+not new primitives. The typed kernel matches the exact protected arithmetic
+over 65,536 deterministic controls. It also reproduces every byte of both
+natural 3x3 passes, covering all 18 native invocations, from their captured
+inputs. The enclosing schedule that produces the two 32-bit terms and the
+final nine-limb-to-eight-byte packing remain open.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of
