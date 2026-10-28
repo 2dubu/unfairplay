@@ -43,26 +43,71 @@ func TestDeriveClassValuMatchesProtectedArithmetic(t *testing.T) {
 			binary.BigEndian.Uint32(digest[8:12]) ^ 0x2468ace0,
 			binary.BigEndian.Uint32(digest[12:16]) ^ 0xa5a5a5a5,
 		}
-		if got, want := deriveClassValu(payload, masks), protectedClassValuReference(payload, masks); got != want {
+		var masked [16]byte
+		for word := range 4 {
+			offset := word * 4
+			binary.BigEndian.PutUint32(masked[offset:], binary.BigEndian.Uint32(payload[offset:])^masks[word])
+		}
+		if got, want := deriveClassValuFromMaskedWords(masked), protectedClassValuReference(payload, masks); got != want {
 			t.Fatalf("control %d = %x, want %x", control, got, want)
 		}
 	}
 }
 
-func TestDeriveCurrentSINFPrecursorFromRecord(t *testing.T) {
-	payload := [16]byte{0x3d, 0x79, 0x22, 0x11, 0x48, 0x61, 0xa7, 0xc4, 0x6a, 0xb0, 0x52, 0x8f, 0x10, 0x39, 0xde, 0x72}
-	masks := [4]uint32{0x10203040, 0x50607080, 0x90a0b0c0, 0xd0e0f000}
+func TestDeriveClassValuWindowMatchesProtectedArithmetic(t *testing.T) {
+	record := decodedSIDBRecord{
+		Payload: [16]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff},
+		Tail:    [4]byte{0x10, 0x32, 0x54, 0x76},
+	}
+	var material [decodedSIDBPayloadBytes + decodedSIDBTailBytes]byte
+	copy(material[:decodedSIDBPayloadBytes], record.Payload[:])
+	copy(material[decodedSIDBPayloadBytes:], record.Tail[:])
+	for windowOffset := 0; windowOffset <= maximumClassWindowOffset; windowOffset++ {
+		var window [16]byte
+		copy(window[:], material[windowOffset:windowOffset+len(window)])
+		var masks [4]uint32
+		for word := range masks {
+			var rotated [4]byte
+			for octet := range rotated {
+				position := windowOffset + word*4 + octet
+				rotated[octet] = currentClassRecordMask[position%len(currentClassRecordMask)]
+			}
+			masks[word] = binary.BigEndian.Uint32(rotated[:])
+		}
+		got, err := deriveClassValuWindow(record, windowOffset)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := protectedClassValuReference(window, masks); got != want {
+			t.Fatalf("offset %d = %x, want %x", windowOffset, got, want)
+		}
+	}
+}
+
+func TestDeriveCurrentSINFPrecursorFromRecordWindow(t *testing.T) {
+	record := decodedSIDBRecord{
+		Payload: [16]byte{0x3d, 0x79, 0x22, 0x11, 0x48, 0x61, 0xa7, 0xc4, 0x6a, 0xb0, 0x52, 0x8f, 0x10, 0x39, 0xde, 0x72},
+		Tail:    [4]byte{0x81, 0x92, 0xa3, 0xb4},
+	}
 	key := [16]byte{0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78, 0x89, 0x9a, 0xab, 0xbc, 0xcd, 0xde, 0xef, 0xf0}
-	precursor, err := deriveCurrentSINFPrecursorFromRecord(payload, masks, key)
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(record, 3, key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	valu := deriveClassValu(payload, masks)
+	valu, err := deriveClassValuWindow(record, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
 	want, err := deriveCurrentSINFPrecursorFromClass(key, valu)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if precursor != want {
 		t.Fatalf("precursor = %x, want %x", precursor, want)
+	}
+	for _, offset := range []int{-1, maximumClassWindowOffset + 1} {
+		if _, err := deriveClassValuWindow(record, offset); err == nil {
+			t.Fatalf("accepted invalid window offset %d", offset)
+		}
 	}
 }

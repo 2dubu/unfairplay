@@ -132,30 +132,38 @@ the result is exactly `AES-128-ECB-decrypt(class_key, valu_ciphertext)`.
 Production now has this operation as a typed Go function; the protected core
 must not be shipped or recovered again.
 
-The preceding `valu` producer is typed too. Each four-byte payload word is
-read big-endian and combined with one enrollment-supplied word mask. The
-entire remaining protected arithmetic, byte codec, and following
-representation mask reduce to one modular affine operation:
+The preceding `valu` producer is typed too. It consumes one 16-byte window
+from the record's 20-byte `Payload || Tail` material. Each byte is XORed with
+the corresponding position in one fixed 16-byte mask, wrapping when the
+window crosses the payload boundary. Each resulting word then uses one
+modular affine operation:
 
 ```text
-semantic_word = 0xa46fd0ff * (payload_word XOR word_mask) + 0xfe063531
+semantic_word = 0xa46fd0ff * masked_window_word + 0xfe063531
                 modulo 2^32
 ```
 
-The intermediate XOR/add/multiply/mask MBA was removed. Its key identities
-were proved with 32-bit Z3 bit-vectors, and the direct operation matches the
-unreduced protected arithmetic over 4,096 deterministic controls.
+The former four apparent enrollment-specific word masks were a false boundary:
+they are only rotations of the same fixed mask caused by different window
+starts. The old layout uses offset 0; the independent current layout uses
+offset 3 and naturally crosses into `Tail`. Both reproduce the exact protected
+word entering the native arithmetic. The intermediate
+XOR/add/multiply/mask MBA was removed. Its key identities were proved with
+32-bit Z3 bit-vectors, and the direct operation matches the unreduced protected
+arithmetic over 4,096 deterministic controls.
 
 Together these stages reduce the remaining SINF seam to the enclosing
 registry record's parameter producer. The secondary class operand is now typed
 too: it contains one eight-byte enrollment value twice, and its protected byte
 representation is only XOR `0x1b`. Unequal halves are rejected. This exact
 representation matched both independent accepted enrollments. The remaining
-producer must therefore yield four 32-bit word masks and one eight-byte class
-value. Those values vary across the enrollments, while the payload arithmetic,
-AES join, operand representation, and final material mask remain identical.
-The generated CFG currently constructs those parameters; it is the next
-normalization target.
+producer must therefore yield only one eight-byte class value. Record window
+selection no longer needs a native producer: all five structurally possible
+offsets are bounded and can be tested by authenticated SINF validation. The
+class value varies across enrollments, while the record mask, payload
+arithmetic, AES join, operand representation, and final material mask remain
+identical. The generated CFG currently constructs that class value; it is the
+next normalization target.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of
@@ -166,11 +174,12 @@ aligned within that array. Production parsing rejects every other geometry;
 it does not use a native allocation address or record offset. Authentication
 and unique record selection remain separate required gates.
 
-Given enrollment-global parameters, Go now evaluates the typed `valu` and AES
-class stages for every structurally parsed SIDB record. Candidates retain their
-record identity and metadata. This intentionally replaces the future native
-selector with exhaustive candidate validation; promotion still requires an
-authenticated personalized SINF check to accept exactly one candidate.
+Given the enrollment-global class value, Go now evaluates the typed `valu` and
+AES class stages for every structurally parsed SIDB record and all five valid
+record windows. Candidates retain their record, metadata, and window identity.
+This intentionally replaces the future native selector with exhaustive
+candidate validation; promotion still requires an authenticated personalized
+SINF check to accept exactly one candidate.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES
@@ -221,10 +230,9 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Parse decoded SIDB records structurally and recover the metadata producer
-   for the four `valu` word masks and secondary class key. Feed those values
-   into the typed payload transform and AES class join; do not route either
-   stage back through the generated CFG.
+1. Recover the producer for the eight-byte secondary class value. Feed it into
+   exhaustive typed record/window evaluation and the AES class join; do not
+   route either stage back through the generated CFG.
 2. Try each typed SIDB candidate and select the unique candidate accepted by
    the authenticated SIDB/SINF structure.
 3. Connect the resulting precursor to personalized SINF validation and remove
