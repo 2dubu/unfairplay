@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"encoding/binary"
 	"math/rand"
 	"testing"
 )
@@ -105,5 +106,79 @@ func TestClassWorkspaceLimbStepMatchesProtectedArithmetic(t *testing.T) {
 		if got != want {
 			t.Fatalf("control %d = %#v, want %#v", index, got, want)
 		}
+	}
+}
+
+func protectedClassWorkspaceProductWord(limbs [9]uint16) uint32 {
+	var stored [9]uint16
+	for index, limb := range limbs {
+		stored[index] = uint16(uint32(limb) + uint32(0x7b0f))
+	}
+	value := uint32(stored[7]) + uint32(stored[5])
+	middle := uint32(stored[4]) + uint32(stored[6]) + uint32(stored[2])
+	low := uint32(uint16(stored[3]-0x7b0f)) + uint32(uint16(stored[1]-0x7b0f))
+	low <<= 8
+	low += uint32(uint16(stored[0] - 0x7b0f))
+	low += uint32(uint16(stored[8] - 0x7b0f))
+	return low + middle<<16 + value<<24 + 0xcb0cf893
+}
+
+func TestClassWorkspaceProductWordMatchesProtectedArithmetic(t *testing.T) {
+	random := rand.New(rand.NewSource(0x359db4))
+	for index := range 1 << 16 {
+		var limbs [9]uint16
+		for limb := range limbs {
+			limbs[limb] = uint16(random.Uint32() % classWorkspaceModulus)
+		}
+		got := classWorkspaceProductWord(limbs)
+		want := protectedClassWorkspaceProductWord(limbs)
+		if got != want {
+			t.Fatalf("control %d = %#x, want %#x", index, got, want)
+		}
+	}
+}
+
+var protectedClassWorkspaceValueColumns = [32]uint64{
+	0x5b7ae1ca789424fc, 0xb6f4d98ff03348e3, 0x77f3a905fb6690dd, 0xeefd490aedcc3ba1,
+	0xc7e19214c1837659, 0x95d93f28991decb2, 0x31a97e50293ac37f, 0x6249fca052749dfe,
+	0x7ae1ca789424fc5b, 0xf4d98ff03348e3b6, 0xf3a905fb6690dd77, 0xfd490aedcc3ba1ee,
+	0xe19214c1837659c7, 0xd93f28991decb295, 0xa97e50293ac37f31, 0x49fca052749dfe62,
+	0xe1ca789424fc5b7a, 0xd98ff03348e3b6f4, 0xa905fb6690dd77f3, 0x490aedcc3ba1eefd,
+	0x9214c1837659c7e1, 0x3f28991decb295d9, 0x7e50293ac37f31a9, 0xfca052749dfe6249,
+	0xca789424fc5b7ae1, 0x8ff03348e3b6f4d9, 0x05fb6690dd77f3a9, 0x0aedcc3ba1eefd49,
+	0x14c1837659c7e192, 0x28991decb295d93f, 0x50293ac37f31a97e, 0xa052749dfe6249fc,
+}
+
+func protectedClassWorkspaceValue(word uint32) uint64 {
+	result := uint64(0x35ea3e4cfba587c2)
+	for bit, column := range protectedClassWorkspaceValueColumns {
+		if word&(1<<bit) != 0 {
+			result ^= column
+		}
+	}
+	return result
+}
+
+func TestClassWorkspaceClassValueMatchesRecoveredAffineMap(t *testing.T) {
+	random := rand.New(rand.NewSource(0x3d92ac))
+	for index := range 1 << 16 {
+		var limbs [9]uint16
+		for limb := range limbs {
+			limbs[limb] = uint16(random.Uint32() % classWorkspaceModulus)
+		}
+		value := classWorkspaceClassValue(limbs)
+		got := binary.LittleEndian.Uint64(value[:])
+		want := protectedClassWorkspaceValue(classWorkspacePolynomialWord(limbs))
+		if got != want {
+			t.Fatalf("control %d = %#x, want %#x", index, got, want)
+		}
+	}
+}
+
+func TestClassWorkspaceNativeWordBiasCancels(t *testing.T) {
+	const nativeClassInputBias = uint32(0xa5c6076d)
+	sum := uint64(classWorkspaceProductBias) + uint64(nativeClassInputBias)
+	if uint32(sum) != 0 {
+		t.Fatalf("native biases do not cancel")
 	}
 }

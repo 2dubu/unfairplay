@@ -175,8 +175,18 @@ division sequences and masked output arithmetic are therefore encoding noise,
 not new primitives. The typed kernel matches the exact protected arithmetic
 over 65,536 deterministic controls. It also reproduces every byte of both
 natural 3x3 passes, covering all 18 native invocations, from their captured
-inputs. The enclosing schedule that produces the two 32-bit terms and the
-final nine-limb-to-eight-byte packing remain open.
+inputs. The following nine-limb pack is normalized as well: the row-major
+3x3 residues are summed by anti-diagonal, placed as base-256 polynomial-product
+coefficients, and biased by one fixed 32-bit word. The later transform's input
+bias is its exact additive inverse, so neither bias remains in the composed
+semantic path. The supposed final white box is also gone: after those biases
+cancel, the 32-bit polynomial word passes through one affine circulant matrix
+over `GF(2^8)` using the AES reduction polynomial. It needs only one eight-byte
+column and one eight-byte affine offset. A direct typed Go implementation
+matches the recovered 64x32 affine map over 65,536 deterministic controls and
+the exact natural class value. The other 32-bit native source word is proven
+non-causal by one-bit controls in all four bytes. The enclosing schedule that
+produces each 32-bit multiplication term is now the remaining class-value seam.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of
