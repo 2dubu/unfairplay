@@ -3,13 +3,14 @@ package recovery
 import "fmt"
 
 const (
-	sinfPrecursorCodecPass = uint64(0x10015320c)
-	sinfMaterialWriterPass = uint64(0x10005fde4)
-	sinfParitySelector     = uint64(0x100143d6c)
-	sinfModuloSelector     = uint64(0x10015a3c8)
-	sinfWordSelector       = uint64(0x100803454)
-	sinfByteSelector       = uint64(0x100605b18)
-	sinfByteProjectionPass = uint64(0x10005bed4)
+	sinfPrecursorCodecPass  = uint64(0x10015320c)
+	sinfMaterialWriterPass  = uint64(0x10005fde4)
+	sinfParitySelector      = uint64(0x100143d6c)
+	sinfModuloSelector      = uint64(0x10015a3c8)
+	sinfWordSelector        = uint64(0x100803454)
+	sinfByteSelector        = uint64(0x100605b18)
+	sinfByteProjectionPass  = uint64(0x10005bed4)
+	sinfAccountDigestWriter = uint64(0x1005501bc)
 )
 
 func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
@@ -34,6 +35,9 @@ func runSINFEntrySemanticBlock(s *state, pc uint64) (uint64, bool, error) {
 		return next, true, err
 	case sinfByteProjectionPass:
 		next, err := runSINFByteProjection(s)
+		return next, true, err
+	case sinfAccountDigestWriter:
+		next, err := runSINFAccountDigestWriter(s)
 		return next, true, err
 	case sinfModuloDispatch:
 		next, err := runSINFModuloDispatch(s)

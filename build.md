@@ -66,7 +66,7 @@ flattened native selector.
 | --- | --- |
 | Outer transform | Typed Go algorithm is recovered. Its legacy memory adapter still has offsets and must be removed. |
 | Digest, pair, tail, writer | Typed Go algorithms are recovered and differential-tested. |
-| Account entry | SHA-1 and the dominant copy, projection, schedule, and encoding loops are recovered. Stage orchestration still uses the legacy CFG. |
+| Account entry | SHA-1, semantic digest serialization, and the dominant copy, projection, schedule, and encoding loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Bootstrap | Montgomery arithmetic and the dominant table/byte loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
 | Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
@@ -214,6 +214,19 @@ full typed path is now the semantic account digest to the exact eight-byte
 class value. Connecting that digest structurally to authenticated candidate
 selection is the remaining class-value integration seam.
 
+The account digest is now retained at a typed boundary too. The native SINF
+path previously serialized its five SHA-1 state words through five protected
+loop visits. One typed stage now decodes the five words, writes the complete
+20-byte digest under the surrounding XOR `0x1b` transport, and retains the
+semantic digest for candidate evaluation. A synthetic differential control
+matches the complete protected loop. Independent private QA then recovered a
+model and decrypted 39 images and 10,080 pages from the 26B118 enrollment;
+the decrypted IPA SHA-256 remained
+`73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`.
+No extracted fallback block ran. The remaining integration task is therefore
+structural discovery of the decoded SIDB registry followed by unique
+authenticated candidate promotion, not recovery of another class transform.
+
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of
 opaque native selection/validation metadata, a 16-byte `valu` payload, and a
@@ -279,9 +292,10 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Feed the typed account-digest-to-class-value path into exhaustive typed
-   record/window evaluation and the AES class join; do not route any stage
-   back through the generated CFG.
+1. Discover the decoded SIDB registry structurally and feed the retained typed
+   account digest into exhaustive record/window evaluation and the AES class
+   join. Promote only the unique authenticated SINF candidate; do not route
+   any of these stages back through the generated CFG.
 2. Try each typed SIDB candidate and select the unique candidate accepted by
    the authenticated SIDB/SINF structure.
 3. Connect the resulting precursor to personalized SINF validation and remove

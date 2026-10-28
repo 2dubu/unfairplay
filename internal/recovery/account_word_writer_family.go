@@ -10,23 +10,44 @@ const (
 	accountWideWordWriter       = uint64(0x1001e4b10)
 )
 
+func loadAccountSHA1Digest(s *state, input uint64) ([20]byte, error) {
+	var digest [20]byte
+	for wordIndex := uint64(0); wordIndex < 5; wordIndex++ {
+		encoded, err := s.load(input+wordIndex*4, 4)
+		if err != nil {
+			return digest, fmt.Errorf("account SHA-1 digest word %d: %w", wordIndex, err)
+		}
+		word := uint32(encoded) ^ accountSHA1StateMask
+		for octet := uint64(0); octet < 4; octet++ {
+			digest[wordIndex*4+octet] = byte(word >> uint(24-octet*8))
+		}
+	}
+	return digest, nil
+}
+
+func (s *state) recordAccountDigest(digest [20]byte) {
+	for _, existing := range s.accountDigests {
+		if existing == digest {
+			return
+		}
+	}
+	s.accountDigests = append(s.accountDigests, digest)
+}
+
 func writeAccountSHA1Digest(s *state, input, output uint64) error {
 	// The native writer serializes the five encoded state words in big-endian
 	// order, removes the state mask, then applies the byte-wise 0x1b transport
 	// mask used by the surrounding certificate code.
-	for wordIndex := uint64(0); wordIndex < 5; wordIndex++ {
-		encoded, err := s.load(input+wordIndex*4, 4)
-		if err != nil {
-			return fmt.Errorf("account SHA-1 digest word %d: %w", wordIndex, err)
-		}
-		word := uint32(encoded) ^ accountSHA1StateMask
-		for octet := uint64(0); octet < 4; octet++ {
-			value := byte(word>>uint(24-octet*8)) ^ 0x1b
-			if err := s.storeValue(output+wordIndex*4+octet, uint64(value), 1); err != nil {
-				return fmt.Errorf("account SHA-1 digest byte %d: %w", wordIndex*4+octet, err)
-			}
+	digest, err := loadAccountSHA1Digest(s, input)
+	if err != nil {
+		return err
+	}
+	for index, value := range digest {
+		if err := s.storeValue(output+uint64(index), uint64(value^0x1b), 1); err != nil {
+			return fmt.Errorf("account SHA-1 digest byte %d: %w", index, err)
 		}
 	}
+	s.recordAccountDigest(digest)
 	return nil
 }
 

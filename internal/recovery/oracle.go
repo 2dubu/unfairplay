@@ -193,6 +193,7 @@ type state struct {
 	mapped             map[uint64][]byte
 	destinationPages   map[uint64]bool
 	extractedBlockHits int
+	accountDigests     [][20]byte
 	tracer             *recoveryTraceRecorder
 	tracePC            uint64
 }
@@ -258,6 +259,10 @@ func (s *state) reset() {
 	s.sp = s.model.sp
 	s.n, s.z, s.c, s.v = s.model.n, s.model.z, s.model.c, s.model.v
 	s.tracePC = 0
+	for index := range s.accountDigests {
+		clear(s.accountDigests[index][:])
+	}
+	s.accountDigests = s.accountDigests[:0]
 
 }
 

@@ -121,6 +121,10 @@ func clearPrivateRecoveryState(value *model) {
 		clear(lastRawSourceState.writable)
 		clear(lastRawSourceState.mapped)
 		clear(lastRawSourceState.initialized)
+		for index := range lastRawSourceState.accountDigests {
+			clear(lastRawSourceState.accountDigests[index][:])
+		}
+		clear(lastRawSourceState.accountDigests)
 		lastRawSourceState = nil
 	}
 	if activeRawSourceRuntime != nil {
