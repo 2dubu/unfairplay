@@ -83,12 +83,12 @@ func frameCore(input [16]byte) [16]byte {
 }
 
 func frameTransform(_ *model, input [16]byte) ([16]byte, error) {
-	output, _ := frameSemantic26A428.apply(frameCore(input))
+	output, _ := frameSPN26A428.apply(frameCore(input))
 	return output, nil
 }
 
 func frameTransformState(input [16]byte) ([16]byte, uint32) {
-	return frameSemantic26A428.apply(frameCore(input))
+	return frameSPN26A428.apply(frameCore(input))
 }
 
 func applyRecoveredEnrollmentFrame(s *state) (uint64, error) {

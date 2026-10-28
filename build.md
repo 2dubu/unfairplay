@@ -69,7 +69,7 @@ flattened native selector.
 | Account entry | SHA-1 and the dominant copy, projection, schedule, and encoding loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Bootstrap | Montgomery arithmetic and the dominant table/byte loops are recovered. Stage orchestration still uses the legacy CFG. |
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
-| SIDB | Container projection and the 59-block AES consumer are typed. The legacy path was narrowed to an affinely encoded AES round-10 key; affine decoding plus ordinary AES-128 schedule reversal is now typed Go. The frame-to-encoded-round-key producer is still inside the legacy path. |
+| SIDB | Container projection and the 59-block AES consumer are typed. The legacy path was narrowed to an affinely encoded AES round-10 key; affine decoding plus ordinary AES-128 schedule reversal is now typed Go. The nine generalized frame-producer rounds and their final shared-output layer are now normalized to a typed AES-S-box SPN with affine 128-bit stages. |
 | SINF | Portable AES/model decoding exists. Directly treating a candidate state or frame as the final precursor was tested and rejected because SIDB registry decoding comes first. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
@@ -91,15 +91,46 @@ round-specific white box or DFA is required after a semantic round key has
 been recovered. The remaining unknown is the earlier frame-to-round-key
 producer and its protected byte representation.
 
-The producer's first semantic round is now separated from its protected
-representation as well. After removing one XOR share from the four input
-words, each output word depends on exactly one AES ShiftRows group of four
-input bytes. The complete round is a baseline plus sixteen independent
-8-to-32-bit XOR contribution tables. All 4,096 one-byte controls and 256
-independent multi-byte controls match this generalized round exactly. The same
-typed Go round primitive now drives the existing frame model. Its concrete
-SIDB tables and the remaining producer rounds still need normalization and
-cross-build proof before production can stop using the legacy path.
+All nine generalized producer rounds are now separated from their protected
+register representation. At each boundary, four complete 32-bit carriers were
+identified while transient XOR shares were excluded. Every round is exactly a
+baseline plus sixteen independent 8-to-32-bit XOR contribution tables, with
+four input bytes feeding each four-byte output group. For every round, all
+4,096 one-byte controls and 256 deterministic multi-byte controls matched the
+typed `generalizedByteRound` shape. The independently recovered round digests
+are:
+
+```text
+25b4b4e6 0ba5905a e896a7fe d2a1bf8b cdea5bf1
+aa1f69d0 36867136 e797caf6 64556dd1
+```
+
+These native-boundary coordinates deliberately do not hash like the existing
+semantic profile's internal rounds: the older trace solver chose different
+byte permutations and protected boundary encodings. Their complete transforms
+still agree at the public frame output.
+
+The table algebra is now closed. All 144 input substitutions in the
+nine generalized rounds are exactly affine-equivalent to the ordinary AES
+S-box, exhaustively over the 256-byte domain. For each substitution, its four
+output components are related by invertible affine byte maps. The final layer
+contains four direct byte permutations and twelve shared outputs; all 36
+nonlinear contributions to those shared outputs are also exactly
+affine-equivalent to the AES S-box. The twelve shared outputs form four
+four-byte groups. Each group reduces to an invertible 32x32 affine map followed
+by four byte permutations. Composing those maps gives the complete suffix as
+ten parallel AES-S-box layers separated by affine 128-bit stages, followed by
+one affine output stage and sixteen byte encodings.
+
+Production now executes that normalized SPN directly. Its checked profile is
+51,592 bytes before gzip and 17,024 bytes compressed, down from the 167,844-byte
+generalized table model. The old generalized model is test-only and serves as
+an independent oracle. Across 4,096 deterministic controls, the normalized SPN
+matches both its 16-byte output and its dispatcher exit word exactly. A direct
+DarkPhoenix run was also a useful negative: it reaches step 2 and fails the
+Tolhuizen condition because the unreduced final layer is groupwise rather than
+bytewise. The group reduction explains that failure; another DFA run is not
+needed.
 
 ## Cross-build evidence
 
@@ -128,10 +159,10 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Recover and normalize the remaining generalized rounds between the typed
-   first producer round and the earliest semantic AES round key. AES schedule
-   rounds 6 through 10 and the round-key-to-SIDB-key stage are complete and
-   must not be replaced by another DFA implementation.
+1. Compare and canonicalize the normalized SPN affine stages across independent
+   macOS builds. The 26A428 constants are semantic evidence, not a valid build
+   selector. Do not add another generated CFG or generalized table profile for
+   a new build.
 2. Parse the decoded SIDB registry structurally and recover its typed
    registry-to-current-SINF-precursor transform.
 3. Connect the precursor to personalized SINF validation and remove native

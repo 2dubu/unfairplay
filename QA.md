@@ -84,3 +84,19 @@ Expected output: 52,496 blocks, 1,726 rejected blocks, compressed SHA-256
 `40be55e94f23df470ccb51a8e98f910fa0ba7731ceb20ce070d551eac06d7f96`.
 The runtime loads this profile only when the capture includes the exact
 hash-matching reference binary.
+
+## Normalized frame SPN profile
+
+The production frame transform uses AES S-boxes and affine 128-bit stages. It
+does not execute the generalized lookup-table model. Regenerate its public
+profile from the checked research model with:
+
+```sh
+UNFAIRPLAY_FRAME_SPN_OUTPUT="$PWD/internal/recovery/profiles/macos26a428-frame-spn.bin.gz" \
+go test ./internal/recovery -run '^TestWriteFrameSPNProfile$' -count=1
+```
+
+Expected size: 17,024 bytes. Expected compressed SHA-256:
+`f1cb13c0056a4125387f98a575c21cc6129438580e48c76373e333df614ea963`.
+The 51,592-byte decoded profile has SHA-256
+`22aabdb275527d924176145147a372bb3c5e4325e5060a345833a2302b1af89c`.

@@ -21,6 +21,9 @@ func TestRecoveredFrameTransform(t *testing.T) {
 	if digest := sha256.Sum256(frameSemanticProfileCompressed); hex.EncodeToString(digest[:]) != "c279626e963ba99c6760b901fa96dc232ef0d665f9f7ad83ea2087ad35ecc918" {
 		t.Fatalf("semantic frame profile digest = %x", digest)
 	}
+	if digest := sha256.Sum256(frameSPNProfileCompressed); hex.EncodeToString(digest[:]) != "f1cb13c0056a4125387f98a575c21cc6129438580e48c76373e333df614ea963" {
+		t.Fatalf("frame SPN profile digest = %x", digest)
+	}
 	value, err := loadModelBytes(embeddedModelBytes())
 	if err != nil {
 		t.Fatal(err)
