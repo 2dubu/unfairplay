@@ -147,11 +147,15 @@ were proved with 32-bit Z3 bit-vectors, and the direct operation matches the
 unreduced protected arithmetic over 4,096 deterministic controls.
 
 Together these stages reduce the remaining SINF seam to the enclosing
-registry record's parameter producer: its metadata must yield four 32-bit
-word masks and the 16-byte secondary class key. Those values vary across the
-two accepted enrollments, while the payload arithmetic, AES join, and final
-material mask remain identical. The generated CFG currently constructs those
-parameters; it is the next normalization target.
+registry record's parameter producer. The secondary class operand is now typed
+too: it contains one eight-byte enrollment value twice, and its protected byte
+representation is only XOR `0x1b`. Unequal halves are rejected. This exact
+representation matched both independent accepted enrollments. The remaining
+producer must therefore yield four 32-bit word masks and one eight-byte class
+value. Those values vary across the enrollments, while the payload arithmetic,
+AES join, operand representation, and final material mask remain identical.
+The generated CFG currently constructs those parameters; it is the next
+normalization target.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES

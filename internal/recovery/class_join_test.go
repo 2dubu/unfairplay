@@ -5,6 +5,28 @@ import (
 	"testing"
 )
 
+func TestDecodeClassSecondary(t *testing.T) {
+	key := [aes.BlockSize]byte{
+		0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+		0x01, 0x12, 0x23, 0x34, 0x45, 0x56, 0x67, 0x78,
+	}
+	var encoded [aes.BlockSize]byte
+	for index := range encoded {
+		encoded[index] = key[index] ^ 0x1b
+	}
+	got, err := decodeClassSecondary(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != key {
+		t.Fatalf("decoded key = %x, want %x", got, key)
+	}
+	encoded[aes.BlockSize-1] ^= 1
+	if _, err := decodeClassSecondary(encoded); err == nil {
+		t.Fatal("accepted unequal class secondary halves")
+	}
+}
+
 func TestDeriveCurrentSINFPrecursorFromClass(t *testing.T) {
 	classKey := [aes.BlockSize]byte{
 		0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
