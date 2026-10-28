@@ -70,7 +70,7 @@ flattened native selector.
 | Bootstrap | Replaced by one typed semantic outer profile plus SIDB/hardware runtime fields. The legacy bootstrap CFG has been removed. |
 | Selection | The 192-byte body and 224-byte envelope are parsed structurally. Candidate state/key transforms, SIDB-key production, the 59-block SIDB AES consumer, and authenticated candidate promotion are typed Go. Native selection orchestration is no longer executed by model recovery. |
 | Enrollment frame | The independent-key AES-shaped core and its suffix are normalized to direct keyed AES S-box transitions and sparse `GF(2^8)` mixing layers. The larger generalized and affine-SPN models are test-only. |
-| SIDB | Container projection, candidate-state-to-key production, and the 59-block AES consumer are typed. The unused frame output encoding is gone. The producer's middle is now ordinary AES inverse-S-box and `InvMixColumns` machinery; only compact endpoint coordinate maps remain. Its protected stage encodings and per-enrollment DFA are no longer semantic requirements. |
+| SIDB | Container projection, candidate-state-to-key production, and the 59-block AES consumer are typed. The unused frame output encoding is gone. The producer's middle is now one fixed `InvShiftRows + InvMixColumns` operation and keyed AES inverse S-boxes; only compact endpoint coordinate maps remain. Its protected stage encodings and per-enrollment DFA are no longer semantic requirements. |
 | SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, both semantic class-value families, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
 | Build portability | Both 993-byte and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, or per-enrollment DFA. The five-build account-entry static matrix is complete; downstream frame and SIDB-key differential validation remains open. |
@@ -82,7 +82,7 @@ contains typed algorithms plus only the compact frame-AES and SIDB-key data
 profiles.
 
 Those production artifacts and symbols are build-neutral (`current-frame-aes`
-and `current-sidb-producer-inverse-aes`). The larger 26A428-labeled generalized and SPN
+and `current-sidb-producer-canonical-aes`). The larger 26A428-labeled generalized and SPN
 models are test-only and remain solely as independent normalization oracles.
 
 New captures contain only structural enrollment inputs. Collection no longer
@@ -137,8 +137,11 @@ middle layers factor exactly as AES `InvMixColumns`. A global gauge solve reduce
 every intervening nonlinear transition to the AES inverse S-box with a direct
 round-key XOR; every one of the 36 factor domains collapses from 1,020 candidates
 to four equivalent gauges. Output masks compose into the following key or final
-constant. The checked production profile is 2,172 bytes before gzip and 795
-bytes compressed. It contains the standard inverse-AES middle plus compact
+constant. A second byte-order solve maps all nine round matrices to one fixed
+`InvShiftRows + InvMixColumns` operation; only 16 equivalent global orderings
+remain. The eight recovered keys are independent round constants rather than
+an AES-128 key schedule. The checked production profile is 1,064 bytes before
+gzip and 569 bytes compressed. It contains those round constants plus compact
 endpoint coordinate maps. The former 43,392-byte affine-SPN profile is now a
 test-only 26A428 normalization oracle.
 
