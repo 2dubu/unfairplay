@@ -159,12 +159,18 @@ normalization target.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of
-selection/authentication metadata, a 16-byte `valu` payload, and a four-byte
-tail whose semantic role remains open. Both independent decoded registries are
+opaque native selection/validation metadata, a 16-byte `valu` payload, and a
+four-byte tail whose semantic role remains open. Both independent decoded registries are
 944 bytes: 23 records plus the footer, and the naturally selected record is
 aligned within that array. Production parsing rejects every other geometry;
 it does not use a native allocation address or record offset. Authentication
 and unique record selection remain separate required gates.
+
+Given enrollment-global parameters, Go now evaluates the typed `valu` and AES
+class stages for every structurally parsed SIDB record. Candidates retain their
+record identity and metadata. This intentionally replaces the future native
+selector with exhaustive candidate validation; promotion still requires an
+authenticated personalized SINF check to accept exactly one candidate.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES

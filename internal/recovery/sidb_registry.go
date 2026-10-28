@@ -12,9 +12,9 @@ const (
 )
 
 // decodedSIDBRecord is the build-independent geometry of one current SIDB
-// registry entry. Metadata selects and authenticates the entry; Payload is the
-// 16-byte input to the typed valu transform; Tail remains opaque until its
-// semantic role is proved.
+// registry entry. Metadata is opaque native selection/validation state;
+// Payload is the 16-byte input to the typed valu transform; Tail remains
+// opaque until its semantic role is proved.
 type decodedSIDBRecord struct {
 	Metadata [decodedSIDBMetadataBytes]byte
 	Payload  [decodedSIDBPayloadBytes]byte
