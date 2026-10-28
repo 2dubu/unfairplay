@@ -71,7 +71,7 @@ flattened native selector.
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
 | Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
 | SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
-| SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, the fixed secondary operand, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector and stack-offset material adapter are no longer used for model recovery. |
+| SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, the fixed secondary operand, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. Model recovery stops after selection; the native selector, SINF-entry CFG, and stack-offset material adapter are no longer executed. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
@@ -198,6 +198,13 @@ enrollment model with SHA-256
 and decrypted 39 images and 10,080 pages. The decrypted IPA SHA-256 remained
 `73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`;
 no extracted fallback block ran.
+
+Model recovery now stops immediately after the selection stage. The decoded
+registry already exists there, so the complete generated SINF-entry CFG is no
+longer executed. On the same private control, 15 bounded registry candidates
+at that earlier boundary still authenticated to the same single precursor,
+produced the byte-identical model above, and completed the same IPA
+decryption.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES

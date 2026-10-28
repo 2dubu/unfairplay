@@ -73,11 +73,11 @@ func Recover(options Options) (Result, error) {
 	if err := addReferencePages(value, options.ReferencePath); err != nil {
 		return Result{}, err
 	}
-	if err := configureRawSourceRuntime(value, "enrollment-sinf", options.FileMappings,
+	if err := configureRawSourceRuntime(value, "enrollment-frame", options.FileMappings,
 		options.HardwarePath, options.ExecutablePath, 0); err != nil {
 		return Result{}, err
 	}
-	digest, iterations, err := runRawSource(value, "enrollment-sinf", false, 0)
+	digest, iterations, err := runRawSource(value, "enrollment-frame", false, 0)
 	if err != nil {
 		return Result{}, err
 	}
