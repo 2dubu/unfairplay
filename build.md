@@ -71,7 +71,7 @@ flattened native selector.
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
 | Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
 | SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
-| SINF | Portable AES/model decoding exists. The decoded SIDB registry container, 16-byte registry payload-to-`valu` arithmetic, secondary operand representation, and downstream two-input class consumer are typed Go. Record selection and the enrollment parameter producer still use native orchestration. |
+| SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, the fixed secondary operand, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector and stack-offset material adapter are no longer used for model recovery. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
@@ -152,96 +152,52 @@ XOR/add/multiply/mask MBA was removed. Its key identities were proved with
 32-bit Z3 bit-vectors, and the direct operation matches the unreduced protected
 arithmetic over 4,096 deterministic controls.
 
-Together these stages reduce the remaining SINF seam to the enclosing
-registry record's parameter producer. The secondary class operand is now typed
-too: it contains one eight-byte enrollment value twice, and its protected byte
-representation is only XOR `0x1b`. Unequal halves are rejected. This exact
-representation matched both independent accepted enrollments. The remaining
-producer must therefore yield only one eight-byte class value. Record window
-selection no longer needs a native producer: all five structurally possible
-offsets are bounded and can be tested by authenticated SINF validation. The
-class value varies across enrollments, while the record mask, payload
-arithmetic, AES join, operand representation, and final material mask remain
-identical. The generated CFG currently constructs that class value; it is the
-next normalization target.
+The secondary class operand is typed too. It contains one eight-byte value
+twice, and its protected byte representation is only XOR `0x1b`. Unequal
+halves are rejected. Adversarial validation corrected an earlier boundary
+name: this value is the same build-global constant
+`4ac6fcf2d3925e05` in both independent accepted enrollments. It decrypts each
+account's different `valu` block to that account's already-proven model key
+exactly. It is not produced by the account digest.
 
-The complete three-residue limb kernel inside that class-value producer is
-normalized too. Its first residue combines two represented 16-bit samples
-with two schedule terms modulo `32767`. The second adds the decoded current
-limb, and the third adds the represented previous limb plus the shared right
-schedule term. Their stored representations are respectively XOR `0xe748`,
-addition by `0x54ce`, and addition by `0x7b0f`. The native multiply-high
-division sequences and masked output arithmetic are therefore encoding noise,
-not new primitives. The typed kernel matches the exact protected arithmetic
-over 65,536 deterministic controls. It also reproduces every byte of both
-natural 3x3 passes, covering all 18 native invocations, from their captured
-inputs. The following nine-limb pack is normalized as well: the row-major
-3x3 residues are summed by anti-diagonal, placed as base-256 polynomial-product
-coefficients, and biased by one fixed 32-bit word. The later transform's input
-bias is its exact additive inverse, so neither bias remains in the composed
-semantic path. The supposed final white box is also gone: after those biases
-cancel, the 32-bit polynomial word passes through one affine circulant matrix
-over `GF(2^8)` using the AES reduction polynomial. It needs only one eight-byte
-column and one eight-byte affine offset. A direct typed Go implementation
-matches the recovered 64x32 affine map over 65,536 deterministic controls and
-the exact natural class value. The other 32-bit native source word is proven
-non-causal by one-bit controls in all four bytes. One more protected schedule
-stage is normalized: three semantic residues are squared and summed modulo
-`32767`, then raised to the fixed exponent `45`. The 99-value native decoder's
-complete 65,536-input image and preimage-count distribution are exactly the
-`x^45 mod 32767` power map, and all 16 natural schedule invocations match it.
-Typed Go now uses a short modular-exponentiation chain. The enclosing 3x3
-interaction is typed as well. It visits cells column-major and, for each of the
-other two rows, multiplies the current-coordinate difference by the 45th power
-of the rows' squared distance. The two contributions are accumulated with the
-algorithm's 32-bit wrapping before reduction. The per-cell drift is no longer
-open either: it is exactly
-`0x39a5 * 5^cell + 0x0c7e mod 32767`; exponentiation has period 150, matching
-the protected decoder's complete 32,767-input image. Typed Go now maps one
-semantic 3x3 matrix directly to the exact eight-byte class value. The matrix
-producer is normalized too: its nine row-major cells are
-`(seed + index)^1000 mod 32767`. The retained native seed's additive encoding
-cancels to the semantic seed before this step. The seed producer is typed as
-well. Its source is the final big-endian 16-bit suffix of the existing
-20-byte account SHA-1 digest. The surrounding writer applies XOR `0x1b` to
-each digest byte and the consumer removes it. All intervening descriptor,
-pointer-derived, carry, and residue representations compose to reduction
-modulo `32767` followed by addition of one. Eight of the 65,536 possible
-suffixes retain one bit from the native bounded-carry recurrence; a direct
-piecewise condition preserves those exact results without preserving the
-recurrence. Exhaustive comparison covers the complete suffix domain. The
-full typed path is now the semantic account digest to the exact eight-byte
-class value. Connecting that digest structurally to authenticated candidate
-selection is the remaining class-value integration seam.
+The digest-derived 3x3 workspace branch is real but separate from the class
+secondary. Its arithmetic remains normalized in typed Go: three residues
+modulo `32767`, anti-diagonal polynomial packing, one affine circulant map over
+`GF(2^8)`, a 45th-power distance factor, the drift
+`0x39a5 * 5^cell + 0x0c7e mod 32767`, and matrix cells
+`(seed + index)^1000 mod 32767`. The seed comes from the final big-endian
+16-bit account-digest suffix. The complete protected suffix domain matches a
+direct reduction plus one, with eight bounded-carry exceptions. This branch
+must not be used as the class key without a new dataflow proof.
 
-The account digest is now retained at a typed boundary too. The native SINF
-path previously serialized its five SHA-1 state words through five protected
-loop visits. One typed stage now decodes the five words, writes the complete
-20-byte digest under the surrounding XOR `0x1b` transport, and retains the
-semantic digest for candidate evaluation. A synthetic differential control
-matches the complete protected loop. Independent private QA then recovered a
-model and decrypted 39 images and 10,080 pages from the 26B118 enrollment;
-the decrypted IPA SHA-256 remained
-`73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`.
-No extracted fallback block ran. The remaining integration task is therefore
-structural discovery of the decoded SIDB registry followed by unique
-authenticated candidate promotion, not recovery of another class transform.
+The account digest itself is retained at a typed boundary. The native SINF
+path previously serialized five SHA-1 state words through five protected loop
+visits. One typed stage now writes the complete 20-byte digest under XOR
+`0x1b` and retains its semantic value. A synthetic differential control
+matches the complete protected loop.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of
 opaque native selection/validation metadata, a 16-byte `valu` payload, and a
 four-byte tail whose semantic role remains open. Both independent decoded registries are
 944 bytes: 23 records plus the footer, and the naturally selected record is
-aligned within that array. Production parsing rejects every other geometry;
-it does not use a native allocation address or record offset. Authentication
-and unique record selection remain separate required gates.
+aligned within that array. Production discovers bounded zero-padded registry
+objects from typed record/footer geometry, deduplicates their contents, and
+does not retain a native allocation address or record offset.
 
-Given the enrollment-global class value, Go now evaluates the typed `valu` and
+Given the build-global class value, Go evaluates the typed `valu` and
 AES class stages for every structurally parsed SIDB record and all five valid
 record windows. Candidates retain their record, metadata, and window identity.
-This intentionally replaces the future native selector with exhaustive
-candidate validation; promotion still requires an authenticated personalized
-SINF check to accept exactly one candidate.
+The installed personalized SINF then authenticates exactly one precursor by
+decoding its private atom and checking the complete clear atom sequence. This
+has replaced the native selector and the stack-offset SINF-material adapter in
+model recovery. On the independent 26B118 control, 20 bounded registry-shaped
+objects collapsed to one record/window candidate, produced a byte-identical
+enrollment model with SHA-256
+`78048f583dec3637404c24a9ed7bc6ae3313860c75207e81b8fabe3a45dc24b8`,
+and decrypted 39 images and 10,080 pages. The decrypted IPA SHA-256 remained
+`73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`;
+no extracted fallback block ran.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES
@@ -292,21 +248,15 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Discover the decoded SIDB registry structurally and feed the retained typed
-   account digest into exhaustive record/window evaluation and the AES class
-   join. Promote only the unique authenticated SINF candidate; do not route
-   any of these stages back through the generated CFG.
-2. Try each typed SIDB candidate and select the unique candidate accepted by
-   the authenticated SIDB/SINF structure.
-3. Connect the resulting precursor to personalized SINF validation and remove
-   native selection when exactly one candidate reaches a valid SINF.
-4. Express account entry and bootstrap as typed stage functions rather than
-   register-state adapters.
-5. Discover required inputs from SIDB/SINF/object structure, removing the
-   remaining memory offsets.
-6. Delete generated CFG and compact-interpreter production paths after typed
+1. Express account entry as typed stage functions rather than register-state
+   adapters, preserving structural certificate, SIDB, and hardware inputs.
+2. Express bootstrap as typed stage functions rather than register-state
+   adapters.
+3. Discover every remaining required input from SIDB/SINF/object structure,
+   removing the legacy outer-transform and source/frame memory offsets.
+4. Delete generated CFG and compact-interpreter production paths after typed
    stage parity is proven.
-7. Canonicalize and compare the normalized algorithms across at least five
+5. Canonicalize and compare the normalized algorithms across at least five
    independent builds and multiple enrollment layouts.
 
 Update this file whenever a stage becomes typed, an offset is removed, a

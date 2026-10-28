@@ -607,20 +607,6 @@ func currentRawSourceFrameBytes() ([]byte, error) {
 	return lastRawSourceState.outputBytes(profile.frameAddress, 16)
 }
 
-func currentRawSourceSINFMaterialBytes() ([]byte, error) {
-	if lastRawSourceState == nil {
-		return nil, fmt.Errorf("raw source state is unavailable")
-	}
-	profile, err := executionProfileForModel(lastRawSourceState.model)
-	if err != nil {
-		return nil, err
-	}
-	if lastRawSourceState.x[29] < profile.sinfFrameOffset {
-		return nil, fmt.Errorf("current-SINF frame pointer is invalid")
-	}
-	return lastRawSourceState.outputBytes(lastRawSourceState.x[29]-profile.sinfFrameOffset, 16)
-}
-
 func rawSourceAtom(blob []byte, start, limit int, name string) (int, int, error) {
 	for cursor := start; cursor < limit; {
 		if limit-cursor < 8 {
@@ -658,11 +644,7 @@ func rawSourceSINFSelector(blob []byte) (uint32, uint32, error) {
 	return values[0], values[1], nil
 }
 
-func currentRawSourceEnrollmentPack() ([]byte, error) {
-	material, err := currentRawSourceSINFMaterialBytes()
-	if err != nil {
-		return nil, err
-	}
+func currentRawSourceEnrollmentPack(registries []decodedSIDBRegistryCandidate) ([]byte, error) {
 	var sinf []byte
 	if activeRawSourceRuntime != nil {
 		for suffix, data := range activeRawSourceRuntime.files {
@@ -688,12 +670,12 @@ func currentRawSourceEnrollmentPack() ([]byte, error) {
 	if profile.semantic == nil {
 		return nil, fmt.Errorf("semantic enrollment profile is unavailable")
 	}
-	var precursor [16]byte
-	for index, value := range material {
-		precursor[index] = value ^ currentSINFMaterialMask[index]
+	selected, err := selectAuthenticatedClassPrecursor(sinf, profile.semantic, registries)
+	if err != nil {
+		return nil, err
 	}
-	pack, err := enrollmentPackForPrecursor(profile.semantic, profile.binaryHash, user, keyID, precursor)
-	clear(precursor[:])
+	pack, err := enrollmentPackForPrecursor(profile.semantic, profile.binaryHash, user, keyID, selected.Precursor)
+	clear(selected.Precursor[:])
 	return pack, err
 }
 

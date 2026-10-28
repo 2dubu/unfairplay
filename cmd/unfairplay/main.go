@@ -275,9 +275,11 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 		"decrypted_ipa_sha256": result.OutputSHA256, "encrypted_images": result.EncryptedImages,
 		"decrypted_pages": result.DecryptedPages, "input_profile": selectedProfile,
 		"recovery_iterations": recovered.Iterations, "recovery_state_sha256": recovered.StateSHA256,
-		"exact_extracted_block_hits": recovered.ExtractedBlockHits,
-		"promotion_gate":             "complete-sinf-and-ipa-validation",
-		"reference_code_source":      referenceSource,
+		"exact_extracted_block_hits":  recovered.ExtractedBlockHits,
+		"account_digest_candidates":   recovered.AccountDigestCandidates,
+		"decoded_registry_candidates": recovered.DecodedRegistryCandidates,
+		"promotion_gate":              "complete-sinf-and-ipa-validation",
+		"reference_code_source":       referenceSource,
 	}
 	if traceReport != "" {
 		summary["stage_trace"] = traceReport

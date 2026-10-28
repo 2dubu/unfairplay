@@ -7,8 +7,10 @@ type classEnrollmentParameters struct {
 	ClassValue [8]byte
 }
 
-func classEnrollmentParametersFromAccountDigest(digest [20]byte) classEnrollmentParameters {
-	return classEnrollmentParameters{ClassValue: classWorkspaceEnrollmentValueFromDigest(digest)}
+var currentClassSecondaryValue = [8]byte{0x4a, 0xc6, 0xfc, 0xf2, 0xd3, 0x92, 0x5e, 0x05}
+
+func currentClassEnrollmentParameters() classEnrollmentParameters {
+	return classEnrollmentParameters{ClassValue: currentClassSecondaryValue}
 }
 
 func (parameters classEnrollmentParameters) classKey() (key [16]byte) {
@@ -47,6 +49,6 @@ func deriveClassPrecursorCandidates(registry decodedSIDBRegistry, parameters cla
 	return result, nil
 }
 
-func deriveClassPrecursorCandidatesFromAccountDigest(registry decodedSIDBRegistry, digest [20]byte) ([]classPrecursorCandidate, error) {
-	return deriveClassPrecursorCandidates(registry, classEnrollmentParametersFromAccountDigest(digest))
+func deriveCurrentClassPrecursorCandidates(registry decodedSIDBRegistry) ([]classPrecursorCandidate, error) {
+	return deriveClassPrecursorCandidates(registry, currentClassEnrollmentParameters())
 }

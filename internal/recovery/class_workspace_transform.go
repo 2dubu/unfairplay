@@ -144,16 +144,16 @@ func classWorkspaceInteractionStep(matrix [9]uint16) [9]uint16 {
 	return matrix
 }
 
-func classWorkspaceEnrollmentValue(matrix [9]uint16) [8]byte {
+func classWorkspaceOutput(matrix [9]uint16) [8]byte {
 	return classWorkspaceClassValue(classWorkspaceInteractionStep(matrix))
 }
 
-func classWorkspaceEnrollmentValueFromSeed(seed uint16) [8]byte {
-	return classWorkspaceEnrollmentValue(classWorkspaceSeedMatrix(seed))
+func classWorkspaceOutputFromSeed(seed uint16) [8]byte {
+	return classWorkspaceOutput(classWorkspaceSeedMatrix(seed))
 }
 
-func classWorkspaceEnrollmentValueFromDigest(digest [20]byte) [8]byte {
-	return classWorkspaceEnrollmentValueFromSeed(classWorkspaceSeedFromDigest(digest))
+func classWorkspaceOutputFromDigest(digest [20]byte) [8]byte {
+	return classWorkspaceOutputFromSeed(classWorkspaceSeedFromDigest(digest))
 }
 
 // classWorkspaceClassValue maps the semantic polynomial product to the

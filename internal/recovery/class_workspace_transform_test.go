@@ -260,7 +260,7 @@ func TestClassWorkspaceSeedMatrixSyntheticControl(t *testing.T) {
 		t.Fatalf("seed matrix = %#v, want %#v", got, want)
 	}
 	wantValue := [8]byte{0xf5, 0x24, 0x95, 0x06, 0x52, 0x76, 0x20, 0xe4}
-	if got := classWorkspaceEnrollmentValueFromSeed(0); got != wantValue {
+	if got := classWorkspaceOutputFromSeed(0); got != wantValue {
 		t.Fatalf("enrollment value = %x, want %x", got, wantValue)
 	}
 }
@@ -300,10 +300,10 @@ func TestClassWorkspaceSeedFromDigestMatchesProtectedDomain(t *testing.T) {
 	}
 }
 
-func TestClassWorkspaceEnrollmentValueFromDigestComposesTypedStages(t *testing.T) {
+func TestClassWorkspaceOutputFromDigestComposesTypedStages(t *testing.T) {
 	digest := [20]byte{0x53, 0x49, 0x4e, 0x46, 0x2d, 0x53, 0x59, 0x4e, 0x54, 0x48, 0x45, 0x54, 0x49, 0x43, 0xa5, 0x5a, 0x13, 0x37, 0x24, 0x68}
-	want := classWorkspaceEnrollmentValueFromSeed(classWorkspaceSeedFromDigest(digest))
-	if got := classWorkspaceEnrollmentValueFromDigest(digest); got != want {
+	want := classWorkspaceOutputFromSeed(classWorkspaceSeedFromDigest(digest))
+	if got := classWorkspaceOutputFromDigest(digest); got != want {
 		t.Fatalf("digest enrollment value = %x, want %x", got, want)
 	}
 }

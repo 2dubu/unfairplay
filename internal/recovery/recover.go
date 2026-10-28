@@ -20,11 +20,13 @@ type Options struct {
 
 // Result is the output of one bounded enrollment recovery.
 type Result struct {
-	EnrollmentModel    []byte
-	StateSHA256        string
-	Iterations         int
-	ExtractedBlockHits int
-	StageTraces        []RecoveryStageTrace
+	EnrollmentModel           []byte
+	StateSHA256               string
+	Iterations                int
+	ExtractedBlockHits        int
+	AccountDigestCandidates   int
+	DecodedRegistryCandidates int
+	StageTraces               []RecoveryStageTrace
 }
 
 var recoveryMu sync.Mutex
@@ -79,9 +81,19 @@ func Recover(options Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	pack, err := currentRawSourceEnrollmentPack()
+	registries, err := discoverDecodedSIDBRegistries(lastRawSourceState)
 	if err != nil {
 		return Result{}, err
+	}
+	pack, err := currentRawSourceEnrollmentPack(registries)
+	if err != nil {
+		for index := range registries {
+			clear(registries[index].Data)
+		}
+		return Result{}, err
+	}
+	for index := range registries {
+		clear(registries[index].Data)
 	}
 	hits := 0
 	if lastRawSourceState != nil {
@@ -93,7 +105,8 @@ func Recover(options Options) (Result, error) {
 	}
 	return Result{
 		EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations,
-		ExtractedBlockHits: hits, StageTraces: traces,
+		ExtractedBlockHits: hits, AccountDigestCandidates: len(lastRawSourceState.accountDigests),
+		DecodedRegistryCandidates: len(registries), StageTraces: traces,
 	}, nil
 }
 

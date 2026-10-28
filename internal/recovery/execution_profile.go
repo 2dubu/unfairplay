@@ -9,7 +9,6 @@ type semanticBuildProfile struct {
 	sourceAddress    uint64
 	frameAddress     uint64
 	selectionStart   uint64
-	currentSINFMask  [16]byte
 	currentSINFWhite [16]byte
 	currentSINFInput [4096]byte
 }
@@ -45,14 +44,13 @@ type executionProfile struct {
 	runCycle               func(*state, fault) error
 	runCycleFinal          func(*state, fault) error
 
-	onceTokens      []uint64
-	sourceAddress   uint64
-	frameAddress    uint64
-	sinfFrameOffset uint64
-	outerStart      uint64
-	outerCycle      uint64
-	cycleFinal      uint64
-	optionalStart   uint64
+	onceTokens    []uint64
+	sourceAddress uint64
+	frameAddress  uint64
+	outerStart    uint64
+	outerCycle    uint64
+	cycleFinal    uint64
+	optionalStart uint64
 }
 
 func embedded26A428ExecutionProfile() *executionProfile {
@@ -63,7 +61,6 @@ func embedded26A428ExecutionProfile() *executionProfile {
 			sourceAddress:    0x7000000FB304,
 			frameAddress:     0x7000000FB724,
 			selectionStart:   0x1006b10a0,
-			currentSINFMask:  generatedCurrentSINFKeyMask,
 			currentSINFWhite: generatedCurrentSINFWhitening,
 			currentSINFInput: generatedCurrentSINFInputDecode,
 		},
@@ -91,7 +88,7 @@ func embedded26A428ExecutionProfile() *executionProfile {
 		runCycle:               func(s *state, _ fault) error { return runCompactKernel(s, compact26A428Cycle) },
 		runCycleFinal:          runRawSourceCycleFinal,
 		onceTokens:             []uint64{0x1010746B0, 0x101075B48, 0x101081348, 0x101081358},
-		sourceAddress:          0x7000000FB304, frameAddress: 0x7000000FB724, sinfFrameOffset: 0x70,
+		sourceAddress:          0x7000000FB304, frameAddress: 0x7000000FB724,
 		outerStart: 0x1005B7438, outerCycle: 0x1007822CC, cycleFinal: 0x10046119C, optionalStart: 0x1005BA520,
 	}
 }
