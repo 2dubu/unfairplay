@@ -278,6 +278,13 @@ the fixed semantic outer profile, copies the SIDB codec and hardware bytes, and
 runs the typed outer algorithm directly. The old `fairplayd`, checkpoint,
 account/bootstrap CFG, and stack-offset adapter dependencies have been removed.
 
+The per-codec outer cycle is no longer a generated MBA circuit in production.
+Its five 32-bit state updates are direct XORs of rotated codec and hardware
+bytes. Its five wide continuation values reduce to the hardware index, two
+selected hardware bytes, and two small affine index expressions. The direct
+implementation matched the retained 764-line protected circuit exactly on
+4,096 deterministic controls; that circuit now exists only as a test oracle.
+
 On the independent 26B118 current-layout control, this zero-offset path still
 produced byte-identical enrollment-model SHA-256
 `98c29933c57e3425f22005bfaf43fac684ef6b671629f76361cb1dd502147575`,
@@ -341,7 +348,9 @@ Every promoted transformation needs suitable evidence:
 1. Canonicalize the fixed semantic profile across at least five independent
    stable release and update builds; replace any differing protected
    representation with its shared algorithm or genuine data.
-2. Run exact private QA across multiple enrollment layouts and all five builds.
+2. Run exact private QA across multiple enrollment layouts after each promoted
+   cross-build normalization. The three older binaries are differential
+   controls and do not require private account enrollment on those OS releases.
 
 Update this file whenever a stage becomes typed, an offset is removed, a
 cross-build invariant is proved, or a completion requirement changes state.
