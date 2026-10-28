@@ -79,21 +79,22 @@ SHA-256 `33b7a8b3d13d7d5d09d665f52f5f887c426bd04e119b604d09136585b2ae0945`.
 The test-only affine-SPN oracle remains 17,024 bytes with SHA-256
 `f1cb13c0056a4125387f98a575c21cc6129438580e48c76373e333df614ea963`.
 
-## Sparse SIDB-key producer
+## Inverse-AES SIDB-key producer
 
-Production composes away the protected producer's separate stage input and
-output encodings. The result is ten ordinary AES S-box layers separated by
-nine sparse byte-linear layers, plus compact first and final affine layers.
-Verify all 4,096 deterministic controls against the larger test-only SPN with:
+Production composes away the protected producer's separate stage encodings.
+Its middle reduces to ordinary AES `InvMixColumns` coefficient matrices and
+eight keyed AES inverse-S-box layers. Only compact endpoint coordinate maps
+remain. Verify all 4,096 deterministic controls against the larger test-only
+SPN with:
 
 ```sh
-go test ./internal/recovery -run '^TestSIDBProducerSparseMatchesSPNOracle$' -count=1
+go test ./internal/recovery -run '^TestSIDBProducerInverseAESMatchesSPNOracle$' -count=1
 ```
 
-Expected size: 877 bytes. Expected compressed SHA-256:
-`e3b45b3a2677158c3d81410a92853d1a29c9533d023a29bc8cc75c0160f79348`.
-The decoded checked profile is 6,088 bytes including its checksum, with
-SHA-256 `5e11f0d44fd2830bfcbaefdafbb459a8a94add9a069408719449afc6e4145001`.
+Expected size: 795 bytes. Expected compressed SHA-256:
+`eb7d4a2d0556f13763f60561c45e1367ee9978d6ad4ca248aee05dd9a69dc6fb`.
+The decoded checked profile is 2,172 bytes including its checksum, with
+SHA-256 `d931275dcb17835807d9c567bbdf3734d2105279289c19bcba603c18b7488db7`.
 
 The original private controls can regenerate the larger normalization oracle:
 

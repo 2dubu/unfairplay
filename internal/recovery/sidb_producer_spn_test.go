@@ -19,10 +19,10 @@ func TestSIDBProducerSPNOracleProfile(t *testing.T) {
 	}
 }
 
-func TestSIDBProducerSparseProfile(t *testing.T) {
-	digest := sha256.Sum256(sidbProducerSparseProfileCompressed)
-	if got := hex.EncodeToString(digest[:]); got != "e3b45b3a2677158c3d81410a92853d1a29c9533d023a29bc8cc75c0160f79348" {
-		t.Fatalf("SIDB producer sparse profile digest = %s", got)
+func TestSIDBProducerInverseAESProfile(t *testing.T) {
+	digest := sha256.Sum256(sidbProducerInverseAESProfileCompressed)
+	if got := hex.EncodeToString(digest[:]); got != "eb7d4a2d0556f13763f60561c45e1367ee9978d6ad4ca248aee05dd9a69dc6fb" {
+		t.Fatalf("SIDB producer inverse-AES profile digest = %s", got)
 	}
 	hash := sha256.New()
 	for index := range 4096 {
@@ -35,7 +35,7 @@ func TestSIDBProducerSparseProfile(t *testing.T) {
 	if got := hex.EncodeToString(hash.Sum(nil)); got != "98b71a19908213bbd6b6499182d0d569c9554b5f0dc5c9e631adc0cb3df9c3ab" {
 		t.Fatalf("SIDB producer key corpus digest = %s", got)
 	}
-	stream, err := gzip.NewReader(bytes.NewReader(sidbProducerSparseProfileCompressed))
+	stream, err := gzip.NewReader(bytes.NewReader(sidbProducerInverseAESProfileCompressed))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,16 +46,16 @@ func TestSIDBProducerSparseProfile(t *testing.T) {
 	if err := stream.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded) != 6088 {
-		t.Fatalf("decoded SIDB producer sparse profile size = %d", len(decoded))
+	if len(decoded) != 2172 {
+		t.Fatalf("decoded SIDB producer inverse-AES profile size = %d", len(decoded))
 	}
 	decodedDigest := sha256.Sum256(decoded)
-	if got := hex.EncodeToString(decodedDigest[:]); got != "5e11f0d44fd2830bfcbaefdafbb459a8a94add9a069408719449afc6e4145001" {
-		t.Fatalf("decoded SIDB producer sparse profile digest = %s", got)
+	if got := hex.EncodeToString(decodedDigest[:]); got != "d931275dcb17835807d9c567bbdf3734d2105279289c19bcba603c18b7488db7" {
+		t.Fatalf("decoded SIDB producer inverse-AES profile digest = %s", got)
 	}
 	corrupt := append([]byte(nil), decoded...)
 	corrupt[len(corrupt)-1] ^= 1
-	if _, err := parseSIDBProducerSparseProfile(corrupt); err == nil {
-		t.Fatal("corrupt SIDB producer sparse profile was accepted")
+	if _, err := parseSIDBProducerInverseAESProfile(corrupt); err == nil {
+		t.Fatal("corrupt SIDB producer inverse-AES profile was accepted")
 	}
 }
