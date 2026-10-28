@@ -71,7 +71,7 @@ flattened native selector.
 | Selection | Candidate state/frame transforms and several dominant loops are recovered. Native orchestration is still transitional. |
 | Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
 | SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
-| SINF | Portable AES/model decoding exists. The downstream two-input class consumer is now typed as ordinary AES-128 block decryption followed by the shared `^0x1b` representation. The decoded-registry producer of its `valu` input and secondary class key remains transitional. |
+| SINF | Portable AES/model decoding exists. The 16-byte registry payload-to-`valu` arithmetic and downstream two-input class consumer are typed Go. The enclosing record still has to supply four word masks and the secondary class key without native orchestration. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
@@ -132,12 +132,20 @@ the result is exactly `AES-128-ECB-decrypt(class_key, valu_ciphertext)`.
 Production now has this operation as a typed Go function; the protected core
 must not be shipped or recovered again.
 
-This narrows the remaining SINF seam further. The decoded registry still has
-to produce the semantic 16-byte `valu` ciphertext and the semantic secondary
-class key. Mutating the active registry window reaches a nonlinear upstream
-producer, so it is not another byte projection. The generated CFG currently
-constructs those two inputs before the typed AES join; that producer is the
-next normalization target.
+The preceding `valu` producer is typed too. Each four-byte payload word is
+read big-endian, combined with one enrollment-supplied word mask, passed
+through two exact 32-bit arithmetic stages, and converted to one semantic
+`valu` word. The first protected masked subtract/add stage was proved to be
+only XOR `0xce757bc5`; the final byte codec plus its following representation
+mask reduces to one word XOR. A clean implementation of this composition
+matches the unreduced arithmetic over 4,096 deterministic controls.
+
+Together these stages reduce the remaining SINF seam to the enclosing
+registry record's parameter producer: its metadata must yield four 32-bit
+word masks and the 16-byte secondary class key. Those values vary across the
+two accepted enrollments, while the payload arithmetic, AES join, and final
+material mask remain identical. The generated CFG currently constructs those
+parameters; it is the next normalization target.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES
@@ -188,9 +196,10 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Parse the decoded SIDB registry structurally and recover its semantic
-   `valu` ciphertext plus secondary class-key producer. Feed both into the
-   typed AES class join; do not route this join back through the generated CFG.
+1. Parse decoded SIDB records structurally and recover the metadata producer
+   for the four `valu` word masks and secondary class key. Feed those values
+   into the typed payload transform and AES class join; do not route either
+   stage back through the generated CFG.
 2. Try each typed SIDB candidate and select the unique candidate accepted by
    the authenticated SIDB/SINF structure.
 3. Connect the resulting precursor to personalized SINF validation and remove
