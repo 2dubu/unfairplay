@@ -37,3 +37,31 @@ func TestDeriveClassPrecursorCandidates(t *testing.T) {
 		}
 	}
 }
+
+func TestDeriveClassPrecursorCandidatesFromAccountDigest(t *testing.T) {
+	data := make([]byte, decodedSIDBRecordBytes+decodedSIDBFooterBytes)
+	for index := range data {
+		data[index] = byte(index*29 + 7)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := [20]byte{0x41, 0x43, 0x43, 0x4f, 0x55, 0x4e, 0x54, 0x2d, 0x44, 0x49, 0x47, 0x45, 0x53, 0x54, 0xa5, 0x5a, 0x13, 0x37, 0x24, 0x68}
+	got, err := deriveClassPrecursorCandidatesFromAccountDigest(registry, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := deriveClassPrecursorCandidates(registry, classEnrollmentParametersFromAccountDigest(digest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("candidate count = %d, want %d", len(got), len(want))
+	}
+	for index := range got {
+		if got[index] != want[index] {
+			t.Fatalf("candidate %d differs", index)
+		}
+	}
+}

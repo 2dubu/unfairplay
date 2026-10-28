@@ -96,6 +96,23 @@ func classWorkspaceSeedMatrix(seed uint16) (matrix [9]uint16) {
 	return matrix
 }
 
+// classWorkspaceSeedFromDigest derives the class-workspace seed from the
+// final two bytes of the semantic 20-byte account digest. The native path
+// transports those bytes under XOR 0x1b, builds several temporary arithmetic
+// representations, and then removes every representation again.
+//
+// The eight suffixes whose low fourteen bits are zero or one retain one
+// observable bit from the native path's bounded carry recurrence. Keeping the
+// exception makes this typed form exact over the complete 16-bit domain.
+func classWorkspaceSeedFromDigest(digest [20]byte) uint16 {
+	suffix := uint16(digest[18])<<8 | uint16(digest[19])
+	seed := uint16((uint32(suffix)%classWorkspaceModulus + 1) % classWorkspaceModulus)
+	if suffix&0x3ffe == 0 {
+		seed ^= 0x4000
+	}
+	return seed
+}
+
 // classWorkspaceInteractionStep applies one in-place 3x3 interaction pass.
 // Cells are visited column-major, matching the mathematical dependency order:
 // every cell observes the already-updated cells that precede it. Each of the
@@ -133,6 +150,10 @@ func classWorkspaceEnrollmentValue(matrix [9]uint16) [8]byte {
 
 func classWorkspaceEnrollmentValueFromSeed(seed uint16) [8]byte {
 	return classWorkspaceEnrollmentValue(classWorkspaceSeedMatrix(seed))
+}
+
+func classWorkspaceEnrollmentValueFromDigest(digest [20]byte) [8]byte {
+	return classWorkspaceEnrollmentValueFromSeed(classWorkspaceSeedFromDigest(digest))
 }
 
 // classWorkspaceClassValue maps the semantic polynomial product to the

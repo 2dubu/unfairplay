@@ -264,3 +264,46 @@ func TestClassWorkspaceSeedMatrixSyntheticControl(t *testing.T) {
 		t.Fatalf("enrollment value = %x, want %x", got, wantValue)
 	}
 }
+
+func protectedClassWorkspaceSeedFromDigestSuffix(suffix uint16) uint16 {
+	word := uint32(suffix)
+	mixed := (word & 0x281f) ^ (word & 0x0c)
+	mixed = ^(mixed << 1)
+	mixed += word - 0x57ec
+	mixed = ((mixed ^ 0x8c45) + 0x73bb) ^
+		((mixed ^ 0x4143) - 0x4143) ^
+		((mixed ^ 0x6515) - 0x6515)
+
+	encoded := uint32(uint16(mixed - 0x469f))
+	constant := (encoded & 0x6226) ^ 0x4ada
+	zero := uint32(0)
+	carry := (((zero - 0x27aa) ^ (0x5d64 & (encoded << 1))) & encoded) ^ constant
+	propagate := encoded ^ 0x6eb0
+	for range 12 {
+		carry = (propagate & (carry << 1)) ^ constant
+	}
+	encoded = (encoded ^ (carry << 1) ^ 0xc2a7) & 0xffff
+	peer := uint16(uint32(uint16(encoded)^0xa081) % classWorkspaceModulus)
+	return uint16((uint32(peer) + 1) % classWorkspaceModulus)
+}
+
+func TestClassWorkspaceSeedFromDigestMatchesProtectedDomain(t *testing.T) {
+	for value := range uint32(1 << 16) {
+		var digest [20]byte
+		digest[18] = byte(value >> 8)
+		digest[19] = byte(value)
+		got := classWorkspaceSeedFromDigest(digest)
+		want := protectedClassWorkspaceSeedFromDigestSuffix(uint16(value))
+		if got != want {
+			t.Fatalf("digest suffix %#04x seed = %#04x, want %#04x", value, got, want)
+		}
+	}
+}
+
+func TestClassWorkspaceEnrollmentValueFromDigestComposesTypedStages(t *testing.T) {
+	digest := [20]byte{0x53, 0x49, 0x4e, 0x46, 0x2d, 0x53, 0x59, 0x4e, 0x54, 0x48, 0x45, 0x54, 0x49, 0x43, 0xa5, 0x5a, 0x13, 0x37, 0x24, 0x68}
+	want := classWorkspaceEnrollmentValueFromSeed(classWorkspaceSeedFromDigest(digest))
+	if got := classWorkspaceEnrollmentValueFromDigest(digest); got != want {
+		t.Fatalf("digest enrollment value = %x, want %x", got, want)
+	}
+}

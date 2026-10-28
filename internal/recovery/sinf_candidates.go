@@ -1,10 +1,14 @@
 package recovery
 
 // classEnrollmentParameters are the enrollment-global inputs shared by every
-// record in one decoded SIDB registry. Their producer remains a separate typed
-// stage; candidate evaluation does not depend on how they were discovered.
+// record in one decoded SIDB registry. Candidate evaluation does not depend on
+// the native path that produced them.
 type classEnrollmentParameters struct {
 	ClassValue [8]byte
+}
+
+func classEnrollmentParametersFromAccountDigest(digest [20]byte) classEnrollmentParameters {
+	return classEnrollmentParameters{ClassValue: classWorkspaceEnrollmentValueFromDigest(digest)}
 }
 
 func (parameters classEnrollmentParameters) classKey() (key [16]byte) {
@@ -41,4 +45,8 @@ func deriveClassPrecursorCandidates(registry decodedSIDBRegistry, parameters cla
 		}
 	}
 	return result, nil
+}
+
+func deriveClassPrecursorCandidatesFromAccountDigest(registry decodedSIDBRegistry, digest [20]byte) ([]classPrecursorCandidate, error) {
+	return deriveClassPrecursorCandidates(registry, classEnrollmentParametersFromAccountDigest(digest))
 }

@@ -201,9 +201,18 @@ the protected decoder's complete 32,767-input image. Typed Go now maps one
 semantic 3x3 matrix directly to the exact eight-byte class value. The matrix
 producer is normalized too: its nine row-major cells are
 `(seed + index)^1000 mod 32767`. The retained native seed's additive encoding
-cancels to the semantic seed before this step. The full typed path is now one
-16-bit semantic seed to the exact eight-byte class value. Producing that seed
-from structural enrollment input is the remaining class-value seam.
+cancels to the semantic seed before this step. The seed producer is typed as
+well. Its source is the final big-endian 16-bit suffix of the existing
+20-byte account SHA-1 digest. The surrounding writer applies XOR `0x1b` to
+each digest byte and the consumer removes it. All intervening descriptor,
+pointer-derived, carry, and residue representations compose to reduction
+modulo `32767` followed by addition of one. Eight of the 65,536 possible
+suffixes retain one bit from the native bounded-carry recurrence; a direct
+piecewise condition preserves those exact results without preserving the
+recurrence. Exhaustive comparison covers the complete suffix domain. The
+full typed path is now the semantic account digest to the exact eight-byte
+class value. Connecting that digest structurally to authenticated candidate
+selection is the remaining class-value integration seam.
 
 The decoded current SIDB registry is now parsed structurally as fixed 40-byte
 records followed by a 24-byte footer. Each record contains 20 bytes of
@@ -270,9 +279,9 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Recover the producer for the eight-byte secondary class value. Feed it into
-   exhaustive typed record/window evaluation and the AES class join; do not
-   route either stage back through the generated CFG.
+1. Feed the typed account-digest-to-class-value path into exhaustive typed
+   record/window evaluation and the AES class join; do not route any stage
+   back through the generated CFG.
 2. Try each typed SIDB candidate and select the unique candidate accepted by
    the authenticated SIDB/SINF structure.
 3. Connect the resulting precursor to personalized SINF validation and remove
