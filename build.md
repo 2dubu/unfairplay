@@ -143,8 +143,8 @@ remain. The eight recovered keys are independent round constants rather than
 an AES-128 key schedule. The former final 40-map affine layer factors exactly
 into four byte-wise XOR graphs. One unique gauge per graph turns the preceding
 sixteen protected substitutions into direct keyed AES inverse S-boxes; their
-output masks fold into the final constants. The checked production profile is
-The initial protected endpoint has one unique normalization per byte: all
+output masks fold into the final constants. The initial protected endpoint has
+one unique normalization per byte: all
 sixteen substitutions are direct AES inverse S-boxes with a zero key. Their
 output masks fold into the first middle-round key. The complete producer is
 therefore ten inverse-S-box layers from end to end. The checked production
@@ -372,6 +372,26 @@ build support:
 - Therefore cross-build work is used to remove obfuscation-dependent details,
   not to add one implementation per binary.
 
+The downstream static anchor map now spans the same five stable builds. BinDiff
+was run against independently analyzed IDA databases and paired the complete
+one-block frame constructor, repeated selection transform, and SIDB consumer
+front half. Addresses below are research evidence only; production does not
+contain or consult them.
+
+| Build | Frame constructor | Same mnemonic | Selection transform | Same mnemonic | SIDB consumer | Same mnemonic |
+| --- | --- | ---: | --- | ---: | --- | ---: |
+| 22A380 | `0x1004d03c8` | 2,271 / 2,271 | `0x100a7ccd4` | 1,128 / 1,128 | `0x100d27efc` | 2,408 / 2,409 |
+| 23A344 | `0x100089040` | 2,499 / 2,502 | `0x100118f1c` | 1,456 / 1,456 | `0x1009b8ed4` | 2,420 / 2,420 |
+| 24A335 | `0x100d2b680` | 2,520 / 2,521 | `0x100459764` | 1,502 / 1,502 | `0x10038ea20` | 2,366 / 2,366 |
+| 25G83 | `0x100a6ef30` | 1,856 / 1,856 | `0x100068bb0` | 1,079 / 1,080 | `0x10032eb24` | 2,280 / 2,280 |
+| 26A428 | `0x1002fbb24` | reference | `0x100132a94` | reference | `0x10008a644` | reference |
+
+Across the twelve non-reference function pairs, normalized operand shapes also
+match 45.6% to 70.7%, while only 32 paired instruction words are byte-identical
+in total. This locates the same stage families while showing that registers,
+immediates, and MBA encodings were regenerated. It is strong static homology
+evidence, but it is not yet the required stage-output differential proof.
+
 At least five independently hashed stable release and update builds must
 receive stage-level differential validation before this work is complete.
 The cross-generation control set starts with macOS 13.0 (22A380), macOS 14.0
@@ -392,9 +412,10 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Canonicalize the fixed semantic profile across at least five independent
-   stable release and update builds; replace any differing protected
-   representation with its shared algorithm or genuine data.
+1. Use the five-build static anchor map to replay identical typed boundary
+   controls at the frame and SIDB-key stage outputs. Compare semantic outputs,
+   not protected registers or instruction words, and classify any genuine
+   constant changes as input data rather than build selectors.
 2. Run exact private QA across multiple enrollment layouts after each promoted
    cross-build normalization. The three older binaries are differential
    controls and do not require private account enrollment on those OS releases.
