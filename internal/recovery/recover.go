@@ -77,6 +77,9 @@ func Recover(options Options) (Result, error) {
 		options.HardwarePath, options.ExecutablePath, 0); err != nil {
 		return Result{}, err
 	}
+	if _, err := validateCurrentSUPFFiles(activeRawSourceRuntime.files); err != nil {
+		return Result{}, err
+	}
 	digest, iterations, err := runRawSource(value, "enrollment-full", false, 0)
 	if err != nil {
 		return Result{}, err

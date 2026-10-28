@@ -72,6 +72,7 @@ flattened native selector.
 | Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
 | SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
 | SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, the fixed secondary operand, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. Model recovery stops after selection; the native selector, SINF-entry CFG, and stack-offset material adapter are no longer executed. |
+| SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
 | Build portability | The portable algorithm layer is being separated from the legacy 26A428 oracle. Zero-offset object discovery is still incomplete. |
 
 The current `executionProfile`, generated block files, emulated registers, and
@@ -209,6 +210,17 @@ promote exactly one registry/record/window tuple. On the same private control,
 produced the byte-identical model above, and completed the same IPA
 decryption. Neither the generated selection CFG nor the generated SINF-entry
 CFG is executed by model recovery.
+
+SUPF authentication is typed and structural too. Variant 3 authenticates its
+signed architecture/page-key prefix with RSA/SHA-1, while variant 5 uses
+RSA/SHA-256. The embedded 1024-bit leaf certificate is checked against the
+pinned Apple FairPlay Certification Authority public key before its key is
+allowed to verify the prefix. The authority key was independently reconstructed
+from three valid Apple certificate/signature pairs, reduced to one 1024-bit
+modulus, and then verified against all ten FairPlay leaf certificates embedded
+in the reference binary plus four v3/v5 licenses from two enrollment layouts.
+The independent 26B118 private control still produced the byte-identical model
+and decrypted IPA after this check was enabled.
 
 Separately, the enrollment-frame suffix table algebra is now closed. All 144 input substitutions in its
 nine generalized rounds are exactly affine-equivalent to the ordinary AES
