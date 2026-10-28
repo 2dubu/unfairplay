@@ -19,10 +19,10 @@ func TestSIDBProducerSPNOracleProfile(t *testing.T) {
 	}
 }
 
-func TestSIDBProducerCanonicalAESProfile(t *testing.T) {
-	digest := sha256.Sum256(sidbProducerCanonicalAESProfileCompressed)
-	if got := hex.EncodeToString(digest[:]); got != "b46470baad541cc627391f46e4c5039d7d3835b972408c183ceaf9a84b0571e9" {
-		t.Fatalf("SIDB producer canonical-AES profile digest = %s", got)
+func TestSIDBProducerTypedProfile(t *testing.T) {
+	digest := sha256.Sum256(sidbProducerTypedProfileCompressed)
+	if got := hex.EncodeToString(digest[:]); got != "a1ddefeea78738a85699db79f2a2c1687b87201c69f43db944e80cbd696ee5be" {
+		t.Fatalf("SIDB producer typed profile digest = %s", got)
 	}
 	hash := sha256.New()
 	for index := range 4096 {
@@ -35,7 +35,7 @@ func TestSIDBProducerCanonicalAESProfile(t *testing.T) {
 	if got := hex.EncodeToString(hash.Sum(nil)); got != "98b71a19908213bbd6b6499182d0d569c9554b5f0dc5c9e631adc0cb3df9c3ab" {
 		t.Fatalf("SIDB producer key corpus digest = %s", got)
 	}
-	stream, err := gzip.NewReader(bytes.NewReader(sidbProducerCanonicalAESProfileCompressed))
+	stream, err := gzip.NewReader(bytes.NewReader(sidbProducerTypedProfileCompressed))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,16 +46,16 @@ func TestSIDBProducerCanonicalAESProfile(t *testing.T) {
 	if err := stream.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded) != 1064 {
-		t.Fatalf("decoded SIDB producer canonical-AES profile size = %d", len(decoded))
+	if len(decoded) != 528 {
+		t.Fatalf("decoded SIDB producer typed profile size = %d", len(decoded))
 	}
 	decodedDigest := sha256.Sum256(decoded)
-	if got := hex.EncodeToString(decodedDigest[:]); got != "a7895ad2c5e00b8650a71f932d45f86f1473781cdd5d412de756933c16816985" {
-		t.Fatalf("decoded SIDB producer canonical-AES profile digest = %s", got)
+	if got := hex.EncodeToString(decodedDigest[:]); got != "7c0b374de0559f5aa5e743e358b1247636100051e98172542256332ba421b4b9" {
+		t.Fatalf("decoded SIDB producer typed profile digest = %s", got)
 	}
 	corrupt := append([]byte(nil), decoded...)
 	corrupt[len(corrupt)-1] ^= 1
-	if _, err := parseSIDBProducerCanonicalAESProfile(corrupt); err == nil {
-		t.Fatal("corrupt SIDB producer canonical-AES profile was accepted")
+	if _, err := parseSIDBProducerTypedProfile(corrupt); err == nil {
+		t.Fatal("corrupt SIDB producer typed profile was accepted")
 	}
 }
