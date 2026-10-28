@@ -82,13 +82,13 @@ func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, se
 		return result, err
 	}
 	for _, layout := range layouts {
-		frames, err := enrollmentFrameCandidates(layout)
+		candidates, err := enrollmentKeyCandidates(layout)
 		if err != nil {
 			return result, err
 		}
-		for _, frame := range frames {
-			decoded, err := decryptSelectionSIDBPayload(encoded, frame.Key)
-			clear(frame.Key[:])
+		for _, candidate := range candidates {
+			decoded, err := decryptSelectionSIDBPayload(encoded, candidate.Key)
+			clear(candidate.Key[:])
 			if err != nil {
 				return result, err
 			}

@@ -68,9 +68,9 @@ flattened native selector.
 | Digest, pair, tail, writer | Typed Go algorithms are recovered and differential-tested. |
 | Account entry | Replaced by structural X.509 parsing and pinned-CA SUPF authentication. The legacy account-entry CFG has been removed. |
 | Bootstrap | Replaced by one typed semantic outer profile plus SIDB/hardware runtime fields. The legacy bootstrap CFG has been removed. |
-| Selection | The 192-byte body and 224-byte envelope are parsed structurally. Candidate state/frame transforms, SIDB-key production, the 59-block SIDB AES consumer, and authenticated candidate promotion are typed Go. Native selection orchestration is no longer executed by model recovery. |
-| Enrollment frame | The independent-key AES-shaped core and its separate nine-round suffix are normalized to a typed ten-layer AES-S-box SPN with affine 128-bit stages. Production no longer executes its generalized table model. |
-| SIDB | Container projection, candidate-frame-to-key production, and the 59-block AES consumer are typed. The frame output encoding cancels the producer input encoding; ten AES-S-box stages plus affine 128-bit maps now derive each candidate's AES key directly. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
+| Selection | The 192-byte body and 224-byte envelope are parsed structurally. Candidate state/key transforms, SIDB-key production, the 59-block SIDB AES consumer, and authenticated candidate promotion are typed Go. Native selection orchestration is no longer executed by model recovery. |
+| Enrollment frame | The independent-key AES-shaped core and its suffix are normalized to direct keyed AES S-box transitions and sparse `GF(2^8)` mixing layers. The larger generalized and affine-SPN models are test-only. |
+| SIDB | Container projection, candidate-state-to-key production, and the 59-block AES consumer are typed. The unused frame output encoding is gone and the final frame affine map is composed into the producer bridge. The legacy producer and per-enrollment DFA are no longer semantic requirements. |
 | SINF | Portable AES/model decoding exists. Decoded SIDB discovery, payload-to-`valu` arithmetic, both semantic class-value families, AES class join, exhaustive record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
 | Build portability | Both 993-byte and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, or per-enrollment DFA. The five-build account-entry static matrix is complete; downstream frame and SIDB-key differential validation remains open. |
@@ -78,12 +78,12 @@ flattened native selector.
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
 memory-layout adapters have been removed. The production recovery package now
-contains typed algorithms plus only the two normalized SPN data profiles used
-by the frame and SIDB-key stages.
+contains typed algorithms plus only the compact frame-AES and SIDB-key data
+profiles.
 
-Those production artifacts and symbols are build-neutral (`current-frame-spn`
-and `current-sidb-producer-spn`). The larger 26A428-labeled generalized model
-is test-only and remains solely as the independent normalization oracle.
+Those production artifacts and symbols are build-neutral (`current-frame-aes`
+and `current-sidb-producer-spn`). The larger 26A428-labeled generalized and SPN
+models are test-only and remain solely as independent normalization oracles.
 
 New captures contain only structural enrollment inputs. Collection no longer
 copies fairplayd, profiles its CFG, or records a daemon hash as a recovery
@@ -136,15 +136,16 @@ frame's sixteen arbitrary output encodings compose with the producer prefix's
 sixteen arbitrary input substitutions to sixteen affine byte maps. The nine
 middle rounds and the final key layer are all AES-S-box layers separated by
 affine 128-bit stages. The resulting producer profile is 43,392 bytes before
-gzip and 1,929 bytes compressed.
+gzip and 1,618 bytes compressed after composing the frame's final affine map
+into its bridge.
 
 The typed producer matched all one-byte and deterministic multi-byte controls
 at every recovered boundary, then reproduced 17 independently DFA-recovered
 AES keys exactly. A selected frame captured on the independent 26B118 machine
 also produced the same key SHA-256 as a fresh full DFA recovery. Production
-candidate enumeration now returns the state, portable frame, and derived SIDB
-key. No handler address, register carrier, stack slot, generated CFG, or DFA
-participates in that derivation.
+candidate enumeration now returns the semantic state and derived SIDB key; the
+unused protected frame encoding has been removed. No handler address, register
+carrier, stack slot, generated CFG, or DFA participates in that derivation.
 
 The downstream class join is no longer an opaque white box. Its exact natural
 path was isolated to 60 protected blocks. Coherent faults at its round-8,
@@ -304,15 +305,25 @@ by four byte permutations. Composing those maps gives the complete suffix as
 ten parallel AES-S-box layers separated by affine 128-bit stages, followed by
 one affine output stage and sixteen byte encodings.
 
-Production now executes that normalized SPN directly. Its checked profile is
-51,592 bytes before gzip and 17,024 bytes compressed, down from the 167,844-byte
-generalized table model. The old generalized model is test-only and serves as
-an independent oracle. Across 4,096 deterministic controls, the normalized SPN
-matches both its 16-byte output and its dispatcher exit word exactly. A direct
-DarkPhoenix run was also a useful negative: it reaches step 2 and fails the
-Tolhuizen condition because the unreduced final layer is groupwise rather than
-bytewise. The group reduction explains that failure; another DFA run is not
-needed.
+The remaining affine gauges are solved globally rather than selected one layer
+at a time. Each of the 36 four-byte components initially has 1,020 exact AES
+factorizations. Constraints at every shared byte boundary reduce every domain
+to four equivalent gauges. A coherent choice exposes eight direct keyed AES
+S-box transitions separated by nine sparse `GF(2^8)` mixing layers. The four
+apparent output masks are fixed coordinate encodings, not new nonlinear
+operations.
+
+Production now executes that compact AES-S-box/MDS form directly. Its checked
+profile is 4,940 bytes before gzip and 2,065 bytes compressed, down from the
+51,592-byte affine SPN and the original 167,844-byte generalized table model.
+The frame's unused diagnostic output encoding and protected dispatcher exit
+word are no longer production state. Its final affine output is composed into
+the SIDB-key producer bridge. The generalized and affine SPN models are
+test-only independent oracles. Across 4,096 deterministic controls, the
+compact form reproduces the exact affine-SPN state. A direct DarkPhoenix run
+was also a useful negative: it reaches step 2 and fails the Tolhuizen condition
+because the unreduced final layer is groupwise rather than bytewise. The gauge
+solve explains that failure; another DFA run is not needed.
 
 ## Cross-build evidence
 

@@ -62,21 +62,22 @@ go test ./internal/fairplay \
 Use an IPA containing exactly one current 448-byte private SINF for this
 control. Do not commit the model, IPA, SINF, credential, or converted output.
 
-## Normalized frame SPN profile
+## Compact frame AES profile
 
-The production frame transform uses AES S-boxes and affine 128-bit stages. It
-does not execute the generalized lookup-table model. Regenerate its public
-profile from the checked research model with:
+The production frame suffix uses direct keyed AES S-box transitions and nine
+sparse `GF(2^8)` mixing layers. The larger affine SPN is retained only as an
+independent test oracle. Verify all 4,096 deterministic controls with:
 
 ```sh
-UNFAIRPLAY_FRAME_SPN_OUTPUT="$PWD/internal/recovery/profiles/current-frame-spn.bin.gz" \
-go test ./internal/recovery -run '^TestWriteFrameSPNProfile$' -count=1
+go test ./internal/recovery -run '^TestFrameAESProfile$' -count=1
 ```
 
-Expected size: 17,024 bytes. Expected compressed SHA-256:
+Expected size: 2,065 bytes. Expected compressed SHA-256:
+`9d42fb362c39a1f5e1c152fb82fa371869afa0701bec3065b89fba10915af202`.
+The decoded checked profile is 4,940 bytes including its checksum, with
+SHA-256 `33b7a8b3d13d7d5d09d665f52f5f887c426bd04e119b604d09136585b2ae0945`.
+The test-only affine-SPN oracle remains 17,024 bytes with SHA-256
 `f1cb13c0056a4125387f98a575c21cc6129438580e48c76373e333df614ea963`.
-The 51,592-byte decoded profile has SHA-256
-`22aabdb275527d924176145147a372bb3c5e4325e5060a345833a2302b1af89c`.
 
 ## Normalized SIDB producer SPN
 
@@ -92,7 +93,7 @@ UNFAIRPLAY_SIDB_PRODUCER_SPN_OUTPUT="$PWD/internal/recovery/profiles/current-sid
 go test ./internal/recovery -run '^TestSIDBProducerSPNResearch$' -count=1
 ```
 
-Expected size: 1,929 bytes. Expected compressed SHA-256:
-`0b1ce0c897216723802c38dcffd81875cf69afd1d2a164e80cb1391d619733ed`.
+Expected size: 1,618 bytes. Expected compressed SHA-256:
+`7f31d8e3b36bcd2981ff2edd8d742d83616c925a9a5c744c868af8e576edc904`.
 The 43,392-byte decoded profile has SHA-256
-`3522ed6e1621f8821ce49a179882ac90d046fc62023d77287e174c5333609fc1`.
+`f9362ea765534d3a3e578f5e40d3814d8cfa57dc67306aadf0e0e698b4344954`.

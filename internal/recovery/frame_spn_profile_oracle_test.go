@@ -10,7 +10,7 @@ import (
 	"io"
 )
 
-//go:embed profiles/current-frame-spn.bin.gz
+//go:embed profiles/macos26a428-frame-spn-oracle.bin.gz
 var frameSPNProfileCompressed []byte
 
 var currentFrameSPN = func() frameSPNModel {

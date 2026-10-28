@@ -38,7 +38,7 @@ func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
 	if err != nil || iterations != selectionSIDBExtendedIterations {
 		t.Fatalf("derive extended selection source = %d/%v", iterations, err)
 	}
-	frames, err := enrollmentFrameCandidates(source[selectionSourcePrefixBytes:])
+	keyCandidates, err := enrollmentKeyCandidates(source[selectionSourcePrefixBytes:])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
 	for index := range plaintext {
 		plaintext[index] = byte(index*31 + 19)
 	}
-	fillSyntheticSelectionSIDBContainer(t, container, selectionSIDBExtendedPayloadOffset, plaintext, frames[selectedSlot].Key)
+	fillSyntheticSelectionSIDBContainer(t, container, selectionSIDBExtendedPayloadOffset, plaintext, keyCandidates[selectedSlot].Key)
 	candidates, _, gotIterations, err := deriveCurrentSelectionRegistryCandidates(
 		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
 	)

@@ -8,7 +8,7 @@ import (
 
 func TestSIDBProducerSPNProfile(t *testing.T) {
 	digest := sha256.Sum256(sidbProducerSPNProfileCompressed)
-	if got := hex.EncodeToString(digest[:]); got != "0b1ce0c897216723802c38dcffd81875cf69afd1d2a164e80cb1391d619733ed" {
+	if got := hex.EncodeToString(digest[:]); got != "7f31d8e3b36bcd2981ff2edd8d742d83616c925a9a5c744c868af8e576edc904" {
 		t.Fatalf("SIDB producer SPN profile digest = %s", got)
 	}
 	if len(currentSIDBProducerSPN.stages) != 10 {

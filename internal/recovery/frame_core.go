@@ -81,8 +81,3 @@ func frameCore(input [16]byte) [16]byte {
 	}
 	return state
 }
-
-func frameTransform(input [16]byte) ([16]byte, error) {
-	output, _ := currentFrameSPN.apply(frameCore(input))
-	return output, nil
-}

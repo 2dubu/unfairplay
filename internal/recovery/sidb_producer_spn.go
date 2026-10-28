@@ -101,6 +101,6 @@ func parseSIDBProducerSPNProfile(encoded []byte) (sidbProducerSPN, error) {
 }
 
 func deriveSelectionSIDBKey(state [16]byte) [16]byte {
-	frameState, _ := currentFrameSPN.applyInternal(frameCore(state))
+	frameState := currentFrameAES.apply(frameCore(state))
 	return currentSIDBProducerSPN.apply(frameState)
 }

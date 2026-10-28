@@ -320,6 +320,7 @@ func TestSIDBProducerSPNResearch(t *testing.T) {
 			t.Fatalf("bridge control %d = %x, want %x", index, got, want)
 		}
 	}
+	legacyBridge := bridge
 	stages := make([]frameSPNStage, len(rounds)-1)
 	for index, round := range rounds[1:] {
 		stage, err := normalizeFrameRound(round)
@@ -367,13 +368,16 @@ func TestSIDBProducerSPNResearch(t *testing.T) {
 		}
 	}
 	stages = append(stages, keyStage)
-	applyProducer := func(input [16]byte) [16]byte {
-		state := bridge.apply(input)
+	applyWithBridge := func(activeBridge frameAffine128, input [16]byte) [16]byte {
+		state := activeBridge.apply(input)
 		for _, stage := range stages {
 			state = stage.output.apply(frameSBoxState(stage.input.apply(state)))
 		}
 		return state
 	}
+	legacyApplyProducer := func(input [16]byte) [16]byte { return applyWithBridge(legacyBridge, input) }
+	bridge = composeFrameAffine(legacyBridge, currentFrameSPN.finalOutput)
+	applyProducer := func(input [16]byte) [16]byte { return applyWithBridge(bridge, input) }
 	for index := range 4096 {
 		digest := sha256.Sum256([]byte{0x50, 0x52, 0x4f, 0x44, byte(index >> 8), byte(index)})
 		var input [16]byte
@@ -414,7 +418,7 @@ func TestSIDBProducerSPNResearch(t *testing.T) {
 			for position, value := range frame {
 				internal[position] = inverseOutput[position][value]
 			}
-			if got := applyProducer(internal); !bytes.Equal(got[:], key) {
+			if got := legacyApplyProducer(internal); !bytes.Equal(got[:], key) {
 				t.Fatalf("key report %d = %x, want %x", index, got, key)
 			}
 		}
