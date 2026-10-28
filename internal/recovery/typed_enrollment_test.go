@@ -15,12 +15,11 @@ func TestTypedEnrollmentAlgorithmIdentity(t *testing.T) {
 }
 
 func TestEnrollmentPackForPrecursor(t *testing.T) {
-	profile := portableCurrentSemanticProfile()
 	var precursor [16]byte
 	for index := range precursor {
 		precursor[index] = byte(index*17 + 3)
 	}
-	pack, err := enrollmentPackForPrecursor(profile, typedEnrollmentAlgorithmIdentity, 0x12345678, 2, precursor)
+	pack, err := enrollmentPackForPrecursor(typedEnrollmentAlgorithmIdentity, 0x12345678, 2, precursor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,8 +31,14 @@ func TestEnrollmentPackForPrecursor(t *testing.T) {
 		t.Fatal("typed enrollment pack envelope is invalid")
 	}
 	wantKey := currentSINFModelKeyFromPrecursor(precursor)
-	if !bytes.Equal(pack[56:72], wantKey[:]) || !bytes.Equal(pack[72:88], profile.currentSINFWhite[:]) ||
-		!bytes.Equal(pack[88:], profile.currentSINFInput[:]) {
+	if !bytes.Equal(pack[56:72], wantKey[:]) || !bytes.Equal(pack[72:88], make([]byte, 16)) {
 		t.Fatal("typed enrollment pack payload is invalid")
+	}
+	for position := range 16 {
+		for value := range 256 {
+			if pack[88+position*256+value] != byte(value) {
+				t.Fatalf("typed enrollment identity table %d value %d is invalid", position, value)
+			}
+		}
 	}
 }

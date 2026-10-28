@@ -81,6 +81,10 @@ memory-layout adapters have been removed. The production recovery package now
 contains typed algorithms plus only the two normalized SPN data profiles used
 by the frame and SIDB-key stages.
 
+Those production artifacts and symbols are build-neutral (`current-frame-spn`
+and `current-sidb-producer-spn`). The larger 26A428-labeled generalized model
+is test-only and remains solely as the independent normalization oracle.
+
 New captures contain only structural enrollment inputs. Collection no longer
 copies fairplayd, profiles its CFG, or records a daemon hash as a recovery
 requirement. Recovery no longer accepts a reference-binary override. Legacy
@@ -202,6 +206,13 @@ aligned within that array. Production obtains each registry directly from the
 typed SIDB candidate decryptor, deduplicates its contents, and does not retain
 a native allocation address or record offset.
 
+The current-SINF external codec is identity after normalization. Its protected
+form XORed each byte with a position mask and then used an inverse table that
+XORed the same mask again. Production now copies the authenticated private
+source directly and emits zero whitening plus canonical identity tables for
+backward-compatible version-2 models. The former semantic-profile object and
+its 4,112 bytes of encoding data have been removed.
+
 Go evaluates the fixed current class value and every value in the complete
 32,767-element workspace-seed domain against the typed `valu` and AES class
 stages for every structurally parsed SIDB record and all five valid record
@@ -214,7 +225,7 @@ has replaced the native selector and the stack-offset SINF-material adapter in
 model recovery. On the independent 26B118 control, 20 bounded registry-shaped
 objects collapsed to one record/window candidate, produced a byte-identical
 enrollment model with SHA-256
-`8f51445492f796d16033d8dec4ae2c91b22be4fc5c10c346b6f4156612851c8c`,
+`98c29933c57e3425f22005bfaf43fac684ef6b671629f76361cb1dd502147575`,
 and decrypted 39 images and 10,080 pages. The decrypted IPA SHA-256 remained
 `73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`;
 no extracted fallback block ran.
@@ -234,7 +245,7 @@ registry, and a 16-byte trailer. Its 39-byte codec drives 427 outer iterations;
 the registry uses the same typed SIDB input, output, and chaining masks as the
 compact layout. On the independent 26A434 control, the typed path produced a
 byte-identical enrollment model with SHA-256
-`90cc761860b803ccfb0b82b202e10e5d479d1d84de058c615d24d3c95b72c9c8`,
+`45c6529775ecb96e5bb3449324ab5b751e2fdecf1699724784007ec93fde372a`,
 selected one authenticated record/window from 26 decoded registry candidates,
 and decrypted 10 images and 11,004 pages. The current decryption output had
 SHA-256 `0eafcbac1502c38aeaa069a627e2d6592f0f2a19b42222361c392a85d77f79ea`;
@@ -269,7 +280,7 @@ account/bootstrap CFG, and stack-offset adapter dependencies have been removed.
 
 On the independent 26B118 current-layout control, this zero-offset path still
 produced byte-identical enrollment-model SHA-256
-`8f51445492f796d16033d8dec4ae2c91b22be4fc5c10c346b6f4156612851c8c`,
+`98c29933c57e3425f22005bfaf43fac684ef6b671629f76361cb1dd502147575`,
 decrypted 39 images and 10,080 pages, and retained decrypted-IPA SHA-256
 `73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`.
 No native or extracted block ran.
@@ -309,6 +320,10 @@ build support:
 
 At least five independently hashed stable release and update builds must
 receive stage-level differential validation before this work is complete.
+The cross-generation control set starts with macOS 13.0 (22A380), macOS 14.0
+(23A344), and macOS 15.0 (24A335), then adds two stable macOS 26/27 builds.
+These binaries are research controls: inclusion here is not a claim that their
+enrollment layouts are already supported.
 
 ## Proof requirements
 

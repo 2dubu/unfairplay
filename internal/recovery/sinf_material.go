@@ -1,7 +1,7 @@
 package recovery
 
-// The final native material writer applies this build-global byte mask to the
-// selected 16-byte precursor. It contains no account material.
+// The final protected material writer applies this fixed semantic byte mask
+// to the selected 16-byte precursor. It contains no account material.
 var currentSINFMaterialMask = [16]byte{
 	0xa3, 0x14, 0x69, 0x2b, 0x4e, 0x24, 0xba, 0x48,
 	0xfc, 0x07, 0x9a, 0x34, 0x7e, 0xf2, 0x2a, 0xe5,

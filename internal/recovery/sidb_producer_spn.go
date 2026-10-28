@@ -23,10 +23,10 @@ func (model sidbProducerSPN) apply(input [16]byte) [16]byte {
 	return state
 }
 
-//go:embed profiles/macos26a428-sidb-producer-spn.bin.gz
+//go:embed profiles/current-sidb-producer-spn.bin.gz
 var sidbProducerSPNProfileCompressed []byte
 
-var sidbProducerSPN26A428 = func() sidbProducerSPN {
+var currentSIDBProducerSPN = func() sidbProducerSPN {
 	stream, err := gzip.NewReader(bytes.NewReader(sidbProducerSPNProfileCompressed))
 	if err != nil {
 		panic(fmt.Sprintf("decompress SIDB producer SPN profile: %v", err))
@@ -101,6 +101,6 @@ func parseSIDBProducerSPNProfile(encoded []byte) (sidbProducerSPN, error) {
 }
 
 func deriveSelectionSIDBKey(state [16]byte) [16]byte {
-	frameState, _ := frameSPN26A428.applyInternal(frameCore(state))
-	return sidbProducerSPN26A428.apply(frameState)
+	frameState, _ := currentFrameSPN.applyInternal(frameCore(state))
+	return currentSIDBProducerSPN.apply(frameState)
 }

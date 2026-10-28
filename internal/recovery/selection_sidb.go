@@ -46,9 +46,9 @@ func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
 	}
 }
 
-// These are build-global external encodings, not account material. The native
-// decoder applies each encoding as a byte-wise XOR around an ordinary AES-128
-// decryption.
+// These are fixed semantic external encodings, not account or build material.
+// The protected decoder applies each encoding as a byte-wise XOR around an
+// ordinary AES-128 decryption.
 var selectionSIDBInputMask = [selectionSIDBBlockBytes]byte{
 	0x0c, 0xc2, 0xa2, 0xea, 0xe7, 0xb1, 0x7b, 0x94,
 	0xb7, 0xd8, 0x82, 0x58, 0x10, 0x4b, 0xc5, 0xad,
@@ -87,7 +87,7 @@ func decodeSelectionSIDBContainer(input []byte) ([selectionSIDBPayloadBytes]byte
 	return output, nil
 }
 
-// decryptSelectionSIDBPayload replaces the native 59-block white-box loop
+// decryptSelectionSIDBPayload replaces the protected 59-block white-box loop
 // once its per-enrollment AES key has been recovered by the upstream producer.
 func decryptSelectionSIDBPayload(input [selectionSIDBPayloadBytes]byte, key [selectionSIDBBlockBytes]byte) ([selectionSIDBPayloadBytes]byte, error) {
 	var output [selectionSIDBPayloadBytes]byte

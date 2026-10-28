@@ -69,7 +69,7 @@ does not execute the generalized lookup-table model. Regenerate its public
 profile from the checked research model with:
 
 ```sh
-UNFAIRPLAY_FRAME_SPN_OUTPUT="$PWD/internal/recovery/profiles/macos26a428-frame-spn.bin.gz" \
+UNFAIRPLAY_FRAME_SPN_OUTPUT="$PWD/internal/recovery/profiles/current-frame-spn.bin.gz" \
 go test ./internal/recovery -run '^TestWriteFrameSPNProfile$' -count=1
 ```
 
@@ -80,14 +80,15 @@ The 51,592-byte decoded profile has SHA-256
 
 ## Normalized SIDB producer SPN
 
-The candidate-frame-to-SIDB-key producer is generated only from build-global
-chosen-state controls. Its private research files are not committed:
+The candidate-frame-to-SIDB-key producer is a normalized semantic function
+derived from chosen-state controls. It contains no daemon addresses or
+register state. Its private research files are not committed:
 
 ```sh
 UNFAIRPLAY_SIDB_PRODUCER_PROFILE=/private/path/producer.bin.gz \
 UNFAIRPLAY_SIDB_KEY_LAYER_PROFILE=/private/path/key-layer.bin \
 UNFAIRPLAY_SIDB_KEY_REPORT_INPUT=/private/path/key-controls.json \
-UNFAIRPLAY_SIDB_PRODUCER_SPN_OUTPUT="$PWD/internal/recovery/profiles/macos26a428-sidb-producer-spn.bin.gz" \
+UNFAIRPLAY_SIDB_PRODUCER_SPN_OUTPUT="$PWD/internal/recovery/profiles/current-sidb-producer-spn.bin.gz" \
 go test ./internal/recovery -run '^TestSIDBProducerSPNResearch$' -count=1
 ```
 

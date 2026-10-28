@@ -1,13 +1,12 @@
 package recovery
 
-// optionalTransform26A428 evaluates the semantic form of the optional outer
-// hook for the runtime domain observed in the 26A428 enrollment profile.
+// optionalTransform evaluates the semantic form of the optional outer stage.
 //
-// The lifted kernel accepts arbitrary register values, but the natural path
-// reaches it with a fixed selector and a fixed upper input word. Keep those
+// The recovered relation accepts arbitrary words, but the natural path reaches
+// it with a fixed selector and a fixed upper input word. Keep those
 // constraints explicit until another independent enrollment proves a wider
 // contract.
-func optionalTransform26A428(input, selector uint32) (uint32, bool) {
+func optionalTransform(input, selector uint32) (uint32, bool) {
 	const (
 		inputBase     = uint32(0x976dec00)
 		selectorValue = uint32(0x5d5c)
@@ -31,8 +30,8 @@ func optionalTransform26A428(input, selector uint32) (uint32, bool) {
 	return inputBase + ((value + delta) & 0x1ff), true
 }
 
-// outerOptionalActive is the natural dispatch predicate recovered for the
-// 26A428 profile. Values in the upper byte half select the optional handler;
+// outerOptionalActive is the semantic dispatch predicate. Values in the upper
+// byte half select the optional stage;
 // 0x0d is its single low-half control value.
 func outerOptionalActive(input uint32) bool {
 	return input&0xffffff00 == 0x976dec00 && (byte(input) >= 0x80 || byte(input) == 0x0d)

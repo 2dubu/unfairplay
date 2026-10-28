@@ -1,14 +1,14 @@
 package recovery
 
-// writerTransform26A428 is the semantic form of the 140-byte writer hook for
-// the proven 26A428 runtime domain. controls contains the per-byte words
+// writerTransform is the semantic form of the 140-byte current-enrollment
+// writer stage. controls contains the per-byte words
 // supplied by the enclosing outer stage.
 //
-// The native hook surrounds each XOR with three byte-local MBA networks. Over
-// their complete 8-bit domains those networks are exactly XOR 0x9c, XOR 0x3b,
-// and XOR 0x1b. Folding them with the native XOR 0x49 and XOR 0x27 constants
-// leaves the single 0xd2 constant below.
-func writerTransform26A428(table, controls []uint32, seed, tableIndex uint32) ([140]byte, bool) {
+// The protected implementation surrounds each XOR with three byte-local MBA
+// networks. Over their complete 8-bit domains those networks are exactly XOR
+// 0x9c, XOR 0x3b, and XOR 0x1b. Folding them with the surrounding XOR 0x49 and
+// XOR 0x27 constants leaves the single 0xd2 constant below.
+func writerTransform(table, controls []uint32, seed, tableIndex uint32) ([140]byte, bool) {
 	var output [140]byte
 	if len(table) != pairTransformTableWords || len(controls) != len(output) || tableIndex >= pairTransformTableWords {
 		return output, false

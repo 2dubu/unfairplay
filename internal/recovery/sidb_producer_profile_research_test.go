@@ -295,7 +295,7 @@ func TestSIDBProducerSPNResearch(t *testing.T) {
 	for position := range 16 {
 		var combined [256]byte
 		for value := range 256 {
-			combined[value] = prefixNormalized.substitutions[position][frameSPN26A428.outputEncoding[position][value]]
+			combined[value] = prefixNormalized.substitutions[position][currentFrameSPN.outputEncoding[position][value]]
 		}
 		if !affineByteMap(combined) {
 			t.Fatalf("frame-to-producer byte %d does not reduce to an affine map", position)
@@ -313,7 +313,7 @@ func TestSIDBProducerSPNResearch(t *testing.T) {
 		copy(input[:], digest[:16])
 		var encoded [16]byte
 		for position, value := range input {
-			encoded[position] = frameSPN26A428.outputEncoding[position][value]
+			encoded[position] = currentFrameSPN.outputEncoding[position][value]
 		}
 		want := sidbPrefixToSemantic(prefix.apply(encoded))
 		if got := bridge.apply(input); got != want {
@@ -378,7 +378,7 @@ func TestSIDBProducerSPNResearch(t *testing.T) {
 		digest := sha256.Sum256([]byte{0x50, 0x52, 0x4f, 0x44, byte(index >> 8), byte(index)})
 		var input [16]byte
 		copy(input[:], digest[:16])
-		if got, want := sidbProducerSPN26A428.apply(input), applyProducer(input); got != want {
+		if got, want := currentSIDBProducerSPN.apply(input), applyProducer(input); got != want {
 			t.Fatalf("production producer control %d = %x, want %x", index, got, want)
 		}
 	}
@@ -396,7 +396,7 @@ func TestSIDBProducerSPNResearch(t *testing.T) {
 			t.Fatal(err)
 		}
 		var inverseOutput [16][256]byte
-		for position, table := range frameSPN26A428.outputEncoding {
+		for position, table := range currentFrameSPN.outputEncoding {
 			for input, output := range table {
 				inverseOutput[position][output] = byte(input)
 			}

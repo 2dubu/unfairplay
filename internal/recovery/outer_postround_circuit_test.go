@@ -241,7 +241,7 @@ func applyOuterPostRoundWithSeedCircuit(table *[outerTableWords]uint32, base uin
 	}
 	state.Words[0], state.Words[2] = x16, x14
 	if seed != nil {
-		output, ok := writerTransform26A428(table[:], controls[:], writerSeed, writerTableIndex)
+		output, ok := writerTransform(table[:], controls[:], writerSeed, writerTableIndex)
 		if !ok {
 			return false
 		}

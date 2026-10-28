@@ -29,11 +29,8 @@ func currentSINFPrivateSource(sinf []byte) ([]byte, error) {
 	return sinf[privateStart:privateEnd], nil
 }
 
-func validateCurrentSINFPrecursor(sinf []byte, profile *semanticBuildProfile, precursor [16]byte) (bool, error) {
-	if profile == nil {
-		return false, fmt.Errorf("semantic enrollment profile is unavailable")
-	}
-	logical, ciphertextBytes, trailerBytes, err := currentSINFLogicalSource(sinf, profile)
+func validateCurrentSINFPrecursor(sinf []byte, precursor [16]byte) (bool, error) {
+	logical, ciphertextBytes, trailerBytes, err := currentSINFLogicalSource(sinf)
 	if err != nil {
 		return false, err
 	}
@@ -81,10 +78,7 @@ func validateCurrentSINFPrecursor(sinf []byte, profile *semanticBuildProfile, pr
 	return cursor == len(plaintext), nil
 }
 
-func currentSINFLogicalSource(sinf []byte, profile *semanticBuildProfile) ([]byte, int, int, error) {
-	if profile == nil {
-		return nil, 0, 0, fmt.Errorf("semantic enrollment profile is unavailable")
-	}
+func currentSINFLogicalSource(sinf []byte) ([]byte, int, int, error) {
 	source, err := currentSINFPrivateSource(sinf)
 	if err != nil {
 		return nil, 0, 0, err
@@ -105,12 +99,7 @@ func currentSINFLogicalSource(sinf []byte, profile *semanticBuildProfile) ([]byt
 		}
 	}
 
-	logical := make([]byte, encodedBytes)
-	for index, value := range source[:encodedBytes] {
-		position := index % aes.BlockSize
-		external := value ^ profile.currentSINFWhite[position]
-		logical[index] = profile.currentSINFInput[position*256+int(external)]
-	}
+	logical := append([]byte(nil), source[:encodedBytes]...)
 	return logical, ciphertextBytes, trailerBytes, nil
 }
 
@@ -119,9 +108,9 @@ type currentSINFModelKeyProbe struct {
 	ciphertext [aes.BlockSize]byte
 }
 
-func newCurrentSINFModelKeyProbe(sinf []byte, profile *semanticBuildProfile) (currentSINFModelKeyProbe, error) {
+func newCurrentSINFModelKeyProbe(sinf []byte) (currentSINFModelKeyProbe, error) {
 	var result currentSINFModelKeyProbe
-	logical, _, _, err := currentSINFLogicalSource(sinf, profile)
+	logical, _, _, err := currentSINFLogicalSource(sinf)
 	if err != nil {
 		return result, err
 	}
@@ -144,9 +133,9 @@ func (probe currentSINFModelKeyProbe) accepts(modelKey [aes.BlockSize]byte) (boo
 	return bytes.Equal(first[:8], []byte{0, 0, 0, 24, 'k', 'e', 'y', ' '}), nil
 }
 
-func selectAuthenticatedClassPrecursor(sinf []byte, profile *semanticBuildProfile, registries []decodedSIDBRegistryCandidate) (authenticatedClassPrecursor, error) {
+func selectAuthenticatedClassPrecursor(sinf []byte, registries []decodedSIDBRegistryCandidate) (authenticatedClassPrecursor, error) {
 	var selected authenticatedClassPrecursor
-	probe, err := newCurrentSINFModelKeyProbe(sinf, profile)
+	probe, err := newCurrentSINFModelKeyProbe(sinf)
 	if err != nil {
 		return selected, err
 	}
@@ -209,7 +198,7 @@ func selectAuthenticatedClassPrecursor(sinf []byte, profile *semanticBuildProfil
 				precursor[index] = applyCurrentFairPlayByteMask(modelKey[index])
 			}
 			clear(modelKey[:])
-			accepted, err := validateCurrentSINFPrecursor(sinf, profile, precursor)
+			accepted, err := validateCurrentSINFPrecursor(sinf, precursor)
 			if err != nil {
 				clear(precursor[:])
 				return selected, err

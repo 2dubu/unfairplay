@@ -11,8 +11,8 @@ func TestSIDBProducerSPNProfile(t *testing.T) {
 	if got := hex.EncodeToString(digest[:]); got != "0b1ce0c897216723802c38dcffd81875cf69afd1d2a164e80cb1391d619733ed" {
 		t.Fatalf("SIDB producer SPN profile digest = %s", got)
 	}
-	if len(sidbProducerSPN26A428.stages) != 10 {
-		t.Fatalf("SIDB producer SPN has %d stages", len(sidbProducerSPN26A428.stages))
+	if len(currentSIDBProducerSPN.stages) != 10 {
+		t.Fatalf("SIDB producer SPN has %d stages", len(currentSIDBProducerSPN.stages))
 	}
 	hash := sha256.New()
 	for index := range 4096 {

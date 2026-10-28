@@ -124,7 +124,7 @@ func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state 
 	optionalInput := outerOptionalDecode(table[secondOptionalIndex])
 	state.OptionalWord = optionalInput
 	if outerOptionalActive(optionalInput) {
-		transformed, ok := optionalTransform26A428(optionalInput, 0x5d5c)
+		transformed, ok := optionalTransform(optionalInput, 0x5d5c)
 		if !ok {
 			return 0, false
 		}
@@ -144,14 +144,14 @@ func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state 
 	oddSeed := advanceOuterSeed(initialSeed, (144*base+129)%outerTableWords)
 	evenIndex := (evenSeed + 0xf587d089) % outerTableWords
 	oddIndex := (oddSeed + 0xf587d089) % outerTableWords
-	pair, ok := pairTransform26A428(table[:], hookSeeds.Even, hookSeeds.Odd, evenIndex, oddIndex)
+	pair, ok := pairTransform(table[:], hookSeeds.Even, hookSeeds.Odd, evenIndex, oddIndex)
 	if !ok {
 		return 0, false
 	}
 	copy(state.Source[32:], pair[:])
 	tailSeed := advanceOuterSeed(initialSeed, (139*base)%outerTableWords)
 	tailIndex := (tailSeed + 0xf587d089) % outerTableWords
-	tail, ok := tailTransform26A428(table[:], hookSeeds.Tail, tailIndex)
+	tail, ok := tailTransform(table[:], hookSeeds.Tail, tailIndex)
 	if !ok {
 		return 0, false
 	}

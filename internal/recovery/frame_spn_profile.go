@@ -10,10 +10,10 @@ import (
 	"io"
 )
 
-//go:embed profiles/macos26a428-frame-spn.bin.gz
+//go:embed profiles/current-frame-spn.bin.gz
 var frameSPNProfileCompressed []byte
 
-var frameSPN26A428 = func() frameSPNModel {
+var currentFrameSPN = func() frameSPNModel {
 	stream, err := gzip.NewReader(bytes.NewReader(frameSPNProfileCompressed))
 	if err != nil {
 		panic(fmt.Sprintf("decompress frame SPN profile: %v", err))

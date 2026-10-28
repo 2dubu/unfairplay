@@ -1,8 +1,8 @@
 package recovery
 
-// tailTransform26A428 is the semantic form of the 140-byte tail hook for the
-// proven 26A428 runtime domain.
-func tailTransform26A428(table []uint32, seed, tableIndex uint32) ([140]byte, bool) {
+// tailTransform is the semantic form of the 140-byte current-enrollment tail
+// stage.
+func tailTransform(table []uint32, seed, tableIndex uint32) ([140]byte, bool) {
 	var output [140]byte
 	if len(table) != pairTransformTableWords || tableIndex >= pairTransformTableWords {
 		return output, false

@@ -4,11 +4,11 @@ import "fmt"
 
 const selectionStateSlotCount = 14
 
-// The native state-slot consumer uses one slot-specific baseline AddRoundKey,
+// The typed state-slot transform uses one slot-specific baseline AddRoundKey,
 // followed by nine shared rounds. Each later slot folds the previous output's
 // deviation from its zero-input baseline into this first key. These are
-// build-global constants and contain no account material. The first-round
-// values already include the native repeating input XOR, so the function
+// semantic constants and contain no account or build material. The first-round
+// values already include the protected repeating input XOR, so the function
 // accepts the raw 192/224-byte source.
 var selectionStateFirstRoundKeys = [selectionStateSlotCount][16]byte{
 	{0x31, 0xbf, 0x3f, 0xeb, 0x8f, 0xb4, 0x5d, 0xc2, 0x76, 0xeb, 0x98, 0xec, 0x39, 0x63, 0xee, 0x84},

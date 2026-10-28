@@ -55,7 +55,7 @@ func enrollmentSINFSelector(blob []byte) (uint32, uint32, error) {
 	return values[0], values[1], nil
 }
 
-func currentEnrollmentPack(files map[string][]byte, profile *semanticBuildProfile, registries []decodedSIDBRegistryCandidate) ([]byte, error) {
+func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegistryCandidate) ([]byte, error) {
 	var sinf []byte
 	for suffix, data := range files {
 		if strings.HasSuffix(suffix, ".sinf") {
@@ -72,22 +72,16 @@ func currentEnrollmentPack(files map[string][]byte, profile *semanticBuildProfil
 	if err != nil {
 		return nil, err
 	}
-	if profile == nil {
-		return nil, fmt.Errorf("semantic enrollment profile is unavailable")
-	}
-	selected, err := selectAuthenticatedClassPrecursor(sinf, profile, registries)
+	selected, err := selectAuthenticatedClassPrecursor(sinf, registries)
 	if err != nil {
 		return nil, err
 	}
-	pack, err := enrollmentPackForPrecursor(profile, typedEnrollmentAlgorithmIdentity, user, keyID, selected.Precursor)
+	pack, err := enrollmentPackForPrecursor(typedEnrollmentAlgorithmIdentity, user, keyID, selected.Precursor)
 	clear(selected.Precursor[:])
 	return pack, err
 }
 
-func enrollmentPackForPrecursor(profile *semanticBuildProfile, algorithmIdentity [32]byte, user, keyID uint32, precursor [16]byte) ([]byte, error) {
-	if profile == nil {
-		return nil, fmt.Errorf("semantic enrollment profile is unavailable")
-	}
+func enrollmentPackForPrecursor(algorithmIdentity [32]byte, user, keyID uint32, precursor [16]byte) ([]byte, error) {
 	pack := make([]byte, 0, typedEnrollmentModelBytes)
 	pack = append(pack, []byte("FPSENR2\x00")...)
 	var word [4]byte
@@ -102,8 +96,12 @@ func enrollmentPackForPrecursor(profile *semanticBuildProfile, algorithmIdentity
 	pack = append(pack, word[:]...)
 	modelKey := currentSINFModelKeyFromPrecursor(precursor)
 	pack = append(pack, modelKey[:]...)
-	pack = append(pack, profile.currentSINFWhite[:]...)
-	pack = append(pack, profile.currentSINFInput[:]...)
+	pack = append(pack, make([]byte, 16)...)
+	for range 16 {
+		for value := range 256 {
+			pack = append(pack, byte(value))
+		}
+	}
 	clear(modelKey[:])
 	if len(pack) != typedEnrollmentModelBytes {
 		clear(pack)

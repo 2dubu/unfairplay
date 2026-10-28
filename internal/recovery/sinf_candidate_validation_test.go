@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
@@ -15,7 +16,26 @@ func syntheticSINFAtom(name string, payload []byte) []byte {
 	return result
 }
 
-func syntheticCurrentSINFForPrecursor(t *testing.T, profile *semanticBuildProfile, precursor [16]byte) []byte {
+func TestCurrentSINFLogicalSourceIsIdentity(t *testing.T) {
+	var precursor [16]byte
+	for index := range precursor {
+		precursor[index] = byte(index*13 + 7)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	source, err := currentSINFPrivateSource(sinf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logical, _, _, err := currentSINFLogicalSource(sinf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(logical, source[:len(logical)]) {
+		t.Fatal("current-SINF logical source is not the authenticated private source")
+	}
+}
+
+func syntheticCurrentSINFForPrecursor(t *testing.T, precursor [16]byte) []byte {
 	t.Helper()
 	var plaintext []byte
 	for index, atom := range []struct {
@@ -43,27 +63,13 @@ func syntheticCurrentSINFForPrecursor(t *testing.T, profile *semanticBuildProfil
 	copy(logical, iv[:])
 	cipher.NewCBCEncrypter(block, iv[:]).CryptBlocks(logical[aes.BlockSize:], plaintext[:416])
 	protected := make([]byte, 440)
-	for index, value := range logical {
-		position := index % aes.BlockSize
-		encoded := -1
-		for candidate, decoded := range profile.currentSINFInput[position*256 : (position+1)*256] {
-			if decoded == value {
-				encoded = candidate
-				break
-			}
-		}
-		if encoded < 0 {
-			t.Fatalf("no current-SINF encoding for position %d value %#02x", position, value)
-		}
-		protected[index] = byte(encoded) ^ profile.currentSINFWhite[position]
-	}
+	copy(protected, logical)
 	fields := append(syntheticSINFAtom("user", []byte{0x12, 0x34, 0x56, 0x78}), syntheticSINFAtom("key ", []byte{0, 0, 0, 2})...)
 	fields = append(fields, syntheticSINFAtom("priv", protected)...)
 	return syntheticSINFAtom("sinf", syntheticSINFAtom("schi", fields))
 }
 
 func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
-	profile := portableCurrentSemanticProfile()
 	data := make([]byte, decodedSIDBRecordBytes+decodedSIDBFooterBytes)
 	for index := range data {
 		data[index] = byte(index*31 + 7)
@@ -77,14 +83,14 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sinf := syntheticCurrentSINFForPrecursor(t, profile, precursor)
-	accepted, err := validateCurrentSINFPrecursor(sinf, profile, precursor)
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	accepted, err := validateCurrentSINFPrecursor(sinf, precursor)
 	if err != nil || !accepted {
 		t.Fatalf("correct precursor rejected: accepted=%v err=%v", accepted, err)
 	}
 	wrong := precursor
 	wrong[0] ^= 1
-	accepted, err = validateCurrentSINFPrecursor(sinf, profile, wrong)
+	accepted, err = validateCurrentSINFPrecursor(sinf, wrong)
 	if err != nil || accepted {
 		t.Fatalf("wrong precursor accepted: accepted=%v err=%v", accepted, err)
 	}
@@ -99,7 +105,7 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 		{Registry: registry, Data: data},
 		{Registry: falseRegistry, Data: falseData},
 	}
-	selected, err := selectAuthenticatedClassPrecursor(sinf, profile, registries)
+	selected, err := selectAuthenticatedClassPrecursor(sinf, registries)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +115,6 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 }
 
 func TestSelectAuthenticatedWorkspaceClassPrecursor(t *testing.T) {
-	profile := portableCurrentSemanticProfile()
 	data := make([]byte, 2*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
 	for index := range data {
 		data[index] = byte(index*43 + 17)
@@ -126,8 +131,8 @@ func TestSelectAuthenticatedWorkspaceClassPrecursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sinf := syntheticCurrentSINFForPrecursor(t, profile, precursor)
-	selected, err := selectAuthenticatedClassPrecursor(sinf, profile, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}})
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	selected, err := selectAuthenticatedClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}})
 	if err != nil {
 		t.Fatal(err)
 	}

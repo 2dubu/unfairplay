@@ -1,8 +1,8 @@
 package recovery
 
-// frameRoundKeys are build-global constants, not account material. They are
-// the ten independent AddRoundKey values recovered from the 26A428 frame
-// mixer. This is an AES-shaped SPN, not standard AES: every round includes
+// frameRoundKeys are semantic constants, not account or build material. They
+// are the ten independent AddRoundKey values in the enrollment-frame mixer.
+// This is an AES-shaped SPN, not standard AES: every round includes
 // MixColumns and the keys do not use the AES schedule.
 var frameRoundKeys = [10][16]byte{
 	{0x45, 0xda, 0x26, 0xeb, 0x35, 0xe7, 0x30, 0x12, 0x1e, 0x00, 0x0c, 0xb3, 0x8f, 0xcb, 0xc0, 0x30},
@@ -83,6 +83,6 @@ func frameCore(input [16]byte) [16]byte {
 }
 
 func frameTransform(input [16]byte) ([16]byte, error) {
-	output, _ := frameSPN26A428.apply(frameCore(input))
+	output, _ := currentFrameSPN.apply(frameCore(input))
 	return output, nil
 }
