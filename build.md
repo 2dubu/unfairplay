@@ -471,6 +471,7 @@ SIDB support is not yet independently general. Current evidence is:
 | SIDB bytes | Evidence | Latest status |
 | ---: | --- | --- |
 | 630 / 993 / 1003 | three private controls | complete model and IPA validation |
+| 638 | independent physical 25G83 Mac, same older account as the 630-byte control | proven evaluator reproduces the same enrollment model and decrypts the installed-app control; direct recovery finds codec 26 and the correct 592-byte body, but the body matches neither the flat nor current tree grammar |
 | 641 | issue #19, commit `1d0d12d` | old size inference failed; latest retest required |
 | 3405 | issue #21, commit `1d0d12d` | old class search failed; latest retest required |
 | 5494 | issue #17, commit `1d0d12d` | old geometry was ambiguous; latest retest required |
@@ -484,6 +485,34 @@ through flat compatibility paths, so they do not by themselves prove the tree
 grammar used by larger SIDBs. Until one independent current beta enrollment
 passes complete IPA validation, describe this branch as a recovery candidate,
 not universal or build-independent support.
+
+The independent 638-byte control disproves the current direct registry model.
+The native evaluator and direct implementation both reach 284 outer iterations
+and codec 26. The evaluator confirms that the resulting semantic object is the
+full 592-byte body, not a truncated 576-byte older registry. It matches neither
+the flat nor current tree grammar, while the native consumer accepts it and
+reproduces the earlier 630-byte state's enrollment model. Forcing codec
+boundaries 42, 58, 74, 90, 106, and 122 does not authenticate either. The
+apparent codec-42/576-byte shape is therefore not a fix by itself.
+
+The native protected reader provides a precise next boundary. Corresponding
+field reads in the 630- and 638-byte states move by six bytes. Its four-byte
+outputs equal the registry bytes XORed with the already recovered 16-byte
+position mask, including across that shift. This validates the byte decoder
+but disproves the inferred node-length and child-count grammar layered above
+it. The 630-byte flat interpretation and its class match were compatibility
+successes, not proof that the native object is a literal list of 40-byte
+records. The 638-byte state also fails a full sliding-window/class-key search,
+so adding another footer or scanning more raw windows cannot repair it.
+
+Direct recovery's slot 5 reproduces the evaluator's complete 592-byte body
+byte-for-byte. The raw SIDB decoder and account-derived decoder-key selection
+are therefore proved for this independent state. The failure is downstream:
+the native consumer accepts the body, while both inferred grammars reject it.
+The Appsterdam beta report is the large-scale symptom of the same bad grammar:
+one length-only flat interpretation created 918 supposed records and repeated
+150,409,710-comparison searches without a match. Do not add more footer sizes
+or codec preferences.
 
 A fresh static check of 26A428 `0x10046119c..0x1004612b0` confirms the recovered
 outer stop predicate instruction-for-instruction, including its accumulator
@@ -510,11 +539,16 @@ Every promoted transformation needs suitable evidence:
 1. Re-derive the decoded SIDB grammar from native read boundaries: root span,
    node length/count fields, leaf role, payload offset, mask phase, and tail
    ownership. Do not infer these from total file size.
-2. Recreate the private native source/body and class-key boundary controls, then
+2. Type the native scalar fields above the already-proved byte XOR decoder on
+   the 630-, 638-, and 1003-byte controls.
+3. Recreate the private native class-key boundary control, then
    make them part of the manual QA matrix.
-3. Retest 641-, 3405-, 5494-, 7180-, and 11724-byte enrollments on the exact
+4. Reject or cheaply rank length-only flat interpretations before exhaustive
+   class search; never run hundreds of millions of comparisons merely because
+   a random body length is divisible by 40.
+5. Retest 641-, 3405-, 5494-, 7180-, and 11724-byte enrollments on the exact
    version reported by `unfairplay --version`.
-4. Promote a new structural family only after one personalized SINF selects a
+6. Promote a new structural family only after one personalized SINF selects a
    unique precursor and complete IPA validation succeeds. Add a synthetic
    regression and an opt-in private QA control.
 
