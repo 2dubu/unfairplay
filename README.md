@@ -64,9 +64,11 @@ The default model directory is inside the user configuration directory. Set
 IPAs with extensions and watch apps are decrypted in one pass.
 
 The output keeps the input's `SC_Info` licenses and `iTunesMetadata.plist`,
-which identify the Store account. To share the output without them, add
-`--strip-account-data`: it omits every `SC_Info` member and removes the Apple
-ID and purchaser fields from `iTunesMetadata.plist`. Test without
+which identify the Store account. To create a redacted copy for private
+analysis or authorized collaboration, add `--strip-account-data`: it omits
+every `SC_Info` member and removes the Apple ID and purchaser fields from
+`iTunesMetadata.plist`. Redaction does not authorize redistributing the app;
+the legal and ethical use terms above still apply. Test without
 keeping plaintext with:
 
 ```sh
