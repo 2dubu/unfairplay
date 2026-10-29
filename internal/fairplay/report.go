@@ -52,5 +52,7 @@ type decryptionReport struct {
 	Complete          bool            `json:"complete"`
 	PlaintextVerified bool            `json:"plaintext_verified"`
 	SignatureVerified bool            `json:"signature_verified"`
-	Warnings          []string        `json:"warnings"`
+	// Present only when --strip-account-data was requested.
+	AccountData *accountDataReport `json:"account_data,omitempty"`
+	Warnings    []string           `json:"warnings"`
 }

@@ -46,6 +46,9 @@ type ipaInventory struct {
 type DecryptOptions struct {
 	InputPath, OutputPath, ReportPath, ModelPath string
 	Force                                        bool
+	// StripAccountData omits SC_Info license members and removes Apple ID
+	// fields from iTunesMetadata.plist in the output.
+	StripAccountData bool
 }
 
 type DecryptResult struct {
@@ -56,6 +59,10 @@ type DecryptResult struct {
 	DecryptedPages         int
 	LogicalKeySHA256       string
 	LogicalKeySHA256BySINF map[string]string
+	// Set by StripAccountData; the counts are zero when nothing was removed.
+	AccountDataStripped   bool
+	RemovedLicenseFiles   int
+	RemovedMetadataFields int
 }
 
 func fileSHA256(path string) (string, error) {
@@ -887,6 +894,10 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 	writer := zip.NewWriter(io.MultiWriter(temporary, outputHasher))
 	var imageReports []*imageReport
 	pages := 0
+	var stripper *accountDataStripper
+	if options.StripAccountData {
+		stripper = &accountDataStripper{}
+	}
 	seenDirectories := map[string]bool{}
 	for _, file := range source.File {
 		if file.FileInfo().IsDir() {
@@ -894,6 +905,16 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 				continue // Duplicate empty directory markers were checked during inventory.
 			}
 			seenDirectories[file.Name] = true
+		}
+		if stripper != nil {
+			// Licenses were already resolved from the input above.
+			handled, err := stripper.write(writer, file)
+			if err != nil {
+				return result, err
+			}
+			if handled {
+				continue
+			}
 		}
 		images, encrypted := imageMap[file.Name]
 		if !encrypted {
@@ -959,7 +980,8 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		Output:   reportFile{Path: options.OutputPath, SHA256: outputHash, Mode: "0600"},
 		Provider: providerName, Oracle: oracle, Licenses: licenseReports,
 		EncryptedImages: len(imageReports), DecryptedPages: pages, Images: imageReports,
-		Complete: len(imageReports) == len(inventory.images),
+		Complete:    len(imageReports) == len(inventory.images),
+		AccountData: stripper.report(),
 		Warnings: []string{
 			"Complete means every inventoried encrypted image was processed; plaintext correctness is not authenticated.",
 			"Only ARM64 first pages are checked for instruction plausibility; ARMv7 plaintext, SUPF records, and subsequent plaintext are not authenticated.",
@@ -982,6 +1004,10 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		OutputPath: options.OutputPath, OutputSHA256: outputHash, ReportPath: options.ReportPath,
 		EncryptedImages: len(imageReports), DecryptedPages: pages,
 		LogicalKeySHA256: sharedKeyHash, LogicalKeySHA256BySINF: keyHashes,
+	}
+	if account := stripper.report(); account != nil {
+		result.AccountDataStripped = true
+		result.RemovedLicenseFiles, result.RemovedMetadataFields = account.RemovedLicenseFiles, account.RemovedMetadataFields
 	}
 	return result, nil
 }
