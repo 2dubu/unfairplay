@@ -271,7 +271,7 @@ func recoverEnrollment(ctx context.Context, options recoverOptions) error {
 
 type decryptOptions struct {
 	Input, Output, Report, Model string
-	Force                        bool
+	Force, StripAccountData      bool
 }
 
 func newDecryptCommand() *cobra.Command {
@@ -296,7 +296,7 @@ func newDecryptCommand() *cobra.Command {
 			}
 			result, err := fairplay.DecryptIPA(fairplay.DecryptOptions{
 				InputPath: options.Input, OutputPath: options.Output, ReportPath: options.Report,
-				ModelPath: modelPath, Force: options.Force,
+				ModelPath: modelPath, Force: options.Force, StripAccountData: options.StripAccountData,
 			})
 			if err != nil {
 				return err
@@ -310,6 +310,7 @@ func newDecryptCommand() *cobra.Command {
 	flags.StringVar(&options.Report, "report", "", "Private decryption report path")
 	flags.StringVar(&options.Model, "model", "", "Private enrollment model file or directory (defaults to saved models)")
 	flags.BoolVar(&options.Force, "force", false, "Replace existing output and report")
+	flags.BoolVar(&options.StripAccountData, "strip-account-data", false, "Omit SC_Info licenses and remove Apple ID fields from iTunesMetadata.plist in the output")
 	_ = command.MarkFlagRequired("input")
 	return command
 }

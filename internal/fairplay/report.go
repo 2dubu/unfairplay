@@ -58,5 +58,9 @@ type decryptionReport struct {
 	Complete          bool            `json:"complete"`
 	PlaintextVerified bool            `json:"plaintext_verified"`
 	SignatureVerified bool            `json:"signature_verified"`
-	Warnings          []string        `json:"warnings"`
+	// Set by --strip-account-data.
+	AccountDataStripped   bool     `json:"account_data_stripped,omitempty"`
+	RemovedLicenseFiles   int      `json:"removed_license_files,omitempty"`
+	RemovedMetadataFields int      `json:"removed_metadata_fields,omitempty"`
+	Warnings              []string `json:"warnings"`
 }
