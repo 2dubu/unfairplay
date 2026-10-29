@@ -21,7 +21,7 @@ func putSyntheticSIDBNode(data []byte, offset, length, count int) {
 	var word [4]byte
 	binary.BigEndian.PutUint32(word[:], uint32(length))
 	for i, value := range word {
-		data[offset+2+i] = value ^ currentClassRecordMask[(offset+2+i+12)%16]
+		data[offset+4+i] = value ^ currentClassRecordMask[(offset+4+i+12)%16]
 	}
 	encodedCount := uint16(count)
 	if count >= 4096 {
@@ -29,7 +29,7 @@ func putSyntheticSIDBNode(data []byte, offset, length, count int) {
 	}
 	binary.BigEndian.PutUint16(word[:2], encodedCount)
 	for i, value := range word[:2] {
-		data[offset+16+i] = value ^ currentClassRecordMask[(offset+16+i+12)%16]
+		data[offset+18+i] = value ^ currentClassRecordMask[(offset+18+i+12)%16]
 	}
 }
 
@@ -55,6 +55,55 @@ func TestDecodedSIDBTreeAndRegistry(t *testing.T) {
 	}
 }
 
+func TestDecodedSIDBTreeAcceptsBoundedRootPadding(t *testing.T) {
+	const prefix, suffix = 6, 18
+	const rootBytes = decodedSIDBNodeHeaderBytes + 2*(decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes)
+	data := syntheticSIDBTreeBuffer(prefix + rootBytes + suffix)
+	putSyntheticSIDBNode(data, prefix, rootBytes, 2)
+	putSyntheticSIDBNode(data, prefix+decodedSIDBNodeHeaderBytes, decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes, 0)
+	putSyntheticSIDBNode(data, prefix+decodedSIDBNodeHeaderBytes+decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes, decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes, 0)
+	nodes, err := parseDecodedSIDBTree(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(nodes) != 3 || nodes[0].Offset != prefix || nodes[0].Length != rootBytes {
+		t.Fatalf("unexpected padded tree: %+v", nodes)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Records) != 2 || registry.Records[0].SourceOffset != prefix+2*decodedSIDBNodeHeaderBytes {
+		t.Fatalf("unexpected padded records: %+v", registry.Records)
+	}
+}
+
+func TestDecodedSIDBTreesRetainDisjointRoots(t *testing.T) {
+	const rootBytes = decodedSIDBNodeHeaderBytes + decodedSIDBNodeHeaderBytes + decodedSIDBPayloadBytes
+	const firstRoot = 6
+	const gap = 7
+	secondRoot := firstRoot + rootBytes + gap
+	data := syntheticSIDBTreeBuffer(secondRoot + rootBytes + 18)
+	for _, root := range []int{firstRoot, secondRoot} {
+		putSyntheticSIDBNode(data, root, rootBytes, 1)
+		putSyntheticSIDBNode(data, root+decodedSIDBNodeHeaderBytes, decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes, 0)
+	}
+	trees, err := parseDecodedSIDBTrees(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(trees) != 2 || trees[0][0].Offset != firstRoot || trees[1][0].Offset != secondRoot {
+		t.Fatalf("unexpected roots: %+v", trees)
+	}
+	registries := decodedSIDBRegistryInterpretations(data)
+	if len(registries) != 2 || len(registries[0].Records) != 1 || len(registries[1].Records) != 1 {
+		t.Fatalf("unexpected registry roots: %+v", registries)
+	}
+	if _, err := parseDecodedSIDBTree(data); err == nil {
+		t.Fatal("single-tree parser accepted multiple roots")
+	}
+}
+
 func TestDecodedSIDBTreeRejectsMalformed(t *testing.T) {
 	tests := []struct {
 		name string
@@ -73,7 +122,7 @@ func TestDecodedSIDBTreeRejectsMalformed(t *testing.T) {
 	}
 	add("short length", 20, 19, 0)
 	add("length overflow", 20, 0x7fffffff, 0)
-	add("too much padding", 36, 20, 0)
+	add("too much padding", 40, 20, 0)
 	add("child header truncated", 39, 39, 1)
 	d := add("child exceeds parent", 40, 40, 1)
 	putSyntheticSIDBNode(d, 20, 21, 0)
@@ -99,7 +148,7 @@ func TestDecodedSIDBTreeDepthLimit(t *testing.T) {
 		}
 		putSyntheticSIDBNode(d, i*20, len(d)-i*20, count)
 	}
-	if _, err := parseDecodedSIDBTree(d); err == nil {
+	if _, err := parseDecodedSIDBTreeAt(d, 0); err == nil {
 		t.Fatal("accepted excessive nesting")
 	}
 }
@@ -109,18 +158,18 @@ func TestDecodedSIDBTreeWidthPrefixes(t *testing.T) {
 	// Both prefixes encode the low five bits; unknown bits between prefix and
 	// payload are intentionally set to exercise native truncation.
 	for i, b := range []byte{0x2f, 0xff, 0xff, 0xf4} {
-		d[2+i] = b ^ currentClassRecordMask[(2+i+12)%16]
+		d[4+i] = b ^ currentClassRecordMask[(4+i+12)%16]
 	}
 	for i, b := range []byte{0x5f, 0xe0} {
-		d[16+i] = b ^ currentClassRecordMask[(16+i+12)%16]
+		d[18+i] = b ^ currentClassRecordMask[(18+i+12)%16]
 	}
-	if got := sidbTreeWord(d, 2, 4, 5); got != 20 {
+	if got := sidbTreeWord(d, 4, 4, 5); got != 20 {
 		t.Fatalf("length = %d", got)
 	}
-	if got := sidbTreeWord(d, 16, 2, 4); got != 0 {
+	if got := sidbTreeWord(d, 18, 2, 4); got != 0 {
 		t.Fatalf("count = %d", got)
 	}
-	if _, err := parseDecodedSIDBTree(d); err != nil {
+	if _, err := parseDecodedSIDBTreeAt(d, 0); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -197,6 +246,44 @@ func TestDecodedSIDBRegistryRejectsFlatShapedInvalidTree(t *testing.T) {
 	if _, err := parseDecodedSIDBTree(data); err == nil {
 		t.Fatal("accepted invalid tree with flat-compatible length")
 	}
+}
+
+func FuzzDecodedSIDBTrees(f *testing.F) {
+	f.Add([]byte{})
+	f.Add(make([]byte, decodedSIDBNodeHeaderBytes))
+	seed := syntheticSIDBTreeBuffer(6 + 56 + 18)
+	putSyntheticSIDBNode(seed, 6, 56, 1)
+	putSyntheticSIDBNode(seed, 26, 36, 0)
+	f.Add(seed)
+	f.Fuzz(func(t *testing.T, data []byte) {
+		if len(data) > 64<<10 {
+			return
+		}
+		roots, err := parseDecodedSIDBTrees(data)
+		if err != nil {
+			return
+		}
+		if len(roots) == 0 || len(roots) > maximumDecodedSIDBTreeRoots {
+			t.Fatalf("root count = %d", len(roots))
+		}
+		previousEnd := 0
+		for rootIndex, nodes := range roots {
+			if len(nodes) == 0 || len(nodes) > maximumDecodedSIDBTreeNodes {
+				t.Fatalf("root %d node count = %d", rootIndex, len(nodes))
+			}
+			start := nodes[0].Offset
+			end := start + nodes[0].Length
+			if start < previousEnd || start < 0 || end > len(data) || end < start {
+				t.Fatalf("root %d range = %d..%d after %d", rootIndex, start, end, previousEnd)
+			}
+			for nodeIndex, node := range nodes {
+				if node.Offset < start || node.Length < decodedSIDBNodeHeaderBytes || node.Offset+node.Length > end {
+					t.Fatalf("root %d node %d = %+v", rootIndex, nodeIndex, node)
+				}
+			}
+			previousEnd = end
+		}
+	})
 }
 
 // syntheticSIDBRecordTree supplies 16-byte leaves followed by a small final

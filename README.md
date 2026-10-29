@@ -184,12 +184,12 @@ accepted only when structural recovery and full IPA validation succeed.
 This removes a build dependency; it does not prove that every SIDB or account
 layout is supported.
 
-The 630-, 993-, and 1003-byte Mac SIDBs are independent controls. Other
-version-`0x0007000b` containers derive their codec and encrypted-body boundary
-from the typed stateful exit, then retain bounded tree and flat interpretations
-for authentication. Current SINF records support the observed short and
-standard forms plus bounded appended rights. Every discovered path still
-requires complete SINF authentication and IPA validation.
+The 630-, 638-, 993-, and 1003-byte Mac SIDBs are independent controls. Other
+version-`0x0007000b` containers derive their encrypted-body boundary, decode
+bounded native trees, and authenticate the matching record with the
+personalized SINF. Current SINF records support the observed short and standard
+forms plus bounded appended rights. Every path still requires complete SINF
+authentication and IPA validation.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.
@@ -204,7 +204,7 @@ signing before installation.
 ## Branch beta testing
 
 The portable recovery candidate is on `research/direct-enrollment-algorithm`.
-It passes three private controls, but independent larger SIDB layouts are still
+It passes four private controls, but independent larger SIDB layouts are still
 under test. Do not assume support from the macOS build alone.
 Build it from source and run `setup` normally. Confirm the binary with
 `./unfairplay --version`. Reports should include only that version output, the

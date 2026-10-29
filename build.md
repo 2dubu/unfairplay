@@ -70,10 +70,10 @@ flattened native selector.
 | Bootstrap | Replaced by one typed semantic outer profile plus SIDB/hardware runtime fields. The legacy bootstrap CFG has been removed. |
 | Selection | Current and legacy source projections feed typed state/key transforms, variable-length SIDB decoding, and authenticated candidate selection. |
 | Enrollment frame | The frame and SIDB-key producer compose to standard AES-128 with fixed input whitening. Independent models are test-only. |
-| SIDB | Codec termination determines the payload boundary. Variable-length bodies are decoded in typed Go; bounded tree and upstream flat/footer interpretations supply authenticated candidates. |
-| SINF | Portable AES/model decoding exists. Decoded SIDB discovery, current and older payload-to-`valu` arithmetic, all semantic class-value families, AES class join, exhaustive record/window or mask-phase evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
+| SIDB | Codec termination determines the payload boundary. Variable-length bodies are decoded in typed Go; maximal non-overlapping native trees supply authenticated candidates. |
+| SINF | Portable AES/model decoding exists. Native-tree payload-to-`valu` arithmetic, the account-derived class key, AES class join, bounded record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
-| Build portability | Container size does not select the codec boundary. Current and older family candidates require complete SINF authentication; a legacy native-exit differential and broader account controls remain unverified. |
+| Build portability | Container size does not select the codec boundary. Embedded and disjoint native roots require complete SINF authentication; untested layouts fail closed. |
 
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
@@ -205,27 +205,12 @@ Its sample is `5^(Product + seed + Current) mod 32767`. The packed product
 words combine with the AES operand through circular multiplication/XOR over
 AES's GF(2^8) field; repeating the eight-byte result forms the class AES key.
 The tree path does not enumerate fixed-class or suffix-seed candidates.
-Flat current-family registries retain the upstream fixed and bounded workspace
-class candidates; each still requires complete SINF authentication.
 
-The older 630-byte enrollment family is closed separately without that seed
-enumeration. Its semantic account digest is ordinary SHA-1 over a typed
-45-byte message: a fixed 17-byte prefix, the six-byte built-in IOMACAddress
-plus two zero bytes, one reserved zero byte, the one-byte SINF key selector,
-the big-endian SINF user selector, two `0xff` bytes, and a fixed 12-byte
-suffix. The final two big-endian digest pairs are reduced modulo 32767 and
-each drives one direct 3x3 coordinate/velocity recurrence. The two resulting
-polynomial words are combined by one circulant `GF(2^8)` map with column
-`e1 2e 9b b9 e8 6d ff df`; the result is repeated to form the AES class key.
-The native three-matrix limb encodings, word biases, byte tables, and final
-XOR-`0x1b` transport have all been removed.
-
-The older `valu` path is the same four-word modular affine transform used by
-current records. It consumes the complete 16-byte payload and starts the fixed
-record mask at phase 8. Production evaluates all sixteen bounded mask phases
-and lets complete personalized-SINF authentication select the unique coherent
-record and phase, so phase selection does not depend on a native offset or
-dispatcher.
+The earlier flat interpretation of the 630-byte control appeared to require a
+separate account digest, workspace and mask-phase search. The corrected native
+tree reaches the same physical window through the ordinary tree class key and
+absolute-position mask. That flat family is no longer a production path; its
+direct helpers remain only as testable historical code pending removal.
 
 The independent older private control recovered from its 630-byte Mac SIDB,
 IOMACAddress, installed license, and personalized IPA with no iPhone or iOS 16
@@ -236,12 +221,11 @@ It decrypted one encrypted image and one page; decrypted-IPA SHA-256 was
 and logical-key SHA-256 matched the established independent result
 `0cc0921e90789a30c7cce2ba80c75ced64dd334af31ff6744dc714923a14ac32`.
 
-The decoded current registry is parsed as a bounded tree. Node lengths and
-child counts must fit and fill their parent exactly; eligible leaves supply
-windows with absolute-position masks and available tail bytes. Upstream flat,
-footer and footerless structures remain compatibility candidates. Their
-structural validity is not authentication or proof of a native family
-selection rule.
+The decoded current registry is parsed as bounded native trees. Node lengths
+and child counts must fit and fill their parent exactly; nested roots are
+removed while disjoint roots remain eligible for personalized-SINF selection.
+Eligible leaves supply windows with absolute-position masks and available tail
+bytes. The old length-only flat/footer fallback is not a production candidate.
 
 The current-SINF external codec is identity after normalization. Its protected
 form XORed each byte with a position mask and then used an inverse table that
@@ -268,14 +252,10 @@ version-2 enrollment models decode the current IV-prefixed private record first,
 then re-encode that authenticated plaintext with the legacy macOS CBC wrapper.
 Older credential-wrapped version-2 models retain their compatibility path.
 
-Go evaluates eligible tree windows with the directly derived class key, retains
-the upstream bounded flat-current class families, and preserves the older-family
-workspace and mask-phase search. A SINF prefix probe narrows candidates;
-complete personalized-SINF authentication must accept exactly one result across
-the structural candidates. The compatibility search is cancelable, parallel,
-capped at `2^31` candidate comparisons, and reports non-secret progress. The
-cap is a resource-safety bound, not an acceptance shortcut. Independent small
-native tree and broader account controls remain unverified.
+Go evaluates eligible tree windows with the directly derived class key. A SINF
+prefix probe narrows candidates; complete personalized-SINF authentication must
+accept exactly one result across all disjoint tree roots. Four independent
+private controls pass complete model and IPA validation.
 
 SUPF authentication is typed and structural too. Variant 3 authenticates its
 signed architecture/page-key prefix with RSA/SHA-1, while variant 5 uses
@@ -471,57 +451,44 @@ SIDB support is not yet independently general. Current evidence is:
 | SIDB bytes | Evidence | Latest status |
 | ---: | --- | --- |
 | 630 / 993 / 1003 | three private controls | complete model and IPA validation |
-| 638 | independent physical 25G83 Mac, same older account as the 630-byte control | proven evaluator reproduces the same enrollment model and decrypts the installed-app control; direct recovery finds codec 26 and the correct 592-byte body, but the body matches neither the flat nor current tree grammar |
+| 638 | independent physical 25G83 Mac, same older account as the 630-byte control | corrected native tree selects one class precursor; enrollment recovery and complete installed-app IPA validation pass |
 | 641 | issue #19, commit `1d0d12d` | old size inference failed; latest retest required |
 | 3405 | issue #21, commit `1d0d12d` | old class search failed; latest retest required |
 | 5494 | issue #17, commit `1d0d12d` | old geometry was ambiguous; latest retest required |
 | 7180 | issue #19, commit `1d0d12d` | old legacy-class interpretation failed; latest retest required |
 | 11724 | independent beta report after `abaaeff` | native boundary ran, but no decoded registry grammar matched; `cdf584c` diagnostics pending |
 
-The direct tree parser and account-derived class key have native boundary tests,
-but those controls are opt-in and their private traces are not presently part
-of the reproducible QA matrix. The three successful controls can authenticate
-through flat compatibility paths, so they do not by themselves prove the tree
-grammar used by larger SIDBs. Until one independent current beta enrollment
-passes complete IPA validation, describe this branch as a recovery candidate,
-not universal or build-independent support.
-
-The independent 638-byte control disproves the current direct registry model.
+The independent 638-byte control exposed an overfit in the earlier registry
+model and now provides a positive control for the corrected native tree.
 The native evaluator and direct implementation both reach 284 outer iterations
 and codec 26. The evaluator confirms that the resulting semantic object is the
-full 592-byte body, not a truncated 576-byte older registry. It matches neither
-the flat nor current tree grammar, while the native consumer accepts it and
-reproduces the earlier 630-byte state's enrollment model. Forcing codec
-boundaries 42, 58, 74, 90, 106, and 122 does not authenticate either. The
-apparent codec-42/576-byte shape is therefore not a fix by itself.
+full 592-byte body, not a truncated 576-byte older registry. Direct recovery's
+slot 5 reproduces that body byte-for-byte.
 
-The native protected reader provides a precise next boundary. Corresponding
+The native protected reader resolves the grammar ambiguity. Corresponding
 field reads in the 630- and 638-byte states move by six bytes. Its four-byte
 outputs equal the registry bytes XORed with the already recovered 16-byte
-position mask, including across that shift. This validates the byte decoder
-but disproves the inferred node-length and child-count grammar layered above
-it. The 630-byte flat interpretation and its class match were compatibility
-successes, not proof that the native object is a literal list of 40-byte
-records. The 638-byte state also fails a full sliding-window/class-key search,
-so adding another footer or scanning more raw windows cannot repair it.
+position mask, including across that shift. The real 20-byte node header stores
+the protected length at `+4` and child count at `+18`; the earlier `+2`/`+16`
+fields were wrong. Maximal non-overlapping roots are discovered anywhere in
+the decoded body, allowing disjoint candidates without a fixed prefix or
+suffix size. The 630-, 638-, 993-, and 1003-byte controls each produce exactly
+one native tree candidate and pass full IPA validation. A real migrated
+multi-root state still needs a fresh beta retest.
 
-Direct recovery's slot 5 reproduces the evaluator's complete 592-byte body
-byte-for-byte. The raw SIDB decoder and account-derived decoder-key selection
-are therefore proved for this independent state. The failure is downstream:
-the native consumer accepts the body, while both inferred grammars reject it.
-The Appsterdam beta report is the large-scale symptom of the same bad grammar:
-one length-only flat interpretation created 918 supposed records and repeated
-150,409,710-comparison searches without a match. Do not add more footer sizes
-or codec preferences.
+The length-only flat fallback is removed from production candidate discovery.
+It had reinterpreted wrong-key decryptions as hundreds of records and caused
+the Appsterdam report's repeated 150,409,710-comparison searches. Flat geometry
+was a compatibility coincidence, not a proved FairPlay format.
 
 A fresh static check of 26A428 `0x10046119c..0x1004612b0` confirms the recovered
 outer stop predicate instruction-for-instruction, including its accumulator
-update and authenticated dispatch. That supports the codec-exit arithmetic,
-but it does not prove that the reconstructed 256-byte source continuation or
-decoded tree grammar is correct. The tree length field at `+2`, child count at
-`+16`, 20-byte header, 16-byte leaf payload, mask phase, and cross-leaf tail
-ownership still need native read-boundary receipts. Those fields are the next
-reversing target.
+update and authenticated dispatch. The independent exact-body comparison now
+proves the resulting source/key candidate reaches the native decoded body. The
+corrected tree offsets, leaf payloads, mask phase, and selected class windows
+also match the native read trace across the retained controls. This is strong
+multi-input evidence, but not a claim that every untested SIDB family is
+supported.
 
 ## Proof requirements
 
@@ -536,19 +503,15 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Re-derive the decoded SIDB grammar from native read boundaries: root span,
-   node length/count fields, leaf role, payload offset, mask phase, and tail
-   ownership. Do not infer these from total file size.
-2. Type the native scalar fields above the already-proved byte XOR decoder on
-   the 630-, 638-, and 1003-byte controls.
+1. Retest 641-, 3405-, 5494-, 7180-, and 11724-byte enrollments on the exact
+   version reported by `unfairplay --version`.
+2. Extend the private QA matrix with the native root offset, length, child
+   count, leaf offsets, and selected class window for every retained control.
 3. Recreate the private native class-key boundary control, then
    make them part of the manual QA matrix.
-4. Reject or cheaply rank length-only flat interpretations before exhaustive
-   class search; never run hundreds of millions of comparisons merely because
-   a random body length is divisible by 40.
-5. Retest 641-, 3405-, 5494-, 7180-, and 11724-byte enrollments on the exact
-   version reported by `unfairplay --version`.
-6. Promote a new structural family only after one personalized SINF selects a
+4. Remove the dormant flat compatibility parser and class-search code after
+   confirming no supported migration path calls it.
+5. Promote a new structural family only after one personalized SINF selects a
    unique precursor and complete IPA validation succeeds. Add a synthetic
    regression and an opt-in private QA control.
 

@@ -39,8 +39,12 @@ func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
 	if err != nil {
 		return parseLegacyDecodedSIDBRegistry(data)
 	}
+	return decodedSIDBRegistryFromTree(data, nodes), nil
+}
+
+func decodedSIDBRegistryFromTree(data []byte, nodes []decodedSIDBTreeNode) decodedSIDBRegistry {
 	result := decodedSIDBRegistry{Tree: true}
-	rootEnd := nodes[0].Length
+	rootEnd := nodes[0].Offset + nodes[0].Length
 	for _, node := range nodes {
 		if node.ChildCount != 0 || node.Length != decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes {
 			continue
@@ -55,18 +59,23 @@ func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
 		record.TailAvailable = copy(record.Tail[:], data[tailStart:tailEnd])
 		result.Records = append(result.Records, record)
 	}
-	return result, nil
+	return result
 }
 
-// decodedSIDBRegistryInterpretations retains each structurally valid view for
-// subsequent SINF authentication; neither grammar proves the selected format.
+// decodedSIDBRegistryInterpretations exposes only the native tree. The former
+// length-only flat fallback accepted random decryptions as hundreds of records
+// and is not a proved FairPlay format.
 func decodedSIDBRegistryInterpretations(data []byte) []decodedSIDBRegistry {
-	var registries []decodedSIDBRegistry
-	if registry, err := parseDecodedSIDBRegistry(data); err == nil && registry.Tree {
-		registries = append(registries, registry)
+	trees, err := parseDecodedSIDBTrees(data)
+	if err != nil {
+		return nil
 	}
-	if registry, err := parseLegacyDecodedSIDBRegistry(data); err == nil {
-		registries = append(registries, registry)
+	registries := make([]decodedSIDBRegistry, 0, len(trees))
+	for _, tree := range trees {
+		registry := decodedSIDBRegistryFromTree(data, tree)
+		if tree[0].ChildCount != 0 && len(registry.Records) != 0 {
+			registries = append(registries, registry)
+		}
 	}
 	return registries
 }

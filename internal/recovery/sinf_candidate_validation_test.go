@@ -140,7 +140,7 @@ func TestSelectAuthenticatedFlatClassPrecursorReportsProgressAndCancels(t *testi
 	for index := range data {
 		data[index] = byte(index*23 + 5)
 	}
-	registry, err := parseDecodedSIDBRegistry(data)
+	registry, err := parseLegacyDecodedSIDBRegistry(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +384,7 @@ func TestEnrollmentClassSelectionRejectsMixedFlatTreeAmbiguity(t *testing.T) {
 	}
 }
 
-func TestOverlappingTreeAndFlatRegistryAuthenticatesPhysicalWindowOnce(t *testing.T) {
+func TestNativeTreeSuppressesOverlappingFlatInterpretation(t *testing.T) {
 	data := syntheticSIDBTreeBuffer(224)
 	for i := range data {
 		data[i] = byte(i*37 + 11)
@@ -394,25 +394,7 @@ func TestOverlappingTreeAndFlatRegistryAuthenticatesPhysicalWindowOnce(t *testin
 	putSyntheticSIDBNode(data, 80, 36, 0)
 	putSyntheticSIDBNode(data, 116, len(data)-116, 0)
 	views := decodedSIDBRegistryInterpretations(data)
-	if len(views) != 2 || !views[0].Tree || views[1].Tree {
-		t.Fatal("both tree and flat interpretations must be retained")
-	}
-	if len(views[0].Records) != 1 || views[0].Records[0].SourceOffset != views[1].Records[2].SourceOffset {
-		t.Fatal("synthetic interpretations do not share the intended physical payload")
-	}
-	hardware := []byte{0, 1, 2, 3, 4, 5}
-	key, err := accountClassKey(hardware, 0x12345678, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(views[0].Records[0], 0, key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
-	candidates := []decodedSIDBRegistryCandidate{{Registry: views[0], Data: data}, {Registry: views[1], Data: data}}
-	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, candidates, hardware, 0x12345678, 2)
-	if err != nil || selected.Precursor != precursor {
-		t.Fatalf("physical candidate should be accepted once: %v", err)
+	if len(views) != 1 || !views[0].Tree || len(views[0].Records) != 1 {
+		t.Fatal("native tree was not the unique interpretation")
 	}
 }

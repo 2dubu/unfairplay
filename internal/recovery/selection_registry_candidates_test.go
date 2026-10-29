@@ -70,12 +70,12 @@ func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
 		}
 	}
 	clearDecodedSIDBRegistryCandidates(candidates)
-	if treeMatches != 1 || flatMatches != 1 {
-		t.Fatalf("expected one tree and one flat interpretation of the plaintext")
+	if treeMatches != 1 || flatMatches != 0 {
+		t.Fatalf("expected only the native tree interpretation of the plaintext")
 	}
 }
 
-func TestDeriveStructuralCurrentSelectionRegistryCandidates(t *testing.T) {
+func TestRejectsFlatOnlyCurrentSelectionRegistryCandidates(t *testing.T) {
 	container, hardware, layout := syntheticNativeSIDB(t, selectionSIDBPayloadBytes)
 	for index := layout.PayloadOffset; index < layout.PayloadOffset+layout.PayloadBytes; index++ {
 		container[index] = 0
@@ -94,24 +94,12 @@ func TestDeriveStructuralCurrentSelectionRegistryCandidates(t *testing.T) {
 		plaintext[index] = byte(index*23 + 11)
 	}
 	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext[:], keyCandidates[selectedSlot].Key)
-	candidates, _, gotIterations, err := deriveCurrentSelectionRegistryCandidates(
+	candidates, _, _, err := deriveCurrentSelectionRegistryCandidates(
 		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotIterations != layout.OuterIterations {
-		t.Fatalf("structural selection iterations=%d", gotIterations)
-	}
-	matches := 0
-	for _, candidate := range candidates {
-		if bytes.Equal(candidate.Data, plaintext[:]) {
-			matches++
-		}
-	}
 	clearDecodedSIDBRegistryCandidates(candidates)
-	if matches != 1 {
-		t.Fatalf("structural typed SIDB selection found plaintext %d times, want 1", matches)
+	if err == nil {
+		t.Fatal("accepted a length-only flat decoded body")
 	}
 }
 
@@ -126,9 +114,8 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	var plaintext [selectionSIDBPayloadBytes]byte
-	for index := range plaintext {
-		plaintext[index] = byte(index*41 + 17)
-	}
+	copy(plaintext[:], syntheticSIDBTreeBuffer(len(plaintext)))
+	copy(plaintext[:], syntheticSIDBRecordTree(25, 41, 17))
 	registry, err := parseDecodedSIDBRegistry(plaintext[:])
 	if err != nil {
 		t.Fatal(err)
@@ -170,7 +157,7 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 	}
 }
 
-func TestDeriveRecordAlignedCurrentSelectionRegistryCandidate(t *testing.T) {
+func TestRejectsRecordAlignedCurrentSelectionRegistryCandidate(t *testing.T) {
 	plaintext := make([]byte, 2*decodedSIDBRecordBytes)
 	for index := range plaintext {
 		plaintext[index] = byte(index*37 + 13)
@@ -188,37 +175,9 @@ func TestDeriveRecordAlignedCurrentSelectionRegistryCandidate(t *testing.T) {
 	candidates, _, _, err := deriveCurrentSelectionRegistryCandidates(
 		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
 	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer clearDecodedSIDBRegistryCandidates(candidates)
-	var selected []decodedSIDBRegistryCandidate
-	for _, candidate := range candidates {
-		if bytes.Equal(candidate.Data, plaintext) {
-			selected = append(selected, candidate)
-		}
-	}
-	if len(selected) != 1 || selected[0].Registry.FooterBytes != decodedSIDBNoSeparateFooterBytes {
-		t.Fatalf("record-aligned decoded matches = %d", len(selected))
-	}
-	const recordIndex, windowOffset = 1, 2
-	classKey, err := accountClassKey(hardware, 0x12345678, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(
-		selected[0].Registry.Records[recordIndex], windowOffset, classKey,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
-	authenticated, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, selected, hardware, 0x12345678, 2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if authenticated.RecordIndex != recordIndex || authenticated.WindowOffset != windowOffset || authenticated.Precursor != precursor {
-		t.Fatalf("record-aligned authenticated precursor = %+v", authenticated)
+	clearDecodedSIDBRegistryCandidates(candidates)
+	if err == nil {
+		t.Fatal("accepted a record-aligned flat decoded body")
 	}
 }
 
