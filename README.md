@@ -182,12 +182,12 @@ Recovery is not selected by the macOS build or a fairplayd hash. It uses typed
 Go algorithms and does not load or execute fairplayd. Unknown inputs are
 accepted only when structural recovery and full IPA validation succeed.
 
-All three observed Mac SIDB geometries are supported: 630, 993, and 1003 bytes.
-Other containers in the same semantic family are discovered from their codec,
-encrypted registry, record/footer, and trailer geometry. Current SINF records
-support the observed short and standard forms plus bounded appended rights.
-Every discovered layout still requires complete SINF authentication and IPA
-validation.
+The 630-, 993-, and 1003-byte Mac SIDBs are independent controls. Other
+version-`0x0007000b` containers derive their codec and encrypted-body boundary
+from the typed stateful exit, then retain bounded tree and flat interpretations
+for authentication. Current SINF records support the observed short and
+standard forms plus bounded appended rights. Every discovered path still
+requires complete SINF authentication and IPA validation.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.
@@ -202,10 +202,11 @@ signing before installation.
 ## Branch beta testing
 
 The build-independent beta is on `research/direct-enrollment-algorithm`.
-Build it from source and run `setup` normally. Reports should include only the
-macOS build, commit, SIDB byte count, SINF `priv`/`righ` byte counts, and the
-complete error. Never attach SIDB, SINF, hardware identity, models, credentials,
-or decrypted IPAs to a public issue.
+Build it from source and run `setup` normally. Confirm the binary with
+`./unfairplay --version`. Reports should include only that version output, the
+macOS build, SIDB byte count, SINF `priv`/`righ` byte counts, and the complete
+error. Never attach SIDB, SINF, hardware identity, models, credentials, or
+decrypted IPAs to a public issue.
 
 ## Releases
 

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/DrWhax/unfairplay/internal/fairplay"
@@ -15,6 +16,35 @@ import (
 )
 
 var version = "dev"
+
+func executableVersion() string {
+	if version != "dev" {
+		return version
+	}
+	information, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	revision, modified := "", false
+	for _, setting := range information.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
+	}
+	if revision == "" {
+		return version
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	if modified {
+		revision += "-dirty"
+	}
+	return version + "-" + revision
+}
 
 func main() {
 	root := newRootCommand()
@@ -30,7 +60,7 @@ func newRootCommand() *cobra.Command {
 		Short:         "Recover native Mac FairPlay enrollment and decrypt personalized IPAs",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Version:       version,
+		Version:       executableVersion(),
 	}
 	root.AddCommand(newSetupCommand(), newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newConvertIPAMacOSCommand(), newVerifyCommand(), newDoctorCommand())
 	return root
@@ -146,14 +176,14 @@ type enrollmentRecoveryOutcome struct {
 func recoveryProgressReporter(profile string) func(recovery.Progress) {
 	return func(event recovery.Progress) {
 		if event.Total == 0 {
-			fmt.Fprintf(os.Stderr, "recovery profile=%s phase=%s\n", profile, event.Phase)
+			fmt.Fprintf(os.Stderr, "recovery build=%s profile=%s phase=%s\n", executableVersion(), profile, event.Phase)
 			return
 		}
 		percent := event.Completed * 100 / event.Total
 		fmt.Fprintf(
 			os.Stderr,
-			"recovery profile=%s phase=%s progress=%d%% comparisons=%d/%d registries=%d records=%d windows=%d\n",
-			profile, event.Phase, percent, event.Completed, event.Total,
+			"recovery build=%s profile=%s phase=%s progress=%d%% comparisons=%d/%d registries=%d records=%d windows=%d\n",
+			executableVersion(), profile, event.Phase, percent, event.Completed, event.Total,
 			event.RegistryCandidates, event.RecordCandidates, event.WindowCandidates,
 		)
 	}
@@ -224,7 +254,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	ipa := filepath.Join(options.Capture, filepath.FromSlash(manifest.IPA.Path))
 	decrypted := filepath.Join(options.Output, "App.decrypted.ipa")
 	decryptionReport := filepath.Join(options.Output, "App.decrypted.json")
-	fmt.Fprintf(os.Stderr, "recovery profile=%s phase=validate-ipa\n", selectedProfile)
+	fmt.Fprintf(os.Stderr, "recovery build=%s profile=%s phase=validate-ipa\n", executableVersion(), selectedProfile)
 	result, err := fairplay.DecryptIPA(fairplay.DecryptOptions{
 		InputPath: ipa, OutputPath: decrypted, ReportPath: decryptionReport, ModelPath: candidate,
 	})

@@ -19,6 +19,15 @@ func TestCommandsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestConfiguredVersionOverridesBuildMetadata(t *testing.T) {
+	previous := version
+	version = "v-test"
+	t.Cleanup(func() { version = previous })
+	if got := newRootCommand().Version; got != "v-test" {
+		t.Fatalf("root version = %q", got)
+	}
+}
+
 func TestConvertIPAMacOSFlags(t *testing.T) {
 	command := newConvertIPAMacOSCommand()
 	for _, name := range []string{"input", "output", "model", "credential", "force"} {
