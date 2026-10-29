@@ -22,6 +22,30 @@ type currentSIDBContainerFile struct {
 	data []byte
 }
 
+type selectionRegistryDiagnostics struct {
+	Containers      int
+	ContainerBytes  int
+	CodecBytes      int
+	PayloadBytes    int
+	SourceBytes     int
+	OuterIterations int
+	SourceLayouts   int
+	KeyCandidates   int
+	DecodedBodies   int
+	TreeCandidates  int
+	FlatCandidates  int
+}
+
+func (diagnostics selectionRegistryDiagnostics) String() string {
+	return fmt.Sprintf(
+		"containers=%d container_bytes=%d codec_bytes=%d payload_bytes=%d source_bytes=%d iterations=%d source_layouts=%d key_candidates=%d decoded_bodies=%d tree_candidates=%d flat_candidates=%d",
+		diagnostics.Containers, diagnostics.ContainerBytes, diagnostics.CodecBytes,
+		diagnostics.PayloadBytes, diagnostics.SourceBytes, diagnostics.OuterIterations,
+		diagnostics.SourceLayouts, diagnostics.KeyCandidates, diagnostics.DecodedBodies,
+		diagnostics.TreeCandidates, diagnostics.FlatCandidates,
+	)
+}
+
 const (
 	selectionSourceEnvelopeBytes = 224
 	selectionSourcePrefixBytes   = 32
@@ -77,7 +101,7 @@ func clearDecodedSIDBRegistryCandidates(candidates []decodedSIDBRegistryCandidat
 	}
 }
 
-func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, seen map[[sha256.Size]byte]bool, source []byte, container currentSIDBContainerFile, layout currentSIDBLayout) ([]decodedSIDBRegistryCandidate, error) {
+func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, seen map[[sha256.Size]byte]bool, source []byte, container currentSIDBContainerFile, layout currentSIDBLayout, diagnostics *selectionRegistryDiagnostics) ([]decodedSIDBRegistryCandidate, error) {
 	encoded, err := decodeSelectionSIDBContainerWithLayout(container.data, layout)
 	if err != nil {
 		return result, err
@@ -87,16 +111,25 @@ func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, se
 	if err != nil {
 		return result, err
 	}
+	if diagnostics != nil {
+		diagnostics.SourceLayouts += len(layouts)
+	}
 	for _, layout := range layouts {
 		candidates, err := enrollmentKeyCandidates(layout)
 		if err != nil {
 			return result, err
+		}
+		if diagnostics != nil {
+			diagnostics.KeyCandidates += len(candidates)
 		}
 		for _, candidate := range candidates {
 			decoded, err := decryptSelectionSIDBPayloadDynamic(encoded, candidate.Key)
 			clear(candidate.Key[:])
 			if err != nil {
 				return result, err
+			}
+			if diagnostics != nil {
+				diagnostics.DecodedBodies++
 			}
 			digest := sha256.Sum256(decoded[:])
 			if seen[digest] {
@@ -107,6 +140,15 @@ func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, se
 			if len(registries) == 0 {
 				clear(decoded)
 				continue
+			}
+			if diagnostics != nil {
+				for _, registry := range registries {
+					if registry.Tree {
+						diagnostics.TreeCandidates++
+					} else {
+						diagnostics.FlatCandidates++
+					}
+				}
 			}
 			seen[digest] = true
 			for _, registry := range registries {
@@ -131,6 +173,7 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 	}
 	hash := sha256.New()
 	seenRegistries := make(map[[sha256.Size]byte]bool)
+	diagnostics := selectionRegistryDiagnostics{Containers: len(containers)}
 	var result []decodedSIDBRegistryCandidate
 	reportedIterations := 0
 	for _, container := range containers {
@@ -139,6 +182,11 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 			clearDecodedSIDBRegistryCandidates(result)
 			return nil, "", iterations, err
 		}
+		diagnostics.ContainerBytes = len(container.data)
+		diagnostics.CodecBytes = layout.CodecBytes
+		diagnostics.PayloadBytes = layout.PayloadBytes
+		diagnostics.SourceBytes = layout.SourceBytes
+		diagnostics.OuterIterations = iterations
 		if reportedIterations != 0 && iterations != reportedIterations {
 			clear(source[:])
 			clearDecodedSIDBRegistryCandidates(result)
@@ -148,7 +196,7 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 		containerDigest := sha256.Sum256(container.data)
 		_, _ = hash.Write(containerDigest[:])
 		_, _ = hash.Write(source[:])
-		result, err = appendSelectionRegistryCandidates(result, seenRegistries, source[:], container, layout)
+		result, err = appendSelectionRegistryCandidates(result, seenRegistries, source[:], container, layout, &diagnostics)
 		clear(source[:])
 		if err != nil {
 			clearDecodedSIDBRegistryCandidates(result)
@@ -156,7 +204,7 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 		}
 	}
 	if len(result) == 0 {
-		return nil, "", reportedIterations, fmt.Errorf("typed SIDB selection found no decoded registry candidate")
+		return nil, "", reportedIterations, fmt.Errorf("typed SIDB selection found no decoded registry candidate (%s)", diagnostics.String())
 	}
 	return result, fmt.Sprintf("%x", hash.Sum(nil)), reportedIterations, nil
 }

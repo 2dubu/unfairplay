@@ -230,3 +230,15 @@ func TestCurrentSIDBContainerFilesAcceptsVersionBeforeNativeGeometry(t *testing.
 		t.Fatalf("valid version was rejected before native layout discovery: %v", err)
 	}
 }
+
+func TestSelectionRegistryDiagnosticsAreNonSecretAndComplete(t *testing.T) {
+	diagnostics := selectionRegistryDiagnostics{
+		Containers: 1, ContainerBytes: 11724, CodecBytes: 24, PayloadBytes: 11680,
+		SourceBytes: 256, OuterIterations: 262, SourceLayouts: 2,
+		KeyCandidates: 26, DecodedBodies: 26, TreeCandidates: 0, FlatCandidates: 0,
+	}
+	want := "containers=1 container_bytes=11724 codec_bytes=24 payload_bytes=11680 source_bytes=256 iterations=262 source_layouts=2 key_candidates=26 decoded_bodies=26 tree_candidates=0 flat_candidates=0"
+	if got := diagnostics.String(); got != want {
+		t.Fatalf("selection diagnostics = %q", got)
+	}
+}
