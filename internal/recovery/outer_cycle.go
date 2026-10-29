@@ -9,13 +9,21 @@ func applyOuterCycle(state *outerTableRoundState, cycleIndex uint32) bool {
 	if state == nil || state.HardwareIndex >= 6 || cycleIndex == 0 || int(cycleIndex)+3 >= len(state.Codec) {
 		return false
 	}
+	return applyOuterCycleWithByte(state, state.Codec[int(cycleIndex)+3])
+}
+
+// applyOuterCycleWithByte consumes the next byte from the native codec stream.
+func applyOuterCycleWithByte(state *outerTableRoundState, currentByte byte) bool {
+	if state == nil || state.HardwareIndex >= 6 {
+		return false
+	}
 	byte32 := func(value byte) uint32 { return uint32(value) }
 	hardware := func(offset int) uint32 {
 		return byte32(state.Hardware[(int(state.HardwareIndex)+offset)%len(state.Hardware)])
 	}
 	h0, h1, h2 := hardware(0), hardware(1), hardware(2)
 	h3, h4, h5 := hardware(3), hardware(4), hardware(5)
-	current := byte32(state.Codec[int(cycleIndex)+3])
+	current := byte32(currentByte)
 	c4, c5, c7 := byte32(state.Codec[4]), byte32(state.Codec[5]), byte32(state.Codec[7])
 	c8, c9, c10 := byte32(state.Codec[8]), byte32(state.Codec[9]), byte32(state.Codec[10])
 	c12, c13 := byte32(state.Codec[12]), byte32(state.Codec[13])

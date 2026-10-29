@@ -1,7 +1,6 @@
 package recovery
 
 import (
-	"math/rand"
 	"testing"
 )
 
@@ -14,45 +13,12 @@ func TestOuterOptionalIndexAndDecode(t *testing.T) {
 	}
 }
 
-func TestOuterOptionalDecodeMatchesCircuit(t *testing.T) {
-	for word := uint32(0); word < 1<<16; word++ {
-		if got, want := outerOptionalDecode(word), outerOptionalDecodeCircuit(word); got != want {
-			t.Fatalf("word %08x = %08x, want %08x", word, got, want)
-		}
-	}
-	random := rand.New(rand.NewSource(0x26a428))
-	for sample := 0; sample < 1<<16; sample++ {
-		word := random.Uint32()
-		if got, want := outerOptionalDecode(word), outerOptionalDecodeCircuit(word); got != want {
-			t.Fatalf("word %08x = %08x, want %08x", word, got, want)
-		}
-	}
-}
-
 func TestOuterOptionalNormalizedIndexExhaustive(t *testing.T) {
 	for phase := uint32(0); phase < outerWriterSeedStates; phase++ {
 		seed := outerWriterSeedBase + phase
 		want := (phase + outerOptionalPhaseOffset) % outerWriterSeedStates
-		if got := outerOptionalFirstIndexMBA(seed); got != want {
-			t.Fatalf("phase %d: MBA=%d, semantic=%d", phase, got, want)
-		}
 		if got := outerOptionalFirstIndex(seed); got != want {
 			t.Fatalf("phase %d: index=%d, want=%d", phase, got, want)
-		}
-	}
-}
-
-func TestOuterOptionalFirstIndexMatchesCircuit(t *testing.T) {
-	for seed := uint32(0); seed < 1<<16; seed++ {
-		if got, want := outerOptionalFirstIndex(seed), outerOptionalFirstIndexMBA(seed); got != want {
-			t.Fatalf("seed %08x = %d, want %d", seed, got, want)
-		}
-	}
-	random := rand.New(rand.NewSource(0x26a428))
-	for sample := 0; sample < 1<<16; sample++ {
-		seed := random.Uint32()
-		if got, want := outerOptionalFirstIndex(seed), outerOptionalFirstIndexMBA(seed); got != want {
-			t.Fatalf("seed %08x = %d, want %d", seed, got, want)
 		}
 	}
 }

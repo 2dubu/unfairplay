@@ -95,7 +95,7 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 	for index := range data {
 		data[index] = byte(index*31 + 7)
 	}
-	registry, err := parseDecodedSIDBRegistry(data)
+	registry, err := parseLegacyDecodedSIDBRegistry(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 
 	falseData := append([]byte(nil), data...)
 	falseData[decodedSIDBMetadataBytes+5] ^= 0x80
-	falseRegistry, err := parseDecodedSIDBRegistry(falseData)
+	falseRegistry, err := parseLegacyDecodedSIDBRegistry(falseData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -126,7 +126,7 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 		{Registry: registry, Data: data},
 		{Registry: falseRegistry, Data: falseData},
 	}
-	selected, err := selectAuthenticatedClassPrecursor(sinf, registries)
+	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, registries, []byte{0, 1, 2, 3, 4, 5}, 0x12345678, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 	}
 }
 
-func TestSelectAuthenticatedClassPrecursorReportsProgressAndCancels(t *testing.T) {
+func TestSelectAuthenticatedFlatClassPrecursorReportsProgressAndCancels(t *testing.T) {
 	data := make([]byte, decodedSIDBRecordBytes+decodedSIDBFooterBytes)
 	for index := range data {
 		data[index] = byte(index*23 + 5)
@@ -153,8 +153,9 @@ func TestSelectAuthenticatedClassPrecursorReportsProgressAndCancels(t *testing.T
 	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
 	registries := []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}}
 	var events []Progress
-	selected, err := selectAuthenticatedClassPrecursorWithContext(
-		context.Background(), sinf, registries,
+	hardware := []byte{0, 1, 2, 3, 4, 5}
+	selected, err := selectAuthenticatedFlatClassPrecursorWithContext(
+		context.Background(), sinf, registries, hardware, 0x12345678, 2,
 		func(event Progress) { events = append(events, event) },
 	)
 	if err != nil {
@@ -178,19 +179,19 @@ func TestSelectAuthenticatedClassPrecursorReportsProgressAndCancels(t *testing.T
 
 	canceled, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := selectAuthenticatedClassPrecursorWithContext(canceled, sinf, registries, nil); !errors.Is(err, context.Canceled) {
+	if _, err := selectAuthenticatedFlatClassPrecursorWithContext(canceled, sinf, registries, hardware, 0x12345678, 2, nil); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled class search = %v", err)
 	}
 }
 
-func TestSelectAuthenticatedClassPrecursorRejectsExcessiveWork(t *testing.T) {
+func TestSelectAuthenticatedFlatClassPrecursorRejectsExcessiveWork(t *testing.T) {
 	var precursor [16]byte
 	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
-	registries := make([]decodedSIDBRegistryCandidate, 27)
+	registries := make([]decodedSIDBRegistryCandidate, 128)
 	for index := range registries {
 		registries[index].Registry.Records = make([]decodedSIDBRecord, 512)
 	}
-	_, err := selectAuthenticatedClassPrecursorWithContext(context.Background(), sinf, registries, nil)
+	_, err := selectAuthenticatedFlatClassPrecursorWithContext(context.Background(), sinf, registries, []byte{0, 1, 2, 3, 4, 5}, 0x12345678, 2, nil)
 	if err == nil || !strings.Contains(err.Error(), "unsupported size") {
 		t.Fatalf("excessive class search = %v", err)
 	}
@@ -201,7 +202,7 @@ func TestSelectAuthenticatedWorkspaceClassPrecursor(t *testing.T) {
 	for index := range data {
 		data[index] = byte(index*43 + 17)
 	}
-	registry, err := parseDecodedSIDBRegistry(data)
+	registry, err := parseLegacyDecodedSIDBRegistry(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +215,7 @@ func TestSelectAuthenticatedWorkspaceClassPrecursor(t *testing.T) {
 		t.Fatal(err)
 	}
 	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
-	selected, err := selectAuthenticatedClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}})
+	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}}, []byte{0, 1, 2, 3, 4, 5}, 0x12345678, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -271,5 +272,146 @@ func TestSelectAuthenticatedLegacyClassPrecursor(t *testing.T) {
 	}
 	if selected.RegistryIndex != 0 || selected.RecordIndex != selectedRecord || selected.WindowOffset != selectedPhase || selected.Precursor != precursor {
 		t.Fatalf("wrong legacy candidate: %+v", selected)
+	}
+}
+
+func TestSelectAuthenticatedDerivedClassPrecursor(t *testing.T) {
+	hardware := []byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}
+	data := syntheticSIDBRecordTree(1, 13, 5)
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := accountClassKey(hardware, 0x12345678, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const selectedWindow = 2
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(registry.Records[0], selectedWindow, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	selected, err := selectAuthenticatedClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}}, hardware)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.RegistryIndex != 0 || selected.RecordIndex != 0 || selected.WindowOffset != selectedWindow || selected.Precursor != precursor {
+		t.Fatal("derived class path selected the wrong synthetic candidate")
+	}
+	wrongHardware := append([]byte(nil), hardware...)
+	wrongHardware[0] ^= 1
+	if _, err := selectAuthenticatedClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}}, wrongHardware); err == nil {
+		t.Fatal("accepted SINF with wrong hardware")
+	}
+}
+
+func TestEnrollmentClassSelectionAuthenticatesMixedRegistryCandidates(t *testing.T) {
+	hardware := []byte{0, 1, 2, 3, 4, 5}
+	data := syntheticSIDBRecordTree(1, 13, 5)
+	tree, err := parseDecodedSIDBTree(data)
+	if err != nil || len(tree) == 0 {
+		t.Fatal("invalid synthetic tree")
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := accountClassKey(hardware, 0x12345678, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(registry.Records[0], 2, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	flat, err := parseLegacyDecodedSIDBRegistry(make([]byte, 2*decodedSIDBRecordBytes+decodedSIDBOlderFooterBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates := []decodedSIDBRegistryCandidate{{Registry: flat}, {Registry: registry}}
+	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, candidates, hardware, 0x12345678, 2)
+	if err != nil || selected.RegistryIndex != 1 || selected.Precursor != precursor {
+		t.Fatalf("mixed candidate authentication failed: %v", err)
+	}
+	candidates = append(candidates, decodedSIDBRegistryCandidate{Registry: registry})
+	if _, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, candidates, hardware, 0x12345678, 2); err == nil {
+		t.Fatal("accepted multiple authenticated candidates")
+	}
+}
+
+func TestTreeSelectionDoesNotTryFlatClassFamilies(t *testing.T) {
+	hardware := []byte{0, 1, 2, 3, 4, 5}
+	data := syntheticSIDBRecordTree(1, 13, 5)
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil || !registry.Tree {
+		t.Fatal("synthetic tree was not parsed")
+	}
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(registry.Records[0], 2, currentClassEnrollmentParameters().classKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	if _, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry}}, hardware, 0x12345678, 2); err == nil {
+		t.Fatal("tree unexpectedly accepted a flat-family key")
+	}
+}
+
+func TestEnrollmentClassSelectionRejectsMixedFlatTreeAmbiguity(t *testing.T) {
+	hardware := []byte{0, 1, 2, 3, 4, 5}
+	data := syntheticSIDBRecordTree(1, 13, 5)
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil || !registry.Tree {
+		t.Fatal("synthetic tree was not parsed")
+	}
+	key, err := accountClassKey(hardware, 0x12345678, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(registry.Records[0], 2, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	flat := registry
+	flat.Tree = false
+	flat.FooterBytes = decodedSIDBFooterBytes
+	candidates := []decodedSIDBRegistryCandidate{{Registry: flat}, {Registry: registry}}
+	if _, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, candidates, hardware, 0x12345678, 2); err == nil {
+		t.Fatal("accepted distinct authenticated flat and tree candidates")
+	}
+}
+
+func TestOverlappingTreeAndFlatRegistryAuthenticatesPhysicalWindowOnce(t *testing.T) {
+	data := syntheticSIDBTreeBuffer(224)
+	for i := range data {
+		data[i] = byte(i*37 + 11)
+	}
+	putSyntheticSIDBNode(data, 0, len(data), 3)
+	putSyntheticSIDBNode(data, 20, 60, 0)
+	putSyntheticSIDBNode(data, 80, 36, 0)
+	putSyntheticSIDBNode(data, 116, len(data)-116, 0)
+	views := decodedSIDBRegistryInterpretations(data)
+	if len(views) != 2 || !views[0].Tree || views[1].Tree {
+		t.Fatal("both tree and flat interpretations must be retained")
+	}
+	if len(views[0].Records) != 1 || views[0].Records[0].SourceOffset != views[1].Records[2].SourceOffset {
+		t.Fatal("synthetic interpretations do not share the intended physical payload")
+	}
+	hardware := []byte{0, 1, 2, 3, 4, 5}
+	key, err := accountClassKey(hardware, 0x12345678, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(views[0].Records[0], 0, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	candidates := []decodedSIDBRegistryCandidate{{Registry: views[0], Data: data}, {Registry: views[1], Data: data}}
+	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, candidates, hardware, 0x12345678, 2)
+	if err != nil || selected.Precursor != precursor {
+		t.Fatalf("physical candidate should be accepted once: %v", err)
 	}
 }

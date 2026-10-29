@@ -41,8 +41,3 @@ func (model sidbProducerTyped) apply(input [16]byte) (output [16]byte) {
 	}
 	return output
 }
-
-func deriveSelectionSIDBKey(state [16]byte) [16]byte {
-	frameState := currentFrameAES.apply(frameCore(state))
-	return currentSIDBProducerTyped.apply(frameState)
-}

@@ -22,8 +22,6 @@ type outerIterationControl struct {
 	CounterSeed uint32
 }
 
-const outerNaturalIterationCount = 317
-
 func outerSelectorFromHardwareIndex(index uint8) uint32 {
 	return 0x4fc66d49 + uint32((index+1)%6)
 }
@@ -176,31 +174,4 @@ func advanceOuterSeed(seed, iterations uint32) uint32 {
 		seed = outerWriterSeedStep(seed)
 	}
 	return seed
-}
-
-func applyOuterNaturalLoop(table *[outerTableWords]uint32, state *outerTableRoundState, control *outerIterationControl) (int, bool) {
-	return applyOuterLoop(table, state, control, outerNaturalIterationCount)
-}
-
-func applyOuterLoop(table *[outerTableWords]uint32, state *outerTableRoundState, control *outerIterationControl, iterations int) (int, bool) {
-	if table == nil || state == nil || control == nil || iterations < 1 {
-		return 0, false
-	}
-	base := outerTableInitialBase
-	cycleIndex := uint32(0)
-	for iteration := 1; iteration <= iterations; iteration++ {
-		next, ok := applyOuterFullIteration(table, base, state, control)
-		if !ok {
-			return iteration - 1, false
-		}
-		base = next
-		if iteration >= 9 && (iteration-9)%11 == 0 {
-			cycleIndex++
-			if !applyOuterCycle(state, cycleIndex) {
-				return iteration, false
-			}
-			control.X1 = 0x60319d87
-		}
-	}
-	return iterations, true
 }

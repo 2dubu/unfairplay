@@ -43,7 +43,7 @@ Bootstrap
   typed big-integer, SHA-1, table, and byte transformations
 
 Selection
-  192/224-byte enrollment source -> candidate 16-byte states and frames
+  validated current/legacy source layouts -> candidate 16-byte states and frames
 
 SIDB validation
   candidate frame -> enrollment-bound SIDB decoder key
@@ -64,26 +64,26 @@ flattened native selector.
 
 | Area | Status |
 | --- | --- |
-| Outer transform | Typed Go constructs its complete input from validated 630-, 993-, or 1003-byte SIDB geometry and the six-byte hardware identity. The legacy stack/register adapter is no longer used by production recovery. |
+| Outer transform | Typed Go consumes the SIDB codec and hardware identity, using the stateful exit predicate to locate the payload. |
 | Digest, pair, tail, writer | Typed Go algorithms are recovered and differential-tested. |
 | Account entry | Replaced by structural X.509 parsing and pinned-CA SUPF authentication. The legacy account-entry CFG has been removed. |
 | Bootstrap | Replaced by one typed semantic outer profile plus SIDB/hardware runtime fields. The legacy bootstrap CFG has been removed. |
-| Selection | The 192-byte body and 224-byte envelope are parsed structurally. Candidate state/key transforms, SIDB-key production, the 36- or 59-block SIDB AES consumer, and authenticated candidate promotion are typed Go. Native selection orchestration is no longer executed by model recovery. |
-| Enrollment frame | The independent-key AES-shaped core and its suffix are normalized to direct keyed AES S-box transitions and sparse `GF(2^8)` mixing layers. The larger generalized and affine-SPN models are test-only. |
-| SIDB | Container projection, candidate-state-to-key production, and the 36- or 59-block AES consumer are typed. The unused frame output encoding is gone. The producer is now ten direct AES inverse-S-box layers, nine fixed `InvShiftRows + InvMixColumns` operations, four final XOR graphs, and compact endpoint maps. Its protected stage encodings and per-enrollment DFA are no longer semantic requirements. |
+| Selection | Current and legacy source projections feed typed state/key transforms, variable-length SIDB decoding, and authenticated candidate selection. |
+| Enrollment frame | The frame and SIDB-key producer compose to standard AES-128 with fixed input whitening. Independent models are test-only. |
+| SIDB | Codec termination determines the payload boundary. Variable-length bodies are decoded in typed Go; bounded tree and upstream flat/footer interpretations supply authenticated candidates. |
 | SINF | Portable AES/model decoding exists. Decoded SIDB discovery, current and older payload-to-`valu` arithmetic, all semantic class-value families, AES class join, exhaustive record/window or mask-phase evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
-| Build portability | The 630-, 993-, and 1003-byte SIDB layouts recover through the zero-offset Go path without a native executable, reference binary, generated CFG, compact model, per-enrollment DFA, or iPhone-derived secret. Other version-`0x0007000b` containers are discovered from bounded codec, registry, footer, and trailer geometry and promoted only by complete SINF and IPA authentication. |
+| Build portability | Container size does not select the codec boundary. Current and older family candidates require complete SINF authentication; a legacy native-exit differential and broader account controls remain unverified. |
 
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
 memory-layout adapters have been removed. The production recovery package now
-contains typed algorithms plus only the compact frame-AES and SIDB-key data
-profiles.
+contains typed algorithms without runtime frame-AES or SIDB-key data profiles.
 
-Those production artifacts and symbols are build-neutral (`current-frame-aes`
-and `current-sidb-producer-typed`). The larger 26A428-labeled generalized and SPN
-models are test-only and remain solely as independent normalization oracles.
+The compact frame-AES and SIDB-key models and the larger generalized and SPN
+models remain independent test-only oracles. Production uses the exact AES-128
+composition with fixed input whitening, checked by byte-domain, linear-map and
+full-path differential tests.
 
 New captures contain only structural enrollment inputs. Collection no longer
 copies fairplayd, profiles its CFG, or records a daemon hash as a recovery
@@ -146,8 +146,8 @@ sixteen protected substitutions into direct keyed AES inverse S-boxes; their
 output masks fold into the final constants. The initial protected endpoint has
 one unique normalization per byte: all
 sixteen substitutions are direct AES inverse S-boxes with a zero key. Their
-output masks fold into the first middle-round key. The complete producer is
-therefore ten inverse-S-box layers from end to end. The checked production
+output masks fold into the first middle-round key. The test oracle is
+therefore ten inverse-S-box layers from end to end. The checked test
 profile is 528 bytes before gzip and 390 bytes compressed. It contains the
 round constants, four XOR adjacency masks, and compact endpoint maps. The
 former 43,392-byte affine-SPN profile is now a test-only 26A428 normalization
@@ -192,27 +192,21 @@ XOR/add/multiply/mask MBA was removed. Its key identities were proved with
 32-bit Z3 bit-vectors, and the direct operation matches the unreduced protected
 arithmetic over 4,096 deterministic controls.
 
-The secondary class operand is typed too. It contains one eight-byte value
-twice, and its protected byte representation is only XOR `0x1b`. Unequal
-halves are rejected. Current compact enrollments use one fixed semantic value.
-The older extended enrollment uses the output of the digest-derived 3x3
-workspace branch. That dataflow is now proved by an independent class-core
-DFA: the workspace output, repeated twice as the AES key, decrypts the typed
-record `valu` to the already-proven model key exactly.
+The native tree-family class key is derived from the hardware identity and SINF
+selector using framed SHA-1, fixed-key AES, two workspaces, and a GF(2^8)
+combination. AES encrypts the first sixteen digest bytes; its first eight
+output bytes form one operand. The final two digest words initialize separate
+workspaces: `seed = word % 32767`, `exponent = seed + 1`, and product cell `i`
+starts as `((exponent+i) % 32767)^exponent mod 32767`. Exponent 32767 is retained.
 
-The workspace arithmetic remains normalized in typed Go: three residues
-modulo `32767`, anti-diagonal polynomial packing, one affine circulant map over
-`GF(2^8)`, a 45th-power distance factor, the drift
-`0x39a5 * 5^cell + 0x0c7e mod 32767`, and matrix cells
-`(seed + index)^1000 mod 32767`. The seed comes from the final big-endian
-16-bit account-digest suffix. The complete protected suffix domain matches a
-direct reduction plus one, with eight bounded-carry exceptions. This branch
-now supplies the older class-value family.
-
-Production does not reconstruct the native account-digest path. Its only
-downstream effect is the workspace seed, whose complete 32,767-value semantic
-domain is cheap to enumerate. Personalized-SINF authentication selects the
-single coherent value, so the old SHA-1 writer and its CFG are unnecessary.
+One column-major pass uses three planes, the 45th-power distance factor,
+wrapping 32-bit force accumulation and the three-output limb recurrence.
+Its sample is `5^(Product + seed + Current) mod 32767`. The packed product
+words combine with the AES operand through circular multiplication/XOR over
+AES's GF(2^8) field; repeating the eight-byte result forms the class AES key.
+The tree path does not enumerate fixed-class or suffix-seed candidates.
+Flat current-family registries retain the upstream fixed and bounded workspace
+class candidates; each still requires complete SINF authentication.
 
 The older 630-byte enrollment family is closed separately without that seed
 enumeration. Its semantic account digest is ordinary SHA-1 over a typed
@@ -242,14 +236,12 @@ It decrypted one encrypted image and one page; decrypted-IPA SHA-256 was
 and logical-key SHA-256 matched the established independent result
 `0cc0921e90789a30c7cce2ba80c75ced64dd334af31ff6744dc714923a14ac32`.
 
-The decoded current SIDB registry is now parsed structurally as fixed 40-byte
-records followed by a 24-byte footer. Each record contains 20 bytes of
-opaque native selection/validation metadata, a 16-byte `valu` payload, and a
-four-byte tail whose semantic role remains open. Both independent decoded registries are
-944 bytes: 23 records plus the footer, and the naturally selected record is
-aligned within that array. Production obtains each registry directly from the
-typed SIDB candidate decryptor, deduplicates its contents, and does not retain
-a native allocation address or record offset.
+The decoded current registry is parsed as a bounded tree. Node lengths and
+child counts must fit and fill their parent exactly; eligible leaves supply
+windows with absolute-position masks and available tail bytes. Upstream flat,
+footer and footerless structures remain compatibility candidates. Their
+structural validity is not authentication or proof of a native family
+selection rule.
 
 The current-SINF external codec is identity after normalization. Its protected
 form XORed each byte with a position mask and then used an inverse table that
@@ -258,17 +250,13 @@ source directly and emits zero whitening plus canonical identity tables for
 backward-compatible version-2 models. The former semantic-profile object and
 its 4,112 bytes of encoding data have been removed.
 
-SIDB container selection is no longer a three-size switch. The three verified
-layouts remain exact controls, while other containers in the same versioned
-family are inferred from a 13- to 39-byte codec, a block-aligned decoded
-registry containing bounded 40-byte records and an optional separate 16- or
-24-byte footer, and a fixed 16-byte trailer. Record-aligned geometry with no
-separate footer is a beta candidate for large accumulated registries; it is not
-promoted by size alone. The outer iteration count is
-`11 * codec_bytes - 2`, matching all three independent controls. Unknown
-structural candidates still have to produce one decoded registry and one
-personalized-SINF precursor; a truncated known container therefore cannot be
-promoted merely because its size resembles another valid layout.
+The outer loop derives the codec boundary from its stateful exit. Payload
+alignment and trailer bounds are checked afterward. Both the current and
+legacy source projections are evaluated. Registry candidates retain their
+family metadata, but mixed unauthenticated interpretations do not preempt a
+valid result: complete SINF authentication must select one unambiguous
+precursor. The payload, tree depth and node count have explicit resource
+bounds.
 
 Current SINF parsing now accepts bounded rights payloads from 80 through 256
 bytes in eight-byte units. The observed 440- and 448-byte private records and
@@ -280,47 +268,14 @@ version-2 enrollment models decode the current IV-prefixed private record first,
 then re-encode that authenticated plaintext with the legacy macOS CBC wrapper.
 Older credential-wrapped version-2 models retain their compatibility path.
 
-Go evaluates the fixed current class value and every value in the complete
-32,767-element workspace-seed domain against the typed `valu` and AES class
-stages for every structurally parsed SIDB record and all five valid record
-windows. A one-block SINF prefix probe makes the exhaustive semantic search
-bounded; the complete SINF is still authenticated before promotion. The search
-is cancelable, parallel, capped at `2^31` candidate comparisons, and reports
-non-secret progress for large registries. The cap is a resource-safety bound,
-not an acceptance shortcut.
-Candidates retain their record, metadata, and window identity.
-The installed personalized SINF then authenticates exactly one precursor by
-decoding its private atom and checking the complete clear atom sequence. This
-has replaced the native selector and the stack-offset SINF-material adapter in
-model recovery. On the independent 26B118 control, 20 bounded registry-shaped
-objects collapsed to one record/window candidate, produced a byte-identical
-enrollment model with SHA-256
-`98c29933c57e3425f22005bfaf43fac684ef6b671629f76361cb1dd502147575`,
-and decrypted 39 images and 10,080 pages. The decrypted IPA SHA-256 remained
-`73fb374a683c2b10558ef8ab82b5833bdfab719a49a147597eb6dedf40fa325a`;
-no extracted fallback block ran.
-
-Model recovery now stops immediately after the outer stage. A current
-224-byte source is parsed as a 32-byte envelope prefix plus a 192-byte body,
-while the complete 224-byte layout remains a bounded alternative for two
-additional slots. Typed Go evaluates every state/frame/SIDB-key candidate,
-decrypts each supported SIDB container, and lets the personalized SINF
-promote exactly one registry/record/window tuple. On the same private control,
-26 typed registry candidates authenticated to the same single precursor,
-produced the byte-identical model above, and completed the same IPA
-decryption. The generated selection and SINF-entry CFGs have been removed.
-
-The older container is typed as a 43-byte header, a 944-byte encrypted
-registry, and a 16-byte trailer. Its 39-byte codec drives 427 outer iterations;
-the registry uses the same typed SIDB input, output, and chaining masks as the
-compact layout. On the independent 26A434 control, the typed path produced a
-byte-identical enrollment model with SHA-256
-`45c6529775ecb96e5bb3449324ab5b751e2fdecf1699724784007ec93fde372a`,
-selected one authenticated record/window from 26 decoded registry candidates,
-and decrypted 10 images and 11,004 pages. The current decryption output had
-SHA-256 `0eafcbac1502c38aeaa069a627e2d6592f0f2a19b42222361c392a85d77f79ea`;
-all 1,024 audited ARM64 words on the selected page were valid. No native or
-extracted block ran.
+Go evaluates eligible tree windows with the directly derived class key, retains
+the upstream bounded flat-current class families, and preserves the older-family
+workspace and mask-phase search. A SINF prefix probe narrows candidates;
+complete personalized-SINF authentication must accept exactly one result across
+the structural candidates. The compatibility search is cancelable, parallel,
+capped at `2^31` candidate comparisons, and reports non-secret progress. The
+cap is a resource-safety bound, not an acceptance shortcut. Independent small
+native tree and broader account controls remain unverified.
 
 SUPF authentication is typed and structural too. Variant 3 authenticates its
 signed architecture/page-key prefix with RSA/SHA-1, while variant 5 uses
@@ -340,12 +295,9 @@ prefix or signature mutations both take the native rejection edge. Four valid
 v5 licenses from e-Devlet, 9292, WhatsApp, and Airalo—including compact and
 multi-page layouts—produce the exact same 167-word outer table, five state
 words, optional word, and loop controls. A hardware mutation changes none of
-those values; it changes only the explicit six-byte hardware input. The compact
-29-byte and extended 39-byte codecs are exactly the bytes between the four-byte
-version and their structurally located encrypted registry. Production
-therefore verifies the SUPF in ordinary Go, constructs
-the fixed semantic outer profile, copies the SIDB codec and hardware bytes, and
-runs the typed outer algorithm directly. The old `fairplayd`, checkpoint,
+those values; it changes only the explicit six-byte hardware input. Production
+verifies the SUPF in ordinary Go, constructs the fixed semantic outer profile,
+and runs the typed outer algorithm using the codec and hardware bytes. The old `fairplayd`, checkpoint,
 account/bootstrap CFG, and stack-offset adapter dependencies have been removed.
 
 The per-codec outer cycle is no longer a generated MBA circuit in production.
@@ -382,7 +334,7 @@ S-box transitions separated by nine sparse `GF(2^8)` mixing layers. The four
 apparent output masks are fixed coordinate encodings, not new nonlinear
 operations.
 
-Production now executes that compact AES-S-box/MDS form directly. Its checked
+The test oracle executes that compact AES-S-box/MDS form. Its checked
 profile is 4,940 bytes before gzip and 2,065 bytes compressed, down from the
 51,592-byte affine SPN and the original 167,844-byte generalized table model.
 The frame's unused diagnostic output encoding and protected dispatcher exit

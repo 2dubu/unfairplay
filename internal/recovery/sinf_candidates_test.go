@@ -3,10 +3,7 @@ package recovery
 import "testing"
 
 func TestDeriveClassPrecursorCandidates(t *testing.T) {
-	data := make([]byte, 3*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
-	for index := range data {
-		data[index] = byte(index*17 + 3)
-	}
+	data := syntheticSIDBRecordTree(3, 17, 3)
 	registry, err := parseDecodedSIDBRegistry(data)
 	if err != nil {
 		t.Fatal(err)
@@ -39,10 +36,7 @@ func TestDeriveClassPrecursorCandidates(t *testing.T) {
 }
 
 func TestDeriveCurrentClassPrecursorCandidates(t *testing.T) {
-	data := make([]byte, decodedSIDBRecordBytes+decodedSIDBFooterBytes)
-	for index := range data {
-		data[index] = byte(index*29 + 7)
-	}
+	data := syntheticSIDBRecordTree(1, 29, 7)
 	registry, err := parseDecodedSIDBRegistry(data)
 	if err != nil {
 		t.Fatal(err)

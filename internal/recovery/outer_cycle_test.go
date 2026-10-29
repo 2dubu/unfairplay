@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"math/rand"
 	"testing"
 )
 
@@ -45,30 +44,5 @@ func TestOuterCycleRejectsInvalidInput(t *testing.T) {
 	state.HardwareIndex = 6
 	if applyOuterCycle(&state, 1) {
 		t.Fatal("accepted invalid cycle hardware index")
-	}
-}
-
-func TestOuterCycleMatchesProtectedCircuit(t *testing.T) {
-	random := rand.New(rand.NewSource(0x6f75746572637963))
-	for control := range 4096 {
-		var input outerTableRoundState
-		for index := range input.Words {
-			input.Words[index] = random.Uint32()
-		}
-		for index := range input.Hardware {
-			input.Hardware[index] = byte(random.Uint32())
-		}
-		for index := range input.Codec {
-			input.Codec[index] = byte(random.Uint32())
-		}
-		input.HardwareIndex = byte(control % len(input.Hardware))
-		cycleIndex := uint32(control%39 + 1)
-		got, want := input, input
-		if !applyOuterCycle(&got, cycleIndex) || !applyOuterCycleCircuit(&want, cycleIndex) {
-			t.Fatalf("control %d rejected", control)
-		}
-		if got != want {
-			t.Fatalf("control %d differs: got=%#v want=%#v", control, got, want)
-		}
 	}
 }

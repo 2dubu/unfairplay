@@ -1,0 +1,35 @@
+package recovery
+
+import "testing"
+
+func TestAccountClassDigestAndFirstOperand(t *testing.T) {
+	fixtures := []struct {
+		hardware    [6]byte
+		user, keyID uint32
+		digest      [20]byte
+		first       [8]byte
+	}{{hardware: [6]byte{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, user: 0x12345678, keyID: 0x90abcdef, digest: [20]byte{0x64, 0xb8, 0xbf, 0xe4, 0x33, 0xbd, 0xb9, 0xfd, 0x6a, 0x9a, 0x28, 0xe4, 0x68, 0x0d, 0xc2, 0xda, 0x4d, 0xa7, 0xfb, 0xf2}, first: [8]byte{0x58, 0xe4, 0xd2, 0xdd, 0xab, 0x03, 0x57, 0xaf}},
+		{hardware: [6]byte{0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54}, user: 0x0badbeef, keyID: 0x10203040, digest: [20]byte{0x84, 0x4b, 0xce, 0x9e, 0x49, 0xb3, 0x3e, 0xb9, 0x40, 0x5f, 0xea, 0xfa, 0xd5, 0xaa, 0x9d, 0xd7, 0xda, 0x71, 0x01, 0x94}, first: [8]byte{0xa1, 0x85, 0x23, 0xa3, 0x59, 0xb7, 0xa9, 0x63}}}
+	for _, f := range fixtures {
+		digest, err := accountClassDigest(f.hardware[:], f.user, f.keyID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if digest != f.digest {
+			t.Fatal("synthetic account digest mismatch")
+		}
+		first, err := accountClassFirstOperand(digest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first != f.first {
+			t.Fatal("synthetic first operand mismatch")
+		}
+	}
+	if _, err := accountClassDigest(make([]byte, 5), 0, 0); err == nil {
+		t.Fatal("accepted short hardware")
+	}
+	if _, err := accountClassDigest(make([]byte, 7), 0, 0); err == nil {
+		t.Fatal("accepted long hardware")
+	}
+}

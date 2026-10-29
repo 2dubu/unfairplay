@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-func TestCanonicalSIDBClassifiesKnownGeometry(t *testing.T) {
+func TestCanonicalSIDBClassifiesVersionWithoutInferringGeometry(t *testing.T) {
 	for _, test := range []struct {
-		bytes, source, codec, registry, footer int
-	}{{630, 192, 34, 576, 16}, {992, 224, 28, 944, 24}, {993, 224, 29, 944, 24}, {1003, 224, 39, 944, 24}, {11724, 224, 24, 11680, 0}} {
+		bytes, source int
+	}{{630, 0}, {642, 0}, {993, 0}, {1003, 0}, {2048, 0}, {8192, 0}} {
 		t.Run(fmt.Sprintf("%d", test.bytes), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "SC Info.sidb")
 			data := make([]byte, test.bytes)
@@ -26,27 +26,10 @@ func TestCanonicalSIDBClassifiesKnownGeometry(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if sidb.Version != 0x0007000b || sidb.Format != "macos-sidb-v7000b" || sidb.ExpectedSourceBytes != test.source ||
-				sidb.CodecBytes != test.codec || sidb.RegistryBytes != test.registry || sidb.FooterBytes != test.footer {
+			if sidb.Version != 0x0007000b || sidb.Format != "macos-sidb-v7000b" || sidb.ExpectedSourceBytes != test.source || sidb.CodecBytes != 0 || sidb.RegistryBytes != 0 || sidb.FooterBytes != 0 {
 				t.Fatalf("unexpected SIDB classification: %#v", sidb)
 			}
 		})
-	}
-}
-
-func TestCanonicalSIDBRejectsUnsupportedGeometry(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "SC Info.sidb")
-	data := make([]byte, 642)
-	binary.BigEndian.PutUint32(data[:4], 0x0007000b)
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	sidb, err := canonicalSIDB(CanonicalEnrollmentFile{CapturePath: "SC Info.sidb", Bytes: int64(len(data)), localPath: path})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if sidb.Format != "" || sidb.ExpectedSourceBytes != 0 {
-		t.Fatalf("unsupported SIDB was classified: %#v", sidb)
 	}
 }
 

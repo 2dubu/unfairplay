@@ -1,6 +1,9 @@
 package recovery
 
-import "fmt"
+import (
+	"encoding/binary"
+	"fmt"
+)
 
 // currentOuterInitialTable is semantic enrollment data, not an instruction or
 // protected-register snapshot. Four independently signed v5 licenses with
@@ -46,44 +49,104 @@ const (
 	currentOuterInitialCounterSeed  = uint32(0x0a782fec)
 )
 
-func currentOuterInputs(container, hardware []byte) ([outerTableWords]uint32, outerTableRoundState, outerIterationControl, error) {
-	table := currentOuterInitialTable
-	state := outerTableRoundState{
-		Words: currentOuterInitialWords, OptionalWord: currentOuterInitialOptionalWord,
-		HardwareIndex: 0,
+// selectionSourceFromOuterState reconstructs the source bytes consumed by
+// selection from the outer state.
+func selectionSourceFromOuterState(state *outerTableRoundState, sourceBytes int) ([]byte, error) {
+	if state == nil {
+		return nil, fmt.Errorf("current outer state is unavailable")
 	}
-	control := outerIterationControl{X1: currentOuterInitialX1, CounterSeed: currentOuterInitialCounterSeed}
-	layout, err := currentSIDBLayoutForContainer(container)
-	if err != nil {
-		return table, state, control, err
+	switch sourceBytes {
+	case selectionSourceEnvelopeBytes:
+		return append([]byte(nil), state.Source[:]...), nil
+	case selectionSIDBLargerSourceBytes:
+		source := make([]byte, sourceBytes)
+		copy(source, state.Source[:])
+		copy(source[224:232], state.Writer[132:140])
+		copy(source[232:256], state.Tail[40:64])
+		return source, nil
+	default:
+		return nil, fmt.Errorf("unsupported current selection source size %d", sourceBytes)
 	}
-	if len(hardware) != len(state.Hardware) {
-		return table, state, control, fmt.Errorf("current hardware identity has %d bytes, want %d", len(hardware), len(state.Hardware))
-	}
-	copy(state.Hardware[:], hardware)
-	copy(state.Codec[4:4+layout.CodecBytes], container[4:4+layout.CodecBytes])
-	return table, state, control, nil
 }
 
-func deriveCurrentSelectionSource(container, hardware []byte) ([selectionSourceEnvelopeBytes]byte, int, error) {
-	var source [selectionSourceEnvelopeBytes]byte
-	layout, err := currentSIDBLayoutForContainer(container)
-	if err != nil {
-		return source, 0, err
+// nativeOuterStopStep evaluates the cycle-final dispatch at 0x10046119c.
+// The accumulator is initialized at 0x100845fc8 and updated only when the
+// cycle-final path runs, beginning with cycle 14.
+func nativeOuterStopStep(words [5]uint32, accumulator *uint32) bool {
+	const target uint32 = 0x05010000
+	w11 := target ^ uint32(0x050183f6)
+	w9 := words[3] ^ uint32(0x189c788b) ^ words[2]
+	w10 := words[1]
+	w9 |= w10 ^ uint32(0xdc6e37ea)
+	w12 := words[4] ^ uint32(0xc7c208dc)
+	w14 := words[2] ^ uint32(0x00000c09)
+	w13 := words[2] ^ uint32(0x399b2000)
+	w13 = uint32((uint64(w14)<<32 | uint64(w13)) >> 13)
+	w14 = w11 + uint32(0xfa8e2a8c)
+	w10 = (w14 ^ w10) & w12 & w13
+	w9 |= w10
+	w10 = uint32(0x0fc20444) & (w9 << 1)
+	w9 = w9 - w10 + uint32(0x87e10222)
+	w10 = (*accumulator ^ uint32(0x5db37cfe)) & (w9 ^ uint32(0x87e10222))
+	w9 = (w9 & uint32(0x4d191d94)) ^ w10
+	*accumulator = w9 ^ uint32(0x15ab616a)
+	return w9 == target
+}
+
+// deriveNativeSelectionSource follows the native codec cycle and stop
+// dispatch. The codec boundary is determined by the stateful native exit,
+// then the remaining bytes are checked as aligned body and trailer.
+func deriveNativeSelectionSource(container, hardware []byte) ([]byte, currentSIDBLayout, int, error) {
+	var layout currentSIDBLayout
+	if len(container) < 4+13+selectionSIDBExtendedTrailerBytes || binary.BigEndian.Uint32(container[:4]) != currentSIDBContainerVersion {
+		return nil, layout, 0, fmt.Errorf("current SIDB container has an unsupported version or truncated header")
 	}
-	table, state, control, err := currentOuterInputs(container, hardware)
-	if err != nil {
-		return source, 0, err
+	if len(hardware) != 6 {
+		return nil, layout, 0, fmt.Errorf("current hardware identity has invalid length")
 	}
-	iterations, ok := applyOuterLoop(&table, &state, &control, layout.OuterIterations)
-	if !ok || iterations != layout.OuterIterations {
-		return source, iterations, fmt.Errorf("typed current outer stage did not reach its natural exit")
+	table := currentOuterInitialTable
+	state := outerTableRoundState{Words: currentOuterInitialWords, OptionalWord: currentOuterInitialOptionalWord}
+	copy(state.Hardware[:], hardware)
+	const maximumOuterIterations = 4096
+	const maximumCodecBytes = (maximumOuterIterations + 2) / 11
+	available := min(maximumCodecBytes, len(container)-4-selectionSIDBExtendedTrailerBytes)
+	copy(state.Codec[4:17], container[4:17])
+	defer func() {
+		clear(table[:])
+		clear(state.Source[:])
+		clear(state.Writer[:])
+		clear(state.Tail[:])
+		clear(state.SelectionState[:])
+		clear(state.Codec[:])
+		clear(state.Hardware[:])
+	}()
+	control := outerIterationControl{X1: currentOuterInitialX1, CounterSeed: currentOuterInitialCounterSeed}
+	base := outerTableInitialBase
+	accumulator := uint32(0xaf549e95)
+	cycles := 0
+	for iteration := 1; iteration <= 11*available-2; iteration++ {
+		next, ok := applyOuterFullIteration(&table, base, &state, &control)
+		if !ok {
+			return nil, layout, iteration - 1, fmt.Errorf("typed current outer stage failed")
+		}
+		base = next
+		if iteration >= 9 && (iteration-9)%11 == 0 {
+			cycles++
+			if !applyOuterCycleWithByte(&state, container[4+cycles-1]) {
+				return nil, layout, iteration, fmt.Errorf("typed current outer cycle failed")
+			}
+			control.X1 = 0x60319d87
+			if cycles >= 14 && nativeOuterStopStep(state.Words, &accumulator) {
+				bodyOffset := 4 + cycles
+				bodyBytes := len(container) - bodyOffset - selectionSIDBExtendedTrailerBytes
+				layout = currentSIDBLayout{CodecBytes: cycles, PayloadOffset: bodyOffset, PayloadBytes: bodyBytes, SourceBytes: selectionSIDBLargerSourceBytes, OuterIterations: iteration}
+				if bodyBytes <= 0 || bodyBytes%selectionSIDBBlockBytes != 0 || bodyBytes > maximumSelectionSIDBPayloadBytes {
+					return nil, layout, iteration, fmt.Errorf("current SIDB has invalid body geometry")
+				}
+				source, err := selectionSourceFromOuterState(&state, layout.SourceBytes)
+				return source, layout, iteration, err
+			}
+		}
 	}
-	copy(source[:], state.Source[:])
-	clear(state.Source[:])
-	clear(state.Writer[:])
-	clear(state.Tail[:])
-	clear(state.SelectionState[:])
-	clear(table[:])
-	return source, iterations, nil
+	return nil, layout, 11*available - 2, fmt.Errorf("current SIDB codec did not reach the native exit within its bounded input")
 }

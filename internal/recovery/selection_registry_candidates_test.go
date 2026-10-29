@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/aes"
 	"encoding/binary"
-	"strings"
 	"testing"
 )
 
@@ -32,12 +31,12 @@ func fillSyntheticSelectionSIDBContainer(t *testing.T, container []byte, payload
 }
 
 func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
-	container, hardware := syntheticExtendedCurrentOuterInputs()
-	for index := selectionSIDBExtendedPayloadOffset; index < selectionSIDBExtendedPayloadOffset+selectionSIDBPayloadBytes; index++ {
+	container, hardware, layout := syntheticNativeSIDB(t, selectionSIDBPayloadBytes)
+	for index := layout.PayloadOffset; index < layout.PayloadOffset+selectionSIDBPayloadBytes; index++ {
 		container[index] = 0
 	}
-	source, iterations, err := deriveCurrentSelectionSource(container, hardware)
-	if err != nil || iterations != selectionSIDBExtendedIterations {
+	source, _, iterations, err := deriveNativeSelectionSource(container, hardware)
+	if err != nil || iterations != layout.OuterIterations {
 		t.Fatalf("derive extended selection source = %d/%v", iterations, err)
 	}
 	keyCandidates, err := enrollmentKeyCandidates(source[selectionSourcePrefixBytes:])
@@ -46,42 +45,43 @@ func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
 	}
 	const selectedSlot = 8
 	var plaintext [selectionSIDBPayloadBytes]byte
-	for index := range plaintext {
-		plaintext[index] = byte(index*31 + 19)
-	}
-	fillSyntheticSelectionSIDBContainer(t, container, selectionSIDBExtendedPayloadOffset, plaintext[:], keyCandidates[selectedSlot].Key)
+	copy(plaintext[:], syntheticSIDBTreeBuffer(len(plaintext)))
+	putSyntheticSIDBNode(plaintext[:], 0, len(plaintext), 2)
+	putSyntheticSIDBNode(plaintext[:], 20, 36, 0)
+	putSyntheticSIDBNode(plaintext[:], 56, len(plaintext)-56, 0)
+	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext[:], keyCandidates[selectedSlot].Key)
 	candidates, _, gotIterations, err := deriveCurrentSelectionRegistryCandidates(
 		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotIterations != selectionSIDBExtendedIterations {
+	if gotIterations != layout.OuterIterations {
 		t.Fatalf("extended selection iterations=%d", gotIterations)
 	}
-	matches := 0
+	treeMatches, flatMatches := 0, 0
 	for _, candidate := range candidates {
 		if bytes.Equal(candidate.Data, plaintext[:]) {
-			matches++
+			if candidate.Registry.Tree {
+				treeMatches++
+			} else {
+				flatMatches++
+			}
 		}
 	}
 	clearDecodedSIDBRegistryCandidates(candidates)
-	if matches != 1 {
-		t.Fatalf("extended typed SIDB selection found plaintext %d times, want 1", matches)
+	if treeMatches != 1 || flatMatches != 1 {
+		t.Fatalf("expected one tree and one flat interpretation of the plaintext")
 	}
 }
 
 func TestDeriveStructuralCurrentSelectionRegistryCandidates(t *testing.T) {
-	container, hardware := syntheticStructuralCurrentOuterInputs(28, selectionSIDBPayloadBytes)
-	layout, err := currentSIDBLayoutForContainer(container)
-	if err != nil {
-		t.Fatal(err)
-	}
+	container, hardware, layout := syntheticNativeSIDB(t, selectionSIDBPayloadBytes)
 	for index := layout.PayloadOffset; index < layout.PayloadOffset+layout.PayloadBytes; index++ {
 		container[index] = 0
 	}
-	source, iterations, err := deriveCurrentSelectionSource(container, hardware)
-	if err != nil || iterations != 306 {
+	source, _, iterations, err := deriveNativeSelectionSource(container, hardware)
+	if err != nil || iterations != layout.OuterIterations {
 		t.Fatalf("derive structural selection source = %d/%v", iterations, err)
 	}
 	keyCandidates, err := enrollmentKeyCandidates(source[selectionSourcePrefixBytes:])
@@ -100,7 +100,7 @@ func TestDeriveStructuralCurrentSelectionRegistryCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if gotIterations != 306 {
+	if gotIterations != layout.OuterIterations {
 		t.Fatalf("structural selection iterations=%d", gotIterations)
 	}
 	matches := 0
@@ -116,13 +116,9 @@ func TestDeriveStructuralCurrentSelectionRegistryCandidates(t *testing.T) {
 }
 
 func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
-	container, hardware := syntheticStructuralCurrentOuterInputs(28, selectionSIDBPayloadBytes)
-	layout, err := currentSIDBLayoutForContainer(container)
-	if err != nil {
-		t.Fatal(err)
-	}
-	source, iterations, err := deriveCurrentSelectionSource(container, hardware)
-	if err != nil || iterations != 306 {
+	container, hardware, layout := syntheticNativeSIDB(t, selectionSIDBPayloadBytes)
+	source, _, iterations, err := deriveNativeSelectionSource(container, hardware)
+	if err != nil || iterations != layout.OuterIterations {
 		t.Fatalf("derive structural source = %d/%v", iterations, err)
 	}
 	keyCandidates, err := enrollmentKeyCandidates(source[selectionSourcePrefixBytes:])
@@ -138,8 +134,12 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	const recordIndex, windowOffset = 7, 3
+	classKey, err := accountClassKey(hardware, 0x12345678, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(
-		registry.Records[recordIndex], windowOffset, currentClassEnrollmentParameters().classKey(),
+		registry.Records[recordIndex], windowOffset, classKey,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -153,7 +153,7 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clearDecodedSIDBRegistryCandidates(registries)
-	if gotIterations != 306 {
+	if gotIterations != layout.OuterIterations {
 		t.Fatalf("structural iteration count = %d", gotIterations)
 	}
 	pack, err := currentEnrollmentPack(map[string][]byte{"App.sinf": sinf}, registries, hardware)
@@ -171,20 +171,12 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 }
 
 func TestDeriveRecordAlignedCurrentSelectionRegistryCandidate(t *testing.T) {
-	const codecBytes = 24
 	plaintext := make([]byte, 2*decodedSIDBRecordBytes)
 	for index := range plaintext {
 		plaintext[index] = byte(index*37 + 13)
 	}
-	container, hardware := syntheticStructuralCurrentOuterInputs(codecBytes, len(plaintext))
-	layout, err := currentSIDBLayoutForContainer(container)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if layout.CodecBytes != codecBytes || layout.PayloadBytes != len(plaintext) || layout.OuterIterations != 262 {
-		t.Fatalf("record-aligned structural layout = %+v", layout)
-	}
-	source, _, err := deriveCurrentSelectionSource(container, hardware)
+	container, hardware, layout := syntheticNativeSIDB(t, len(plaintext))
+	source, _, _, err := deriveNativeSelectionSource(container, hardware)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,8 +202,12 @@ func TestDeriveRecordAlignedCurrentSelectionRegistryCandidate(t *testing.T) {
 		t.Fatalf("record-aligned decoded matches = %d", len(selected))
 	}
 	const recordIndex, windowOffset = 1, 2
+	classKey, err := accountClassKey(hardware, 0x12345678, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
 	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(
-		selected[0].Registry.Records[recordIndex], windowOffset, currentClassEnrollmentParameters().classKey(),
+		selected[0].Registry.Records[recordIndex], windowOffset, classKey,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -226,11 +222,11 @@ func TestDeriveRecordAlignedCurrentSelectionRegistryCandidate(t *testing.T) {
 	}
 }
 
-func TestCurrentSIDBContainerFilesReportsRejectedGeometry(t *testing.T) {
+func TestCurrentSIDBContainerFilesAcceptsVersionBeforeNativeGeometry(t *testing.T) {
 	data := make([]byte, 96)
 	binary.BigEndian.PutUint32(data[:4], currentSIDBContainerVersion)
 	_, err := currentSIDBContainerFiles(map[string][]byte{"state/fpsd-sc-info/SC Info.sidb": data})
-	if err == nil || !strings.Contains(err.Error(), "96 bytes") || !strings.Contains(err.Error(), "unsupported or ambiguous size") {
-		t.Fatalf("rejected SIDB diagnostic = %v", err)
+	if err != nil {
+		t.Fatalf("valid version was rejected before native layout discovery: %v", err)
 	}
 }

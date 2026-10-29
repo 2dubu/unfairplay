@@ -2,98 +2,22 @@ package recovery
 
 import (
 	"crypto/aes"
-	"encoding/binary"
 	"fmt"
 )
 
 const (
-	selectionSIDBOlderContainerBytes   = 630
-	selectionSIDBOlderPayloadOffset    = 38
-	selectionSIDBOlderPayloadBytes     = 576
-	selectionSIDBOlderIterations       = 372
-	selectionSIDBContainerBytes        = 993
-	selectionSIDBExtendedBytes         = 1003
-	selectionSIDBPayloadOffset         = 33
-	selectionSIDBExtendedPayloadOffset = 43
-	selectionSIDBPayloadBytes          = 944
-	selectionSIDBBlockBytes            = aes.BlockSize
-	selectionSIDBTrailerBytes          = 16
-	selectionSIDBOuterIterations       = outerNaturalIterationCount
-	selectionSIDBExtendedIterations    = 427
-	selectionSIDBMinimumCodecBytes     = 13
-	selectionSIDBMaximumCodecBytes     = 39
-	selectionSIDBIterationsPerCodec    = 11
-	selectionSIDBIterationBias         = -2
-	maximumStructuralSIDBRecords       = 512
+	selectionSIDBBlockBytes           = aes.BlockSize
+	selectionSIDBExtendedTrailerBytes = 16
+	selectionSIDBLargerSourceBytes    = 256
+	maximumSelectionSIDBPayloadBytes  = 1 << 20
 )
 
 type currentSIDBLayout struct {
 	CodecBytes      int
 	PayloadOffset   int
 	PayloadBytes    int
+	SourceBytes     int
 	OuterIterations int
-}
-
-func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
-	if len(input) < 4 || binary.BigEndian.Uint32(input[:4]) != currentSIDBContainerVersion {
-		return currentSIDBLayout{}, fmt.Errorf("current SIDB container has an unsupported version")
-	}
-	switch len(input) {
-	case selectionSIDBOlderContainerBytes:
-		return currentSIDBLayout{
-			CodecBytes:      selectionSIDBOlderPayloadOffset - 4,
-			PayloadOffset:   selectionSIDBOlderPayloadOffset,
-			PayloadBytes:    selectionSIDBOlderPayloadBytes,
-			OuterIterations: selectionSIDBOlderIterations,
-		}, nil
-	case selectionSIDBContainerBytes:
-		return currentSIDBLayout{
-			CodecBytes:      selectionSIDBPayloadOffset - 4,
-			PayloadOffset:   selectionSIDBPayloadOffset,
-			PayloadBytes:    selectionSIDBPayloadBytes,
-			OuterIterations: selectionSIDBOuterIterations,
-		}, nil
-	case selectionSIDBExtendedBytes:
-		return currentSIDBLayout{
-			CodecBytes:      selectionSIDBExtendedPayloadOffset - 4,
-			PayloadOffset:   selectionSIDBExtendedPayloadOffset,
-			PayloadBytes:    selectionSIDBPayloadBytes,
-			OuterIterations: selectionSIDBExtendedIterations,
-		}, nil
-	}
-
-	// Every observed current container is version || codec || encrypted
-	// registry || 16-byte trailer. The decoded registry is a bounded sequence
-	// of 40-byte records, optionally followed by a 16- or 24-byte footer. The
-	// outer loop consumes one codec byte every eleven iterations, with the same
-	// two-step bias in all three independently validated layouts.
-	var layouts []currentSIDBLayout
-	for codecBytes := selectionSIDBMinimumCodecBytes; codecBytes <= selectionSIDBMaximumCodecBytes; codecBytes++ {
-		payloadBytes := len(input) - 4 - codecBytes - selectionSIDBTrailerBytes
-		if payloadBytes <= 0 || payloadBytes%selectionSIDBBlockBytes != 0 || !validDecodedSIDBRegistrySize(payloadBytes) {
-			continue
-		}
-		layouts = append(layouts, currentSIDBLayout{
-			CodecBytes:      codecBytes,
-			PayloadOffset:   4 + codecBytes,
-			PayloadBytes:    payloadBytes,
-			OuterIterations: selectionSIDBIterationsPerCodec*codecBytes + selectionSIDBIterationBias,
-		})
-	}
-	if len(layouts) != 1 {
-		return currentSIDBLayout{}, fmt.Errorf("current SIDB container has unsupported or ambiguous size %d", len(input))
-	}
-	return layouts[0], nil
-}
-
-func validDecodedSIDBRegistrySize(size int) bool {
-	for _, footerBytes := range [...]int{decodedSIDBNoSeparateFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
-		if size > footerBytes && (size-footerBytes)%decodedSIDBRecordBytes == 0 {
-			count := (size - footerBytes) / decodedSIDBRecordBytes
-			return count > 0 && count <= maximumStructuralSIDBRecords
-		}
-	}
-	return false
 }
 
 // These are fixed semantic external encodings, not account or build material.
@@ -117,31 +41,23 @@ var selectionSIDBChainMask = [selectionSIDBBlockBytes]byte{
 	0x5d, 0x73, 0x61, 0xbc, 0x2f, 0xb9, 0x7c, 0x7e,
 }
 
-// The selection sweep reduces each structurally supported container to its
-// encoded AES blocks. The two current layouts contain 59 blocks; the older
-// 630-byte layout contains 36. Codec prefixes and optional trailers do not
-// belong to the encrypted registry body.
-func decodeSelectionSIDBContainer(input []byte) ([]byte, error) {
-	layout, err := currentSIDBLayoutForContainer(input)
-	if err != nil {
-		return nil, err
+// decodeSelectionSIDBContainerWithLayout validates the payload and trailer.
+func decodeSelectionSIDBContainerWithLayout(input []byte, layout currentSIDBLayout) ([]byte, error) {
+	if layout.PayloadBytes <= 0 || layout.PayloadBytes > maximumSelectionSIDBPayloadBytes || layout.PayloadBytes%selectionSIDBBlockBytes != 0 || layout.PayloadOffset < 4 || layout.PayloadOffset > len(input)-selectionSIDBExtendedTrailerBytes || layout.PayloadBytes != len(input)-selectionSIDBExtendedTrailerBytes-layout.PayloadOffset {
+		return nil, fmt.Errorf("selection SIDB has invalid body geometry")
 	}
 	output := make([]byte, layout.PayloadBytes)
-	end := layout.PayloadOffset + len(output)
-	if end > len(input) {
-		return nil, fmt.Errorf("selection SIDB body exceeds its container")
-	}
 	for index := range output {
 		output[index] = input[layout.PayloadOffset+index] ^ selectionSIDBInputMask[index%selectionSIDBBlockBytes]
 	}
 	return output, nil
 }
 
-// decryptSelectionSIDBPayload replaces the protected block loop once its
-// per-enrollment AES key has been recovered by the upstream producer.
-func decryptSelectionSIDBPayload(input []byte, key [selectionSIDBBlockBytes]byte) ([]byte, error) {
-	if len(input) == 0 || len(input)%selectionSIDBBlockBytes != 0 {
-		return nil, fmt.Errorf("selection SIDB payload has invalid size %d", len(input))
+// decryptSelectionSIDBPayloadDynamic replaces the protected block loop once
+// its per-enrollment AES key has been recovered by the upstream producer.
+func decryptSelectionSIDBPayloadDynamic(input []byte, key [selectionSIDBBlockBytes]byte) ([]byte, error) {
+	if len(input) == 0 || len(input) > maximumSelectionSIDBPayloadBytes || len(input)%selectionSIDBBlockBytes != 0 {
+		return nil, fmt.Errorf("selection SIDB body has invalid length %d", len(input))
 	}
 	output := make([]byte, len(input))
 	block, err := aes.NewCipher(key[:])

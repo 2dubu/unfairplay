@@ -27,11 +27,15 @@ func deriveClassValuFromMaskedWords(masked [16]byte) (valu [16]byte) {
 	return valu
 }
 
-// deriveClassValuWindow evaluates one of the five structurally possible
-// 16-byte windows in Payload || Tail. The fixed mask follows the original
-// payload position and wraps after sixteen bytes.
+func classRecordMaximumWindowOffset(record decodedSIDBRecord) int {
+	if record.TailAvailable < 0 || record.TailAvailable > decodedSIDBTailBytes {
+		return -1
+	}
+	return record.TailAvailable
+}
+
 func deriveClassValuWindow(record decodedSIDBRecord, windowOffset int) ([16]byte, error) {
-	if windowOffset < 0 || windowOffset > maximumClassWindowOffset {
+	if windowOffset < 0 || windowOffset > classRecordMaximumWindowOffset(record) {
 		return [16]byte{}, fmt.Errorf("class record window offset is invalid: %d", windowOffset)
 	}
 	var material [decodedSIDBPayloadBytes + decodedSIDBTailBytes]byte
@@ -40,7 +44,8 @@ func deriveClassValuWindow(record decodedSIDBRecord, windowOffset int) ([16]byte
 	var masked [16]byte
 	for index := range masked {
 		position := windowOffset + index
-		masked[index] = material[position] ^ currentClassRecordMask[position%len(currentClassRecordMask)]
+		maskPosition := position + record.MaskOffset
+		masked[index] = material[position] ^ currentClassRecordMask[maskPosition%len(currentClassRecordMask)]
 	}
 	return deriveClassValuFromMaskedWords(masked), nil
 }

@@ -100,7 +100,7 @@ audit. A pure 32-bit IPA is still desirable before a stable release.
 
 ## Compact frame AES profile
 
-The production frame suffix uses direct keyed AES S-box transitions and nine
+The test-only frame suffix uses direct keyed AES S-box transitions and nine
 sparse `GF(2^8)` mixing layers. The larger affine SPN is retained only as an
 independent test oracle. Verify all 4,096 deterministic controls with:
 
@@ -117,7 +117,7 @@ The test-only affine-SPN oracle remains 17,024 bytes with SHA-256
 
 ## Typed inverse-AES/XOR SIDB-key producer
 
-Production composes away the protected producer's separate stage encodings.
+The test-only producer composes away the protected producer's separate stage encodings.
 It is ten direct AES inverse-S-box layers, nine fixed
 `InvShiftRows + InvMixColumns` operations, four final XOR graphs, and compact
 input/output maps. The first inverse-S-box key is zero; all of its former masks
@@ -147,3 +147,21 @@ The test-only oracle is 1,618 bytes. Its compressed SHA-256 is
 `7f31d8e3b36bcd2981ff2edd8d742d83616c925a9a5c744c868af8e576edc904`.
 The 43,392-byte decoded profile has SHA-256
 `f9362ea765534d3a3e578f5e40d3814d8cfa57dc67306aadf0e0e698b4344954`.
+
+## Current recovery checks
+
+The standard suite runs all public algorithm and differential tests without
+build tags. Private native oracle tests skip unless their external inputs are
+provided. Run `go test ./...`, `go vet ./...`, and `go test -race ./...`.
+
+The SIDB-key composition uses AES-128 with fixed input whitening; run
+`go test ./internal/recovery -run '^TestSIDBKey' -count=1` for its proof and
+controls. Tree parsing checks bounds and exact child spans; class-key selection
+requires complete, unique personalized-SINF authentication across the direct
+tree path and upstream flat compatibility families. Native comparisons
+are bounded controls, not proof for every account or future format.
+
+Optional source/body comparisons use `UNFAIRPLAY_TEST_CAPTURE`,
+`UNFAIRPLAY_SIDB_SOURCE_ORACLE`, and `UNFAIRPLAY_SIDB_BODY_ORACLE`. Other
+private class-key and workspace oracle inputs are documented in their tests.
+Keep all private inputs outside the repository.

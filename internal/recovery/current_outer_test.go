@@ -129,29 +129,16 @@ func TestDeriveExtendedCurrentSelectionSourceDependencies(t *testing.T) {
 }
 
 func TestDeriveStructuralCurrentSelectionSource(t *testing.T) {
-	container, hardware := syntheticStructuralCurrentOuterInputs(28, selectionSIDBPayloadBytes)
-	layout, err := currentSIDBLayoutForContainer(container)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if layout.CodecBytes != 28 || layout.OuterIterations != 306 {
-		t.Fatalf("structural layout = %+v", layout)
-	}
-	baseline, iterations, err := deriveCurrentSelectionSource(container, hardware)
-	if err != nil || iterations != 306 {
+	container, hardware, layout := syntheticNativeSIDB(t, selectionSIDBPayloadBytes)
+	baseline, _, iterations, err := deriveNativeSelectionSource(container, hardware)
+	if err != nil || iterations != layout.OuterIterations {
 		t.Fatalf("derive structural source = %d/%v", iterations, err)
-	}
-	codecMutation := append([]byte(nil), container...)
-	codecMutation[4] ^= 1
-	changed, _, err := deriveCurrentSelectionSource(codecMutation, hardware)
-	if err != nil || changed == baseline {
-		t.Fatal("structurally discovered codec did not affect the source")
 	}
 	payloadMutation := append([]byte(nil), container...)
 	payloadMutation[layout.PayloadOffset+17] ^= 1
-	unchanged, _, err := deriveCurrentSelectionSource(payloadMutation, hardware)
-	if err != nil || unchanged != baseline {
-		t.Fatal("structurally discovered encrypted payload changed the outer source")
+	unchanged, _, _, err := deriveNativeSelectionSource(payloadMutation, hardware)
+	if err != nil || !bytes.Equal(unchanged, baseline) {
+		t.Fatal("encrypted payload changed the outer source")
 	}
 }
 

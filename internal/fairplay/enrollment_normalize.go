@@ -36,13 +36,14 @@ type CanonicalSUPF struct {
 }
 
 type CanonicalSIDB struct {
-	File                CanonicalEnrollmentFile `json:"file"`
-	Version             uint32                  `json:"version"`
-	Format              string                  `json:"format"`
-	CodecBytes          int                     `json:"codec_bytes,omitempty"`
-	RegistryBytes       int                     `json:"registry_bytes,omitempty"`
-	FooterBytes         int                     `json:"footer_bytes,omitempty"`
-	ExpectedSourceBytes int                     `json:"expected_source_bytes,omitempty"`
+	File    CanonicalEnrollmentFile `json:"file"`
+	Version uint32                  `json:"version"`
+	Format  string                  `json:"format"`
+	// Geometry remains unknown until the SIDB content has been validated.
+	CodecBytes          int `json:"codec_bytes,omitempty"`
+	RegistryBytes       int `json:"registry_bytes,omitempty"`
+	FooterBytes         int `json:"footer_bytes,omitempty"`
+	ExpectedSourceBytes int `json:"expected_source_bytes,omitempty"`
 }
 
 type CanonicalEnrollmentInput struct {
@@ -87,54 +88,12 @@ func canonicalSIDB(file CanonicalEnrollmentFile) (CanonicalSIDB, error) {
 	version := binary.BigEndian.Uint32(data[:4])
 	result := CanonicalSIDB{File: file, Version: version}
 	if version == 0x0007000b {
-		if codecBytes, registryBytes, footerBytes, ok := canonicalSIDBGeometry(len(data)); ok {
-			result.Format = "macos-sidb-v7000b"
-			result.CodecBytes = codecBytes
-			result.RegistryBytes = registryBytes
-			result.FooterBytes = footerBytes
-			if footerBytes == 16 {
-				result.ExpectedSourceBytes = 192
-			} else {
-				result.ExpectedSourceBytes = 224
-			}
-		}
+		result.Format = "macos-sidb-v7000b"
+
 	} else {
 		result.Format = "unknown"
 	}
 	return result, nil
-}
-
-func canonicalSIDBGeometry(size int) (codecBytes, registryBytes, footerBytes int, ok bool) {
-	// Preserve the three independently verified layouts when a footerless
-	// interpretation with a shorter codec would otherwise also fit by size.
-	switch size {
-	case 630:
-		return 34, 576, 16, true
-	case 993:
-		return 29, 944, 24, true
-	case 1003:
-		return 39, 944, 24, true
-	}
-	for codec := 13; codec <= 39; codec++ {
-		registry := size - 4 - codec - 16
-		if registry <= 0 || registry%16 != 0 {
-			continue
-		}
-		for _, footer := range [...]int{0, 16, 24} {
-			if registry <= footer || (registry-footer)%40 != 0 {
-				continue
-			}
-			records := (registry - footer) / 40
-			if records <= 0 || records > 512 {
-				continue
-			}
-			if ok {
-				return 0, 0, 0, false
-			}
-			codecBytes, registryBytes, footerBytes, ok = codec, registry, footer, true
-		}
-	}
-	return
 }
 
 func canonicalSUPF(file CanonicalEnrollmentFile) (CanonicalSUPF, error) {
@@ -357,8 +316,6 @@ func NormalizeEnrollmentCapture(capturePath string, manifest EnrollmentCaptureMa
 	for _, sidb := range result.SIDBs {
 		if sidb.Format == "unknown" {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("SIDB %s has unrecognized version %#08x", sidb.File.CapturePath, sidb.Version))
-		} else if sidb.ExpectedSourceBytes == 0 {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("SIDB %s has an unclassified size", sidb.File.CapturePath))
 		}
 	}
 	result.RecoveryReady = true
