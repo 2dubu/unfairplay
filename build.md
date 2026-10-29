@@ -450,6 +450,50 @@ build-by-build MBA tracing is not a beta gate: production consumes the semantic
 input format and authenticates the resulting model instead of selecting an
 implementation by binary identity.
 
+## External beta evidence
+
+SINF geometry is not the current failure boundary. The public reports and
+private controls cover these current layouts:
+
+| Total SINF bytes | `priv` bytes | `righ` bytes | `crdt`/`asdt` | Status |
+| ---: | ---: | ---: | --- | --- |
+| 1032 | 440 | 80 | absent | parsed |
+| 1048 | 448 | 88 | absent | parsed |
+| 1056 | 440 | 80 | present | parsed |
+
+The structural invariant is `priv_bytes = 360 + righ_bytes`; the two optional
+four-byte marker atoms add 24 bytes including atom headers. Bounded extended
+rights are tested too. Reported failures occur after selector and SINF geometry
+validation, so changing pinned total SINF sizes would not address them.
+
+SIDB support is not yet independently general. Current evidence is:
+
+| SIDB bytes | Evidence | Latest status |
+| ---: | --- | --- |
+| 630 / 993 / 1003 | three private controls | complete model and IPA validation |
+| 641 | issue #19, commit `1d0d12d` | old size inference failed; latest retest required |
+| 3405 | issue #21, commit `1d0d12d` | old class search failed; latest retest required |
+| 5494 | issue #17, commit `1d0d12d` | old geometry was ambiguous; latest retest required |
+| 7180 | issue #19, commit `1d0d12d` | old legacy-class interpretation failed; latest retest required |
+| 11724 | independent beta report after `abaaeff` | native boundary ran, but no decoded registry grammar matched; `cdf584c` diagnostics pending |
+
+The direct tree parser and account-derived class key have native boundary tests,
+but those controls are opt-in and their private traces are not presently part
+of the reproducible QA matrix. The three successful controls can authenticate
+through flat compatibility paths, so they do not by themselves prove the tree
+grammar used by larger SIDBs. Until one independent current beta enrollment
+passes complete IPA validation, describe this branch as a recovery candidate,
+not universal or build-independent support.
+
+A fresh static check of 26A428 `0x10046119c..0x1004612b0` confirms the recovered
+outer stop predicate instruction-for-instruction, including its accumulator
+update and authenticated dispatch. That supports the codec-exit arithmetic,
+but it does not prove that the reconstructed 256-byte source continuation or
+decoded tree grammar is correct. The tree length field at `+2`, child count at
+`+16`, 20-byte header, 16-byte leaf payload, mask phase, and cross-leaf tail
+ownership still need native read-boundary receipts. Those fields are the next
+reversing target.
+
 ## Proof requirements
 
 Every promoted transformation needs suitable evidence:
@@ -463,12 +507,16 @@ Every promoted transformation needs suitable evidence:
 
 ## Next work
 
-1. Beta-test structural SIDB and SINF discovery with independent enrolled Macs.
-   Record only non-secret build, commit, and byte geometry in public reports;
-   keep every license, hardware identity, model, and decrypted IPA private.
-2. Promote a new structural family only after one personalized SINF selects a
+1. Re-derive the decoded SIDB grammar from native read boundaries: root span,
+   node length/count fields, leaf role, payload offset, mask phase, and tail
+   ownership. Do not infer these from total file size.
+2. Recreate the private native source/body and class-key boundary controls, then
+   make them part of the manual QA matrix.
+3. Retest 641-, 3405-, 5494-, 7180-, and 11724-byte enrollments on the exact
+   version reported by `unfairplay --version`.
+4. Promote a new structural family only after one personalized SINF selects a
    unique precursor and complete IPA validation succeeds. Add a synthetic
-   regression for the geometry and an opt-in private QA control.
+   regression and an opt-in private QA control.
 
 Update this file whenever a stage becomes typed, an offset is removed, a
 cross-build invariant is proved, or a completion requirement changes state.

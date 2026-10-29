@@ -184,12 +184,12 @@ func TestInspectSINFStructuralCurrentLayouts(t *testing.T) {
 
 func TestFairPlayBuildIdentityDoesNotSelectAlgorithm(t *testing.T) {
 	typed, known := ResolveFairPlayBuildSupport("", "future-build")
-	if known || !typed.Recovery || !typed.Decrypt || typed.Status != "typed-semantic" || typed.Profile != "typed-current-enrollment" {
+	if known || !typed.Recovery || typed.Decrypt || typed.Status != "portable-validation-required" || typed.Profile != "typed-current-enrollment" {
 		t.Fatalf("binary-independent support = %#v, known=%v", typed, known)
 	}
 	const unknownHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	support, known := ResolveFairPlayBuildSupport(unknownHash, "future-build")
-	if known || !support.Recovery || !support.Decrypt || support.Status != "typed-semantic" ||
+	if known || !support.Recovery || support.Decrypt || support.Status != "portable-validation-required" ||
 		support.Profile != "typed-current-enrollment" {
 		t.Fatalf("unknown build support = %#v, known=%v", support, known)
 	}
@@ -229,7 +229,7 @@ func TestBinaryIndependentManifestOmitsFairPlayd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.FairPlay.Status != "typed-semantic" || !loaded.FairPlay.Recovery || !loaded.FairPlay.Decrypt {
+	if loaded.FairPlay.Status != "portable-validation-required" || !loaded.FairPlay.Recovery || loaded.FairPlay.Decrypt {
 		t.Fatalf("binary-independent capture support = %#v", loaded.FairPlay)
 	}
 }
@@ -264,7 +264,7 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.FairPlay.Status != "typed-semantic" || loaded.FairPlay.Profile != "typed-current-enrollment" {
+	if loaded.FairPlay.Status != "portable-validation-required" || loaded.FairPlay.Profile != "typed-current-enrollment" || loaded.FairPlay.Decrypt {
 		t.Fatalf("capture support metadata was not refreshed: %#v", loaded.FairPlay)
 	}
 	if err := os.WriteFile(privatePath, []byte("changed"), 0o600); err != nil {

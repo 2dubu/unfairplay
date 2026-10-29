@@ -460,18 +460,32 @@ func selectAuthenticatedEnrollmentClassPrecursorWithContext(ctx context.Context,
 	}
 	var selected authenticatedClassPrecursor
 	matches := 0
+	treeRegistries, flatRegistries, olderRegistries := 0, 0, 0
+	records, windows, skippedOlder := 0, 0, 0
 	for i, registry := range registries {
 		var candidate authenticatedClassPrecursor
 		var err error
 		single := registries[i : i+1]
+		records += len(registry.Registry.Records)
 		if !registry.Registry.Tree && registry.Registry.FooterBytes == decodedSIDBOlderFooterBytes {
+			olderRegistries++
+			windows += len(registry.Registry.Records) * len(currentClassRecordMask)
 			if keyID > 0xff {
+				skippedOlder++
 				continue
 			}
 			candidate, err = selectAuthenticatedLegacyClassPrecursorWithContext(ctx, sinf, single, hardware, user, keyID, progress)
 		} else if registry.Registry.Tree {
+			treeRegistries++
+			for _, record := range registry.Registry.Records {
+				windows += classRecordMaximumWindowOffset(record) + 1
+			}
 			candidate, err = selectAuthenticatedClassPrecursorWithContext(ctx, sinf, single, hardware, progress)
 		} else {
+			flatRegistries++
+			for _, record := range registry.Registry.Records {
+				windows += classRecordMaximumWindowOffset(record) + 1
+			}
 			candidate, err = selectAuthenticatedFlatClassPrecursorWithContext(ctx, sinf, single, hardware, user, keyID, progress)
 		}
 		if errors.Is(err, errNoAuthenticatedClassPrecursor) {
@@ -506,7 +520,11 @@ func selectAuthenticatedEnrollmentClassPrecursorWithContext(ctx context.Context,
 		selected = candidate
 	}
 	if matches == 0 {
-		return authenticatedClassPrecursor{}, errNoAuthenticatedClassPrecursor
+		return authenticatedClassPrecursor{}, fmt.Errorf(
+			"%w (registries=%d tree=%d flat=%d older=%d records=%d windows=%d skipped_older=%d)",
+			errNoAuthenticatedClassPrecursor, len(registries), treeRegistries,
+			flatRegistries, olderRegistries, records, windows, skippedOlder,
+		)
 	}
 	return selected, nil
 }

@@ -353,8 +353,9 @@ func TestTreeSelectionDoesNotTryFlatClassFamilies(t *testing.T) {
 		t.Fatal(err)
 	}
 	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
-	if _, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry}}, hardware, 0x12345678, 2); err == nil {
-		t.Fatal("tree unexpectedly accepted a flat-family key")
+	if _, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, []decodedSIDBRegistryCandidate{{Registry: registry}}, hardware, 0x12345678, 2); !errors.Is(err, errNoAuthenticatedClassPrecursor) ||
+		!strings.Contains(err.Error(), "registries=1 tree=1 flat=0 older=0 records=1 windows=5") {
+		t.Fatalf("tree flat-family rejection diagnostic = %v", err)
 	}
 }
 

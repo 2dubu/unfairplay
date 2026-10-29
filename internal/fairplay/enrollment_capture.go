@@ -43,9 +43,9 @@ type FairPlayBuildSupport struct {
 func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool) {
 	if hash == "" {
 		return FairPlayBuildSupport{
-			Profile: "typed-current-enrollment", Build: build, Status: "typed-semantic",
+			Profile: "typed-current-enrollment", Build: build, Status: "portable-validation-required",
 			ValidationBasis: "structural-enrollment-plus-complete-ipa-validation",
-			Recovery:        true, Decrypt: true,
+			Recovery:        true, Decrypt: false,
 		}, false
 	}
 	normalized := strings.ToLower(hash)
@@ -56,10 +56,10 @@ func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool
 	return FairPlayBuildSupport{
 		Profile:         "typed-current-enrollment",
 		Build:           build,
-		Status:          "typed-semantic",
+		Status:          "portable-validation-required",
 		ValidationBasis: "structural-enrollment-plus-personalized-sinf-and-complete-ipa-validation",
 		Recovery:        true,
-		Decrypt:         true,
+		Decrypt:         false,
 	}, false
 }
 

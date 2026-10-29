@@ -165,3 +165,20 @@ Optional source/body comparisons use `UNFAIRPLAY_TEST_CAPTURE`,
 `UNFAIRPLAY_SIDB_SOURCE_ORACLE`, and `UNFAIRPLAY_SIDB_BODY_ORACLE`. Other
 private class-key and workspace oracle inputs are documented in their tests.
 Keep all private inputs outside the repository.
+
+Before promoting portable SIDB support, run one native control whose decoded
+body uses the tree path rather than the flat compatibility parser. Configure:
+
+```sh
+UNFAIRPLAY_TEST_CAPTURE=/private/path/App.capture \
+UNFAIRPLAY_SIDB_SOURCE_ORACLE=/private/path/source.bin \
+UNFAIRPLAY_SIDB_BODY_ORACLE=/private/path/body.bin \
+UNFAIRPLAY_CLASS_OPERANDS_ORACLE=/private/path/class-key.bin \
+go test ./internal/recovery \
+  -run 'TestSIDBNativeSourceAndBodyOracle|TestAccountClassKeyNativeOracle' \
+  -count=1 -v
+```
+
+Require both tests to run rather than skip, then require complete IPA
+validation from the recovered model. The current three-control matrix does not
+prove this tree path by itself.

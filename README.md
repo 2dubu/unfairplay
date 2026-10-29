@@ -181,6 +181,8 @@ not enabled until equivalent private-file permission checks are implemented.
 Recovery is not selected by the macOS build or a fairplayd hash. It uses typed
 Go algorithms and does not load or execute fairplayd. Unknown inputs are
 accepted only when structural recovery and full IPA validation succeed.
+This removes a build dependency; it does not prove that every SIDB or account
+layout is supported.
 
 The 630-, 993-, and 1003-byte Mac SIDBs are independent controls. Other
 version-`0x0007000b` containers derive their codec and encrypted-body boundary
@@ -201,7 +203,9 @@ signing before installation.
 
 ## Branch beta testing
 
-The build-independent beta is on `research/direct-enrollment-algorithm`.
+The portable recovery candidate is on `research/direct-enrollment-algorithm`.
+It passes three private controls, but independent larger SIDB layouts are still
+under test. Do not assume support from the macOS build alone.
 Build it from source and run `setup` normally. Confirm the binary with
 `./unfairplay --version`. Reports should include only that version output, the
 macOS build, SIDB byte count, SINF `priv`/`righ` byte counts, and the complete
