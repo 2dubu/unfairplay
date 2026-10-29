@@ -46,6 +46,9 @@ type ipaInventory struct {
 type DecryptOptions struct {
 	InputPath, OutputPath, ReportPath, ModelPath string
 	Force                                        bool
+	// StripAccountData omits SC_Info license members and removes Apple ID
+	// fields from iTunesMetadata.plist in the output.
+	StripAccountData bool
 }
 
 type DecryptResult struct {
@@ -56,6 +59,8 @@ type DecryptResult struct {
 	DecryptedPages         int
 	LogicalKeySHA256       string
 	LogicalKeySHA256BySINF map[string]string
+	RemovedLicenseFiles    int `json:",omitempty"`
+	RemovedMetadataFields  int `json:",omitempty"`
 }
 
 func fileSHA256(path string) (string, error) {
@@ -887,6 +892,7 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 	writer := zip.NewWriter(io.MultiWriter(temporary, outputHasher))
 	var imageReports []*imageReport
 	pages := 0
+	removedLicenses, removedMetadata := 0, 0
 	seenDirectories := map[string]bool{}
 	for _, file := range source.File {
 		if file.FileInfo().IsDir() {
@@ -894,6 +900,30 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 				continue // Duplicate empty directory markers were checked during inventory.
 			}
 			seenDirectories[file.Name] = true
+		}
+		if options.StripAccountData && isLicenseMember(file.Name) {
+			// Licenses were already resolved from the input above.
+			if !file.FileInfo().IsDir() {
+				removedLicenses++
+			}
+			continue
+		}
+		if options.StripAccountData && file.Name == storeMetadataMember {
+			data, removed, err := scrubStoreMetadata(file)
+			if err != nil {
+				return result, err
+			}
+			removedMetadata = removed
+			header := file.FileHeader
+			header.Method = zip.Deflate
+			target, err := writer.CreateHeader(&header)
+			if err != nil {
+				return result, err
+			}
+			if _, err := target.Write(data); err != nil {
+				return result, err
+			}
+			continue
 		}
 		images, encrypted := imageMap[file.Name]
 		if !encrypted {
@@ -959,7 +989,9 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		Output:   reportFile{Path: options.OutputPath, SHA256: outputHash, Mode: "0600"},
 		Provider: providerName, Oracle: oracle, Licenses: licenseReports,
 		EncryptedImages: len(imageReports), DecryptedPages: pages, Images: imageReports,
-		Complete: len(imageReports) == len(inventory.images),
+		Complete:            len(imageReports) == len(inventory.images),
+		AccountDataStripped: options.StripAccountData,
+		RemovedLicenseFiles: removedLicenses, RemovedMetadataFields: removedMetadata,
 		Warnings: []string{
 			"Complete means every inventoried encrypted image was processed; plaintext correctness is not authenticated.",
 			"Only ARM64 first pages are checked for instruction plausibility; ARMv7 plaintext, SUPF records, and subsequent plaintext are not authenticated.",
@@ -982,6 +1014,7 @@ func DecryptIPA(options DecryptOptions) (DecryptResult, error) {
 		OutputPath: options.OutputPath, OutputSHA256: outputHash, ReportPath: options.ReportPath,
 		EncryptedImages: len(imageReports), DecryptedPages: pages,
 		LogicalKeySHA256: sharedKeyHash, LogicalKeySHA256BySINF: keyHashes,
+		RemovedLicenseFiles: removedLicenses, RemovedMetadataFields: removedMetadata,
 	}
 	return result, nil
 }

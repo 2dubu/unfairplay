@@ -61,7 +61,12 @@ Decrypt another IPA:
 The default model directory is inside the user configuration directory. Set
 `UNFAIRPLAY_MODEL_DIR` or pass `--model` to use another location.
 
-IPAs with extensions and watch apps are decrypted in one pass. Test without
+IPAs with extensions and watch apps are decrypted in one pass.
+
+The output keeps the input's `SC_Info` licenses and `iTunesMetadata.plist`,
+which identify the Store account. To share the output without them, add
+`--strip-account-data`: it omits every `SC_Info` member and removes the Apple
+ID and purchaser fields from `iTunesMetadata.plist`. Test without
 keeping plaintext with:
 
 ```sh
