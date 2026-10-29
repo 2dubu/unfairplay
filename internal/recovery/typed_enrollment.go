@@ -1,6 +1,7 @@
 package recovery
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"strings"
@@ -56,6 +57,10 @@ func enrollmentSINFSelector(blob []byte) (uint32, uint32, error) {
 }
 
 func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegistryCandidate, hardware []byte) ([]byte, error) {
+	return currentEnrollmentPackWithContext(context.Background(), files, registries, hardware, nil)
+}
+
+func currentEnrollmentPackWithContext(ctx context.Context, files map[string][]byte, registries []decodedSIDBRegistryCandidate, hardware []byte, progress func(Progress)) ([]byte, error) {
 	var sinf []byte
 	for suffix, data := range files {
 		if strings.HasSuffix(suffix, ".sinf") {
@@ -72,7 +77,7 @@ func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegi
 	if err != nil {
 		return nil, err
 	}
-	selected, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, registries, hardware, user, keyID)
+	selected, err := selectAuthenticatedEnrollmentClassPrecursorWithContext(ctx, sinf, registries, hardware, user, keyID, progress)
 	if err != nil {
 		return nil, err
 	}

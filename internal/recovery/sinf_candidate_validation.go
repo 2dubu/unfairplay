@@ -2,10 +2,13 @@ package recovery
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
 	"fmt"
+	"runtime"
+	"sync"
 )
 
 type authenticatedClassPrecursor struct {
@@ -154,17 +157,47 @@ func authenticateClassValu(probe currentSINFModelKeyProbe, sinf []byte, block ci
 	return precursor, true, nil
 }
 
+type preparedClassCandidate struct {
+	registryIndex int
+	recordIndex   int
+	windowOffset  int
+	valu          [aes.BlockSize]byte
+}
+
+const (
+	classSearchChunkValues         = 64
+	maximumClassSearchWorkers      = 16
+	maximumAuthenticatedClassPairs = uint64(1) << 31
+)
+
+func recoveryCandidateCounts(registries []decodedSIDBRegistryCandidate) (records, windows int) {
+	for _, registry := range registries {
+		records += len(registry.Registry.Records)
+	}
+	return records, records * (maximumClassWindowOffset + 1)
+}
+
+func reportRecoveryProgress(progress func(Progress), event Progress) {
+	if progress != nil {
+		progress(event)
+	}
+}
+
 func selectAuthenticatedClassPrecursor(sinf []byte, registries []decodedSIDBRegistryCandidate) (authenticatedClassPrecursor, error) {
+	return selectAuthenticatedClassPrecursorWithContext(context.Background(), sinf, registries, nil)
+}
+
+func selectAuthenticatedClassPrecursorWithContext(ctx context.Context, sinf []byte, registries []decodedSIDBRegistryCandidate, progress func(Progress)) (authenticatedClassPrecursor, error) {
 	var selected authenticatedClassPrecursor
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return selected, err
+	}
 	probe, err := newCurrentSINFModelKeyProbe(sinf)
 	if err != nil {
 		return selected, err
-	}
-	type preparedClassCandidate struct {
-		registryIndex int
-		recordIndex   int
-		windowOffset  int
-		valu          [aes.BlockSize]byte
 	}
 	var candidates []preparedClassCandidate
 	for registryIndex, registry := range registries {
@@ -183,6 +216,11 @@ func selectAuthenticatedClassPrecursor(sinf []byte, registries []decodedSIDBRegi
 			}
 		}
 	}
+	defer func() {
+		for index := range candidates {
+			clear(candidates[index].valu[:])
+		}
+	}()
 	classValues := make([][8]byte, 0, classWorkspaceModulus+1)
 	classValues = append(classValues, currentClassSecondaryValue)
 	seenClassValues := map[[8]byte]bool{currentClassSecondaryValue: true}
@@ -194,47 +232,165 @@ func selectAuthenticatedClassPrecursor(sinf []byte, registries []decodedSIDBRegi
 		seenClassValues[value] = true
 		classValues = append(classValues, value)
 	}
-	matches := 0
-	for _, classValue := range classValues {
-		parameters := classEnrollmentParameters{ClassValue: classValue}
-		classKey := parameters.classKey()
-		classBlock, err := aes.NewCipher(classKey[:])
-		clear(classKey[:])
-		if err != nil {
-			return selected, err
+	total := uint64(len(classValues)) * uint64(len(candidates))
+	if total == 0 || total > maximumAuthenticatedClassPairs {
+		return selected, fmt.Errorf("authenticated SINF class search has unsupported size: %d comparisons", total)
+	}
+	records, windows := recoveryCandidateCounts(registries)
+	baseProgress := Progress{
+		Phase: "search-sinf", Total: total, RegistryCandidates: len(registries),
+		RecordCandidates: records, WindowCandidates: windows,
+	}
+	reportRecoveryProgress(progress, baseProgress)
+
+	type searchTask struct{ start, end int }
+	type searchResult struct {
+		completed uint64
+		matches   []authenticatedClassPrecursor
+		err       error
+	}
+	workerCount := runtime.GOMAXPROCS(0)
+	if workerCount > maximumClassSearchWorkers {
+		workerCount = maximumClassSearchWorkers
+	}
+	chunks := (len(classValues) + classSearchChunkValues - 1) / classSearchChunkValues
+	if workerCount > chunks {
+		workerCount = chunks
+	}
+	searchContext, cancel := context.WithCancel(ctx)
+	defer cancel()
+	tasks := make(chan searchTask, chunks)
+	results := make(chan searchResult, workerCount)
+	for start := 0; start < len(classValues); start += classSearchChunkValues {
+		end := start + classSearchChunkValues
+		if end > len(classValues) {
+			end = len(classValues)
 		}
-		for _, candidate := range candidates {
-			precursor, accepted, err := authenticateClassValu(probe, sinf, classBlock, candidate.valu)
-			if err != nil {
-				return selected, err
+		tasks <- searchTask{start: start, end: end}
+	}
+	close(tasks)
+	var workers sync.WaitGroup
+	workers.Add(workerCount)
+	for range workerCount {
+		go func() {
+			defer workers.Done()
+			for task := range tasks {
+				if err := searchContext.Err(); err != nil {
+					return
+				}
+				result := searchResult{}
+				for classIndex := task.start; classIndex < task.end; classIndex++ {
+					if searchContext.Err() != nil {
+						break
+					}
+					parameters := classEnrollmentParameters{ClassValue: classValues[classIndex]}
+					classKey := parameters.classKey()
+					classBlock, blockErr := aes.NewCipher(classKey[:])
+					clear(classKey[:])
+					if blockErr != nil {
+						result.err = blockErr
+						break
+					}
+					for _, candidate := range candidates {
+						precursor, accepted, candidateErr := authenticateClassValu(probe, sinf, classBlock, candidate.valu)
+						result.completed++
+						if candidateErr != nil {
+							result.err = candidateErr
+							break
+						}
+						if accepted {
+							result.matches = append(result.matches, authenticatedClassPrecursor{
+								classPrecursorCandidate: classPrecursorCandidate{
+									RecordIndex:  candidate.recordIndex,
+									WindowOffset: candidate.windowOffset,
+									Record:       registries[candidate.registryIndex].Registry.Records[candidate.recordIndex],
+									Precursor:    precursor,
+								},
+								RegistryIndex: candidate.registryIndex,
+							})
+						}
+					}
+					if result.err != nil {
+						break
+					}
+				}
+				results <- result
+				if result.err != nil {
+					cancel()
+					return
+				}
 			}
-			if !accepted {
-				continue
-			}
-			matches++
-			selected = authenticatedClassPrecursor{
-				classPrecursorCandidate: classPrecursorCandidate{
-					RecordIndex:  candidate.recordIndex,
-					WindowOffset: candidate.windowOffset,
-					Record:       registries[candidate.registryIndex].Registry.Records[candidate.recordIndex],
-					Precursor:    precursor,
-				},
-				RegistryIndex: candidate.registryIndex,
-			}
-			if matches > 1 {
-				clear(selected.Precursor[:])
-				return authenticatedClassPrecursor{}, fmt.Errorf("authenticated SINF accepted multiple class precursors")
+		}()
+	}
+	go func() {
+		workers.Wait()
+		close(results)
+	}()
+	completed := uint64(0)
+	var matches []authenticatedClassPrecursor
+	var firstError error
+	progressInterval := total / 32
+	if progressInterval == 0 {
+		progressInterval = 1
+	}
+	nextProgress := progressInterval
+	for result := range results {
+		completed += result.completed
+		if result.err != nil && firstError == nil {
+			firstError = result.err
+			cancel()
+		}
+		matches = append(matches, result.matches...)
+		if completed >= nextProgress || completed == total {
+			event := baseProgress
+			event.Completed = completed
+			reportRecoveryProgress(progress, event)
+			for nextProgress <= completed {
+				nextProgress += progressInterval
 			}
 		}
 	}
-	if matches != 1 {
+	if firstError != nil {
+		for index := range matches {
+			clear(matches[index].Precursor[:])
+		}
+		return selected, firstError
+	}
+	if err := ctx.Err(); err != nil {
+		for index := range matches {
+			clear(matches[index].Precursor[:])
+		}
+		return selected, err
+	}
+	if len(matches) != 1 {
+		for index := range matches {
+			clear(matches[index].Precursor[:])
+		}
+		if len(matches) > 1 {
+			return authenticatedClassPrecursor{}, fmt.Errorf("authenticated SINF accepted multiple class precursors")
+		}
 		return authenticatedClassPrecursor{}, fmt.Errorf("authenticated SINF accepted no class precursor")
 	}
+	selected = matches[0]
+	event := baseProgress
+	event.Completed = total
+	event.Phase = "search-sinf-complete"
+	reportRecoveryProgress(progress, event)
 	return selected, nil
 }
 
 func selectAuthenticatedLegacyClassPrecursor(sinf []byte, registries []decodedSIDBRegistryCandidate, hardware []byte, user, keyID uint32) (authenticatedClassPrecursor, error) {
+	return selectAuthenticatedLegacyClassPrecursorWithContext(context.Background(), sinf, registries, hardware, user, keyID, nil)
+}
+
+func selectAuthenticatedLegacyClassPrecursorWithContext(ctx context.Context, sinf []byte, registries []decodedSIDBRegistryCandidate, hardware []byte, user, keyID uint32, progress func(Progress)) (authenticatedClassPrecursor, error) {
 	var selected authenticatedClassPrecursor
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return selected, err
+	}
 	digest, err := legacyAccountDigest(hardware, user, keyID)
 	if err != nil {
 		return selected, err
@@ -251,15 +407,41 @@ func selectAuthenticatedLegacyClassPrecursor(sinf []byte, registries []decodedSI
 	if err != nil {
 		return selected, err
 	}
+	records, _ := recoveryCandidateCounts(registries)
+	total := uint64(records * len(currentClassRecordMask))
+	baseProgress := Progress{
+		Phase: "search-sinf", Total: total, RegistryCandidates: len(registries),
+		RecordCandidates: records, WindowCandidates: records * len(currentClassRecordMask),
+	}
+	reportRecoveryProgress(progress, baseProgress)
+	progressInterval := total / 32
+	if progressInterval == 0 {
+		progressInterval = 1
+	}
+	nextProgress := progressInterval
+	completed := uint64(0)
 	matches := 0
 	for registryIndex, registry := range registries {
 		for recordIndex, record := range registry.Registry.Records {
+			if err := ctx.Err(); err != nil {
+				clear(selected.Precursor[:])
+				return authenticatedClassPrecursor{}, err
+			}
 			for maskPhase := range len(currentClassRecordMask) {
 				valu, err := deriveLegacyClassValu(record, maskPhase)
 				if err != nil {
 					return selected, err
 				}
 				precursor, accepted, err := authenticateClassValu(probe, sinf, classBlock, valu)
+				completed++
+				if completed >= nextProgress || completed == total {
+					event := baseProgress
+					event.Completed = completed
+					reportRecoveryProgress(progress, event)
+					for nextProgress <= completed {
+						nextProgress += progressInterval
+					}
+				}
 				if err != nil {
 					return selected, err
 				}
@@ -286,10 +468,18 @@ func selectAuthenticatedLegacyClassPrecursor(sinf []byte, registries []decodedSI
 	if matches != 1 {
 		return authenticatedClassPrecursor{}, fmt.Errorf("authenticated SINF accepted no legacy class precursor")
 	}
+	event := baseProgress
+	event.Completed = total
+	event.Phase = "search-sinf-complete"
+	reportRecoveryProgress(progress, event)
 	return selected, nil
 }
 
 func selectAuthenticatedEnrollmentClassPrecursor(sinf []byte, registries []decodedSIDBRegistryCandidate, hardware []byte, user, keyID uint32) (authenticatedClassPrecursor, error) {
+	return selectAuthenticatedEnrollmentClassPrecursorWithContext(context.Background(), sinf, registries, hardware, user, keyID, nil)
+}
+
+func selectAuthenticatedEnrollmentClassPrecursorWithContext(ctx context.Context, sinf []byte, registries []decodedSIDBRegistryCandidate, hardware []byte, user, keyID uint32, progress func(Progress)) (authenticatedClassPrecursor, error) {
 	if len(registries) == 0 {
 		return authenticatedClassPrecursor{}, fmt.Errorf("class precursor selection requires one decoded registry")
 	}
@@ -300,7 +490,7 @@ func selectAuthenticatedEnrollmentClassPrecursor(sinf []byte, registries []decod
 		}
 	}
 	if older {
-		return selectAuthenticatedLegacyClassPrecursor(sinf, registries, hardware, user, keyID)
+		return selectAuthenticatedLegacyClassPrecursorWithContext(ctx, sinf, registries, hardware, user, keyID, progress)
 	}
-	return selectAuthenticatedClassPrecursor(sinf, registries)
+	return selectAuthenticatedClassPrecursorWithContext(ctx, sinf, registries, progress)
 }

@@ -1,16 +1,30 @@
 package recovery
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
 )
+
+// Progress reports bounded, non-secret recovery work. Completed and Total are
+// candidate comparisons, not bytes or key material.
+type Progress struct {
+	Phase              string
+	Completed          uint64
+	Total              uint64
+	RegistryCandidates int
+	RecordCandidates   int
+	WindowCandidates   int
+}
 
 // Options describes the private runtime inputs used to derive one
 // selector-bound enrollment model. FileMappings use SUFFIX=FILE syntax.
 type Options struct {
 	FileMappings []string
 	HardwarePath string
+	Context      context.Context
+	Progress     func(Progress)
 }
 
 // Result is the output of one bounded enrollment recovery.
@@ -47,6 +61,16 @@ func Recover(options Options) (Result, error) {
 	if options.HardwarePath == "" {
 		return Result{}, fmt.Errorf("recovery requires a hardware identity file")
 	}
+	ctx := options.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return Result{}, err
+	}
+	if options.Progress != nil {
+		options.Progress(Progress{Phase: "load-inputs"})
+	}
 	inputs, err := loadCurrentRecoveryInputs(options.FileMappings, options.HardwarePath)
 	if err != nil {
 		return Result{}, err
@@ -55,11 +79,14 @@ func Recover(options Options) (Result, error) {
 	if _, err := validateCurrentSUPFFiles(inputs.files); err != nil {
 		return Result{}, err
 	}
+	if options.Progress != nil {
+		options.Progress(Progress{Phase: "decode-sidb"})
+	}
 	registries, digest, iterations, err := deriveCurrentSelectionRegistryCandidates(inputs.files, inputs.hardware)
 	if err != nil {
 		return Result{}, err
 	}
-	pack, err := currentEnrollmentPack(inputs.files, registries, inputs.hardware)
+	pack, err := currentEnrollmentPackWithContext(ctx, inputs.files, registries, inputs.hardware, options.Progress)
 	if err != nil {
 		clearDecodedSIDBRegistryCandidates(registries)
 		return Result{}, err

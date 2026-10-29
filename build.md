@@ -261,14 +261,14 @@ its 4,112 bytes of encoding data have been removed.
 SIDB container selection is no longer a three-size switch. The three verified
 layouts remain exact controls, while other containers in the same versioned
 family are inferred from a 13- to 39-byte codec, a block-aligned decoded
-registry containing bounded 40-byte records and an optional 16- or 24-byte
-footer, and a fixed 16-byte trailer. Footerless geometry is a beta candidate
-for large accumulated registries; it is not promoted by size alone. The outer
-iteration count is `11 * codec_bytes - 2`, matching all three independent
-controls. Unknown structural candidates still have to produce one decoded
-registry and one personalized-SINF precursor; a truncated known container
-therefore cannot be promoted merely because its size resembles another valid
-layout.
+registry containing bounded 40-byte records and an optional separate 16- or
+24-byte footer, and a fixed 16-byte trailer. Record-aligned geometry with no
+separate footer is a beta candidate for large accumulated registries; it is not
+promoted by size alone. The outer iteration count is
+`11 * codec_bytes - 2`, matching all three independent controls. Unknown
+structural candidates still have to produce one decoded registry and one
+personalized-SINF precursor; a truncated known container therefore cannot be
+promoted merely because its size resembles another valid layout.
 
 Current SINF parsing now accepts bounded rights payloads from 80 through 256
 bytes in eight-byte units. The observed 440- and 448-byte private records and
@@ -284,7 +284,10 @@ Go evaluates the fixed current class value and every value in the complete
 32,767-element workspace-seed domain against the typed `valu` and AES class
 stages for every structurally parsed SIDB record and all five valid record
 windows. A one-block SINF prefix probe makes the exhaustive semantic search
-bounded and fast; the complete SINF is still authenticated before promotion.
+bounded; the complete SINF is still authenticated before promotion. The search
+is cancelable, parallel, capped at `2^31` candidate comparisons, and reports
+non-secret progress for large registries. The cap is a resource-safety bound,
+not an acceptance shortcut.
 Candidates retain their record, metadata, and window identity.
 The installed personalized SINF then authenticates exactly one precursor by
 decoding its private atom and checking the complete clear atom sequence. This

@@ -3,14 +3,14 @@ package recovery
 import "fmt"
 
 const (
-	decodedSIDBRecordBytes      = 40
-	decodedSIDBMetadataBytes    = 20
-	decodedSIDBPayloadBytes     = 16
-	decodedSIDBTailBytes        = 4
-	decodedSIDBNoFooterBytes    = 0
-	decodedSIDBOlderFooterBytes = 16
-	decodedSIDBFooterBytes      = 24
-	maximumDecodedSIDBRecords   = 4096
+	decodedSIDBRecordBytes           = 40
+	decodedSIDBMetadataBytes         = 20
+	decodedSIDBPayloadBytes          = 16
+	decodedSIDBTailBytes             = 4
+	decodedSIDBNoSeparateFooterBytes = 0
+	decodedSIDBOlderFooterBytes      = 16
+	decodedSIDBFooterBytes           = 24
+	maximumDecodedSIDBRecords        = 4096
 )
 
 // decodedSIDBRecord is the build-independent geometry of one current SIDB
@@ -33,7 +33,7 @@ type decodedSIDBRegistry struct {
 // bytes. It does not guess a native object address or select an app record.
 func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
 	footerBytes := -1
-	for _, candidate := range [...]int{decodedSIDBNoFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
+	for _, candidate := range [...]int{decodedSIDBNoSeparateFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
 		if len(data) > candidate && (len(data)-candidate)%decodedSIDBRecordBytes == 0 {
 			if footerBytes != -1 {
 				return decodedSIDBRegistry{}, fmt.Errorf("decoded SIDB registry has ambiguous geometry: %d bytes", len(data))

@@ -143,6 +143,22 @@ type enrollmentRecoveryOutcome struct {
 	ModelPath string
 }
 
+func recoveryProgressReporter(profile string) func(recovery.Progress) {
+	return func(event recovery.Progress) {
+		if event.Total == 0 {
+			fmt.Fprintf(os.Stderr, "recovery profile=%s phase=%s\n", profile, event.Phase)
+			return
+		}
+		percent := event.Completed * 100 / event.Total
+		fmt.Fprintf(
+			os.Stderr,
+			"recovery profile=%s phase=%s progress=%d%% comparisons=%d/%d registries=%d records=%d windows=%d\n",
+			profile, event.Phase, percent, event.Completed, event.Total,
+			event.RegistryCandidates, event.RecordCandidates, event.WindowCandidates,
+		)
+	}
+}
+
 func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrollmentRecoveryOutcome, error) {
 	var outcome enrollmentRecoveryOutcome
 	manifest, err := fairplay.LoadEnrollmentCapture(options.Capture, true)
@@ -188,7 +204,8 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 			continue
 		}
 		recovered, err = recovery.Recover(recovery.Options{
-			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(),
+			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), Context: ctx,
+			Progress: recoveryProgressReporter(inputProfile.name),
 		})
 		if err == nil {
 			selectedProfile = inputProfile.name
@@ -207,6 +224,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	ipa := filepath.Join(options.Capture, filepath.FromSlash(manifest.IPA.Path))
 	decrypted := filepath.Join(options.Output, "App.decrypted.ipa")
 	decryptionReport := filepath.Join(options.Output, "App.decrypted.json")
+	fmt.Fprintf(os.Stderr, "recovery profile=%s phase=validate-ipa\n", selectedProfile)
 	result, err := fairplay.DecryptIPA(fairplay.DecryptOptions{
 		InputPath: ipa, OutputPath: decrypted, ReportPath: decryptionReport, ModelPath: candidate,
 	})

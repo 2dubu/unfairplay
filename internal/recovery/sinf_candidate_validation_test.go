@@ -2,9 +2,12 @@ package recovery
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -129,6 +132,67 @@ func TestSelectAuthenticatedClassPrecursor(t *testing.T) {
 	}
 	if selected.RegistryIndex != 0 || selected.RecordIndex != 0 || selected.WindowOffset != selectedWindow || selected.Precursor != precursor {
 		t.Fatalf("wrong authenticated candidate: %+v", selected)
+	}
+}
+
+func TestSelectAuthenticatedClassPrecursorReportsProgressAndCancels(t *testing.T) {
+	data := make([]byte, decodedSIDBRecordBytes+decodedSIDBFooterBytes)
+	for index := range data {
+		data[index] = byte(index*23 + 5)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(
+		registry.Records[0], 1, currentClassEnrollmentParameters().classKey(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	registries := []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}}
+	var events []Progress
+	selected, err := selectAuthenticatedClassPrecursorWithContext(
+		context.Background(), sinf, registries,
+		func(event Progress) { events = append(events, event) },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Precursor != precursor || len(events) < 2 {
+		t.Fatalf("selected/progress = %x/%d", selected.Precursor, len(events))
+	}
+	previous := uint64(0)
+	for _, event := range events {
+		if event.Total == 0 || event.Completed < previous || event.Completed > event.Total ||
+			event.RegistryCandidates != 1 || event.RecordCandidates != 1 || event.WindowCandidates != maximumClassWindowOffset+1 {
+			t.Fatalf("invalid progress event: %+v", event)
+		}
+		previous = event.Completed
+	}
+	last := events[len(events)-1]
+	if last.Phase != "search-sinf-complete" || last.Completed != last.Total {
+		t.Fatalf("incomplete final progress: %+v", last)
+	}
+
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := selectAuthenticatedClassPrecursorWithContext(canceled, sinf, registries, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled class search = %v", err)
+	}
+}
+
+func TestSelectAuthenticatedClassPrecursorRejectsExcessiveWork(t *testing.T) {
+	var precursor [16]byte
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	registries := make([]decodedSIDBRegistryCandidate, 27)
+	for index := range registries {
+		registries[index].Registry.Records = make([]decodedSIDBRecord, 512)
+	}
+	_, err := selectAuthenticatedClassPrecursorWithContext(context.Background(), sinf, registries, nil)
+	if err == nil || !strings.Contains(err.Error(), "unsupported size") {
+		t.Fatalf("excessive class search = %v", err)
 	}
 }
 

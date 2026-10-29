@@ -170,7 +170,7 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 	}
 }
 
-func TestDeriveFooterlessCurrentSelectionRegistryCandidate(t *testing.T) {
+func TestDeriveRecordAlignedCurrentSelectionRegistryCandidate(t *testing.T) {
 	const codecBytes = 24
 	plaintext := make([]byte, 2*decodedSIDBRecordBytes)
 	for index := range plaintext {
@@ -182,7 +182,7 @@ func TestDeriveFooterlessCurrentSelectionRegistryCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if layout.CodecBytes != codecBytes || layout.PayloadBytes != len(plaintext) || layout.OuterIterations != 262 {
-		t.Fatalf("footerless structural layout = %+v", layout)
+		t.Fatalf("record-aligned structural layout = %+v", layout)
 	}
 	source, _, err := deriveCurrentSelectionSource(container, hardware)
 	if err != nil {
@@ -206,8 +206,8 @@ func TestDeriveFooterlessCurrentSelectionRegistryCandidate(t *testing.T) {
 			selected = append(selected, candidate)
 		}
 	}
-	if len(selected) != 1 || selected[0].Registry.FooterBytes != decodedSIDBNoFooterBytes {
-		t.Fatalf("footerless decoded matches = %d", len(selected))
+	if len(selected) != 1 || selected[0].Registry.FooterBytes != decodedSIDBNoSeparateFooterBytes {
+		t.Fatalf("record-aligned decoded matches = %d", len(selected))
 	}
 	const recordIndex, windowOffset = 1, 2
 	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(
@@ -222,7 +222,7 @@ func TestDeriveFooterlessCurrentSelectionRegistryCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	if authenticated.RecordIndex != recordIndex || authenticated.WindowOffset != windowOffset || authenticated.Precursor != precursor {
-		t.Fatalf("footerless authenticated precursor = %+v", authenticated)
+		t.Fatalf("record-aligned authenticated precursor = %+v", authenticated)
 	}
 }
 

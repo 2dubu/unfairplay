@@ -110,8 +110,6 @@ func canonicalSIDBGeometry(size int) (codecBytes, registryBytes, footerBytes int
 	switch size {
 	case 630:
 		return 34, 576, 16, true
-	case 992:
-		return 28, 944, 24, true
 	case 993:
 		return 29, 944, 24, true
 	case 1003:

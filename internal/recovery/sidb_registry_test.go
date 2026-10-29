@@ -69,7 +69,7 @@ func TestParseDecodedOlderSIDBRegistry(t *testing.T) {
 	}
 }
 
-func TestParseDecodedFooterlessSIDBRegistry(t *testing.T) {
+func TestParseDecodedRecordAlignedSIDBRegistry(t *testing.T) {
 	data := make([]byte, 292*decodedSIDBRecordBytes)
 	for index := range data {
 		data[index] = byte(index*11 + 9)
@@ -78,10 +78,10 @@ func TestParseDecodedFooterlessSIDBRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registry.Records) != 292 || registry.FooterBytes != decodedSIDBNoFooterBytes {
-		t.Fatalf("footerless registry = %d records, %d footer bytes", len(registry.Records), registry.FooterBytes)
+	if len(registry.Records) != 292 || registry.FooterBytes != decodedSIDBNoSeparateFooterBytes {
+		t.Fatalf("record-aligned registry = %d records, %d separate footer bytes", len(registry.Records), registry.FooterBytes)
 	}
 	if registry.Footer != [decodedSIDBFooterBytes]byte{} {
-		t.Fatal("footerless registry retained footer data")
+		t.Fatal("record-aligned registry retained separate footer data")
 	}
 }

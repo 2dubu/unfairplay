@@ -32,6 +32,9 @@ sudo ./unfairplay setup \
   --ipa App.ipa
 ```
 
+Large enrollment databases print bounded recovery progress to standard error.
+The final JSON result remains on standard output.
+
 The saved model is private. It is tied to the Mac App Store enrollment, not to
 one app, so it can decrypt other personalized IPAs from the same enrollment.
 

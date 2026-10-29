@@ -87,7 +87,7 @@ func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
 }
 
 func validDecodedSIDBRegistrySize(size int) bool {
-	for _, footerBytes := range [...]int{decodedSIDBNoFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
+	for _, footerBytes := range [...]int{decodedSIDBNoSeparateFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
 		if size > footerBytes && (size-footerBytes)%decodedSIDBRecordBytes == 0 {
 			count := (size - footerBytes) / decodedSIDBRecordBytes
 			return count > 0 && count <= maximumStructuralSIDBRecords
