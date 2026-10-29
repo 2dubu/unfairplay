@@ -60,11 +60,21 @@ func TestDecodeSelectionSIDBContainer(t *testing.T) {
 		t.Fatalf("decode structural SIDB = %d, %v", len(decoded), err)
 	}
 
+	large := make([]byte, 11724)
+	binary.BigEndian.PutUint32(large[:4], currentSIDBContainerVersion)
+	largeLayout, err := currentSIDBLayoutForContainer(large)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if largeLayout.CodecBytes != 24 || largeLayout.PayloadOffset != 28 || largeLayout.PayloadBytes != 11680 || largeLayout.OuterIterations != 262 {
+		t.Fatalf("large structural SIDB layout = %+v", largeLayout)
+	}
+
 	invalidVersion := make([]byte, selectionSIDBContainerBytes)
 	if _, err := decodeSelectionSIDBContainer(invalidVersion); err == nil {
 		t.Fatal("accepted a selection SIDB container with an invalid version")
 	}
-	for _, size := range []int{4 + 12 + 64 + selectionSIDBTrailerBytes, 4 + 40 + 64 + selectionSIDBTrailerBytes} {
+	for _, size := range []int{4 + 12 + 64 + selectionSIDBTrailerBytes} {
 		unsupported := make([]byte, size)
 		binary.BigEndian.PutUint32(unsupported[:4], currentSIDBContainerVersion)
 		if _, err := decodeSelectionSIDBContainer(unsupported); err == nil {

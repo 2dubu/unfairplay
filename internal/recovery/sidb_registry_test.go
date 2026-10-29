@@ -68,3 +68,20 @@ func TestParseDecodedOlderSIDBRegistry(t *testing.T) {
 		t.Fatal("older footer mismatch")
 	}
 }
+
+func TestParseDecodedFooterlessSIDBRegistry(t *testing.T) {
+	data := make([]byte, 292*decodedSIDBRecordBytes)
+	for index := range data {
+		data[index] = byte(index*11 + 9)
+	}
+	registry, err := parseDecodedSIDBRegistry(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(registry.Records) != 292 || registry.FooterBytes != decodedSIDBNoFooterBytes {
+		t.Fatalf("footerless registry = %d records, %d footer bytes", len(registry.Records), registry.FooterBytes)
+	}
+	if registry.Footer != [decodedSIDBFooterBytes]byte{} {
+		t.Fatal("footerless registry retained footer data")
+	}
+}

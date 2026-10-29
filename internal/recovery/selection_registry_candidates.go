@@ -44,12 +44,14 @@ func selectionSourceLayouts(source []byte) ([][]byte, error) {
 
 func currentSIDBContainerFiles(files map[string][]byte) ([]currentSIDBContainerFile, error) {
 	var containers []currentSIDBContainerFile
+	var rejections []string
 	seen := make(map[[sha256.Size]byte]bool)
 	for name, data := range files {
 		if !strings.HasSuffix(name, "SC Info.sidb") {
 			continue
 		}
 		if _, err := currentSIDBLayoutForContainer(data); err != nil {
+			rejections = append(rejections, fmt.Sprintf("%s (%d bytes): %v", name, len(data), err))
 			continue
 		}
 		digest := sha256.Sum256(data)
@@ -60,6 +62,10 @@ func currentSIDBContainerFiles(files map[string][]byte) ([]currentSIDBContainerF
 		containers = append(containers, currentSIDBContainerFile{name: name, data: data})
 	}
 	if len(containers) == 0 {
+		sort.Strings(rejections)
+		if len(rejections) != 0 {
+			return nil, fmt.Errorf("typed SIDB selection found no current SIDB container: %s", strings.Join(rejections, "; "))
+		}
 		return nil, fmt.Errorf("typed SIDB selection found no current SIDB container")
 	}
 	sort.Slice(containers, func(left, right int) bool { return containers[left].name < containers[right].name })

@@ -12,7 +12,7 @@ import (
 func TestCanonicalSIDBClassifiesKnownGeometry(t *testing.T) {
 	for _, test := range []struct {
 		bytes, source, codec, registry, footer int
-	}{{630, 192, 34, 576, 16}, {992, 224, 28, 944, 24}, {993, 224, 29, 944, 24}, {1003, 224, 39, 944, 24}} {
+	}{{630, 192, 34, 576, 16}, {992, 224, 28, 944, 24}, {993, 224, 29, 944, 24}, {1003, 224, 39, 944, 24}, {11724, 224, 24, 11680, 0}} {
 		t.Run(fmt.Sprintf("%d", test.bytes), func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "SC Info.sidb")
 			data := make([]byte, test.bytes)

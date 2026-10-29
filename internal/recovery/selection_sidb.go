@@ -24,7 +24,7 @@ const (
 	selectionSIDBMaximumCodecBytes     = 39
 	selectionSIDBIterationsPerCodec    = 11
 	selectionSIDBIterationBias         = -2
-	maximumStructuralSIDBRecords       = 64
+	maximumStructuralSIDBRecords       = 512
 )
 
 type currentSIDBLayout struct {
@@ -64,9 +64,9 @@ func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
 
 	// Every observed current container is version || codec || encrypted
 	// registry || 16-byte trailer. The decoded registry is a bounded sequence
-	// of 40-byte records followed by a 16- or 24-byte footer. The outer loop
-	// consumes one codec byte every eleven iterations, with the same two-step
-	// bias in all three independently validated layouts.
+	// of 40-byte records, optionally followed by a 16- or 24-byte footer. The
+	// outer loop consumes one codec byte every eleven iterations, with the same
+	// two-step bias in all three independently validated layouts.
 	var layouts []currentSIDBLayout
 	for codecBytes := selectionSIDBMinimumCodecBytes; codecBytes <= selectionSIDBMaximumCodecBytes; codecBytes++ {
 		payloadBytes := len(input) - 4 - codecBytes - selectionSIDBTrailerBytes
@@ -87,7 +87,7 @@ func currentSIDBLayoutForContainer(input []byte) (currentSIDBLayout, error) {
 }
 
 func validDecodedSIDBRegistrySize(size int) bool {
-	for _, footerBytes := range [...]int{decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
+	for _, footerBytes := range [...]int{decodedSIDBNoFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
 		if size > footerBytes && (size-footerBytes)%decodedSIDBRecordBytes == 0 {
 			count := (size - footerBytes) / decodedSIDBRecordBytes
 			return count > 0 && count <= maximumStructuralSIDBRecords

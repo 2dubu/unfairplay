@@ -7,6 +7,7 @@ const (
 	decodedSIDBMetadataBytes    = 20
 	decodedSIDBPayloadBytes     = 16
 	decodedSIDBTailBytes        = 4
+	decodedSIDBNoFooterBytes    = 0
 	decodedSIDBOlderFooterBytes = 16
 	decodedSIDBFooterBytes      = 24
 	maximumDecodedSIDBRecords   = 4096
@@ -31,11 +32,16 @@ type decodedSIDBRegistry struct {
 // parseDecodedSIDBRegistry parses only authenticated, already-decoded SIDB
 // bytes. It does not guess a native object address or select an app record.
 func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
-	footerBytes := decodedSIDBFooterBytes
-	if len(data) > decodedSIDBOlderFooterBytes && (len(data)-decodedSIDBOlderFooterBytes)%decodedSIDBRecordBytes == 0 {
-		footerBytes = decodedSIDBOlderFooterBytes
+	footerBytes := -1
+	for _, candidate := range [...]int{decodedSIDBNoFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
+		if len(data) > candidate && (len(data)-candidate)%decodedSIDBRecordBytes == 0 {
+			if footerBytes != -1 {
+				return decodedSIDBRegistry{}, fmt.Errorf("decoded SIDB registry has ambiguous geometry: %d bytes", len(data))
+			}
+			footerBytes = candidate
+		}
 	}
-	if len(data) <= footerBytes || (len(data)-footerBytes)%decodedSIDBRecordBytes != 0 {
+	if footerBytes < 0 {
 		return decodedSIDBRegistry{}, fmt.Errorf("decoded SIDB registry has invalid geometry: %d bytes", len(data))
 	}
 	count := (len(data) - footerBytes) / decodedSIDBRecordBytes
@@ -50,6 +56,8 @@ func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
 		copy(record.Payload[:], data[offset+decodedSIDBMetadataBytes:offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes])
 		copy(record.Tail[:], data[offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes:offset+decodedSIDBRecordBytes])
 	}
-	copy(result.Footer[:], data[len(data)-footerBytes:])
+	if footerBytes != 0 {
+		copy(result.Footer[:], data[len(data)-footerBytes:])
+	}
 	return result, nil
 }

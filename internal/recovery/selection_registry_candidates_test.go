@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"crypto/aes"
 	"encoding/binary"
+	"strings"
 	"testing"
 )
 
-func fillSyntheticSelectionSIDBContainer(t *testing.T, container []byte, payloadOffset int, plaintext [selectionSIDBPayloadBytes]byte, key [16]byte) {
+func fillSyntheticSelectionSIDBContainer(t *testing.T, container []byte, payloadOffset int, plaintext []byte, key [16]byte) {
 	t.Helper()
 	block, err := aes.NewCipher(key[:])
 	if err != nil {
@@ -48,7 +49,7 @@ func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
 	for index := range plaintext {
 		plaintext[index] = byte(index*31 + 19)
 	}
-	fillSyntheticSelectionSIDBContainer(t, container, selectionSIDBExtendedPayloadOffset, plaintext, keyCandidates[selectedSlot].Key)
+	fillSyntheticSelectionSIDBContainer(t, container, selectionSIDBExtendedPayloadOffset, plaintext[:], keyCandidates[selectedSlot].Key)
 	candidates, _, gotIterations, err := deriveCurrentSelectionRegistryCandidates(
 		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
 	)
@@ -92,7 +93,7 @@ func TestDeriveStructuralCurrentSelectionRegistryCandidates(t *testing.T) {
 	for index := range plaintext {
 		plaintext[index] = byte(index*23 + 11)
 	}
-	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext, keyCandidates[selectedSlot].Key)
+	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext[:], keyCandidates[selectedSlot].Key)
 	candidates, _, gotIterations, err := deriveCurrentSelectionRegistryCandidates(
 		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
 	)
@@ -144,7 +145,7 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	sinf := syntheticCurrentSINFForPrecursorRights(t, precursor, 104)
-	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext, keyCandidates[8].Key)
+	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext[:], keyCandidates[8].Key)
 	registries, _, gotIterations, err := deriveCurrentSelectionRegistryCandidates(
 		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
 	)
@@ -166,5 +167,70 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 	wantKey := currentSINFModelKeyFromPrecursor(precursor)
 	if !bytes.Equal(pack[56:72], wantKey[:]) {
 		t.Fatal("structural SIDB/SINF model key differs")
+	}
+}
+
+func TestDeriveFooterlessCurrentSelectionRegistryCandidate(t *testing.T) {
+	const codecBytes = 24
+	plaintext := make([]byte, 2*decodedSIDBRecordBytes)
+	for index := range plaintext {
+		plaintext[index] = byte(index*37 + 13)
+	}
+	container, hardware := syntheticStructuralCurrentOuterInputs(codecBytes, len(plaintext))
+	layout, err := currentSIDBLayoutForContainer(container)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if layout.CodecBytes != codecBytes || layout.PayloadBytes != len(plaintext) || layout.OuterIterations != 262 {
+		t.Fatalf("footerless structural layout = %+v", layout)
+	}
+	source, _, err := deriveCurrentSelectionSource(container, hardware)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := enrollmentKeyCandidates(source[selectionSourcePrefixBytes:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext, keys[8].Key)
+	candidates, _, _, err := deriveCurrentSelectionRegistryCandidates(
+		map[string][]byte{"/private/var/db/fpsd/SC Info/SC Info.sidb": container}, hardware,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clearDecodedSIDBRegistryCandidates(candidates)
+	var selected []decodedSIDBRegistryCandidate
+	for _, candidate := range candidates {
+		if bytes.Equal(candidate.Data, plaintext) {
+			selected = append(selected, candidate)
+		}
+	}
+	if len(selected) != 1 || selected[0].Registry.FooterBytes != decodedSIDBNoFooterBytes {
+		t.Fatalf("footerless decoded matches = %d", len(selected))
+	}
+	const recordIndex, windowOffset = 1, 2
+	precursor, err := deriveCurrentSINFPrecursorFromRecordWindow(
+		selected[0].Registry.Records[recordIndex], windowOffset, currentClassEnrollmentParameters().classKey(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sinf := syntheticCurrentSINFForPrecursor(t, precursor)
+	authenticated, err := selectAuthenticatedEnrollmentClassPrecursor(sinf, selected, hardware, 0x12345678, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authenticated.RecordIndex != recordIndex || authenticated.WindowOffset != windowOffset || authenticated.Precursor != precursor {
+		t.Fatalf("footerless authenticated precursor = %+v", authenticated)
+	}
+}
+
+func TestCurrentSIDBContainerFilesReportsRejectedGeometry(t *testing.T) {
+	data := make([]byte, 96)
+	binary.BigEndian.PutUint32(data[:4], currentSIDBContainerVersion)
+	_, err := currentSIDBContainerFiles(map[string][]byte{"state/fpsd-sc-info/SC Info.sidb": data})
+	if err == nil || !strings.Contains(err.Error(), "96 bytes") || !strings.Contains(err.Error(), "unsupported or ambiguous size") {
+		t.Fatalf("rejected SIDB diagnostic = %v", err)
 	}
 }

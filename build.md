@@ -261,12 +261,14 @@ its 4,112 bytes of encoding data have been removed.
 SIDB container selection is no longer a three-size switch. The three verified
 layouts remain exact controls, while other containers in the same versioned
 family are inferred from a 13- to 39-byte codec, a block-aligned decoded
-registry containing 40-byte records and a 16- or 24-byte footer, and a fixed
-16-byte trailer. The outer iteration count is `11 * codec_bytes - 2`, matching
-all three independent controls. Unknown structural candidates still have to
-produce one decoded registry and one personalized-SINF precursor; a truncated
-known container therefore cannot be promoted merely because its size resembles
-another valid layout.
+registry containing bounded 40-byte records and an optional 16- or 24-byte
+footer, and a fixed 16-byte trailer. Footerless geometry is a beta candidate
+for large accumulated registries; it is not promoted by size alone. The outer
+iteration count is `11 * codec_bytes - 2`, matching all three independent
+controls. Unknown structural candidates still have to produce one decoded
+registry and one personalized-SINF precursor; a truncated known container
+therefore cannot be promoted merely because its size resembles another valid
+layout.
 
 Current SINF parsing now accepts bounded rights payloads from 80 through 256
 bytes in eight-byte units. The observed 440- and 448-byte private records and

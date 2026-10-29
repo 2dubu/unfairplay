@@ -105,17 +105,29 @@ func canonicalSIDB(file CanonicalEnrollmentFile) (CanonicalSIDB, error) {
 }
 
 func canonicalSIDBGeometry(size int) (codecBytes, registryBytes, footerBytes int, ok bool) {
+	// Preserve the three independently verified layouts when a footerless
+	// interpretation with a shorter codec would otherwise also fit by size.
+	switch size {
+	case 630:
+		return 34, 576, 16, true
+	case 992:
+		return 28, 944, 24, true
+	case 993:
+		return 29, 944, 24, true
+	case 1003:
+		return 39, 944, 24, true
+	}
 	for codec := 13; codec <= 39; codec++ {
 		registry := size - 4 - codec - 16
 		if registry <= 0 || registry%16 != 0 {
 			continue
 		}
-		for _, footer := range [...]int{16, 24} {
+		for _, footer := range [...]int{0, 16, 24} {
 			if registry <= footer || (registry-footer)%40 != 0 {
 				continue
 			}
 			records := (registry - footer) / 40
-			if records <= 0 || records > 64 {
+			if records <= 0 || records > 512 {
 				continue
 			}
 			if ok {
