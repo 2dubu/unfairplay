@@ -13,6 +13,10 @@ you control. It is intended for interoperability, preservation, and authorized
 research. The authors do not condone piracy, credential theft, copyright
 infringement, or unauthorized distribution of decrypted apps.
 
+## Discord
+
+Project discussion and support: [UnfairPlay Discord](https://discord.gg/hpwvuQHfaf).
+
 ## Build
 
 ```sh
@@ -37,6 +41,7 @@ The final JSON result remains on standard output.
 
 The saved model is private. It is tied to the Mac App Store enrollment, not to
 one app, so it can decrypt other personalized IPAs from the same enrollment.
+Back it up only in encrypted storage and never share it.
 
 Decrypt another IPA:
 
@@ -61,10 +66,11 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
-The decryption path handles ARMv7 and ARM64 slices. ARMv6/Thumb-1 parsing is
-experimental and those binaries are not supported. Available pre-encryption
-page hashes must match; a mismatch fails closed. Older executables without
-these tables can decrypt, but report `plaintext_verified=false`.
+The decryption path handles ARMv7, ARM64, and ARM64_32/watchOS slices.
+ARMv6/Thumb-1 parsing is experimental and those binaries are not supported.
+Available pre-encryption page hashes must match; a mismatch fails closed.
+Older executables without these tables can decrypt, but report
+`plaintext_verified=false`.
 
 ### Convert an IPA for macOS
 
@@ -140,10 +146,11 @@ turns that state into a reusable private model.
 
 - **Personalized SINF:** an app license created for one Store enrollment. It
   identifies the enrollment and protects the app-specific key.
-- **SUPF:** per-executable records used to derive keys and IVs for encrypted
-  Mach-O pages. Apps, extensions, frameworks, and watch apps may each have one.
+- **SUPF/SUPP:** signed per-executable records used to derive keys and IVs for
+  encrypted Mach-O pages. Apps, extensions, frameworks, and watch apps may each
+  have one.
 - **`SC_Info`:** the directory inside an installed app or IPA that contains its
-  SINF and SUPF license files.
+  SINF and SUPF/SUPP license files.
 - **System `SC Info`:** the private Mac FairPlay state directory. Its SIDB and
   SIDS files contain enrollment state, not app content.
 
@@ -194,26 +201,30 @@ selected prefix with AES-CBC and a final AES key transform. All constants are
 part of the mapped algorithm. Production loads no native executable or
 constructor profile. Support is determined by format and authenticated route;
 unknown versions, tags and selected-route geometry fail closed. SINF
-authentication and complete IPA validation remain mandatory.
+authentication, complete IPA processing, and every applicable validation check
+remain mandatory. Older IPAs without pre-encryption hashes remain explicitly
+unverified rather than being reported as verified.
 
 IPA decryption uses explicit `SC_Info/Manifest.plist` SINF replication paths,
 or the executable's adjacent SINF when no mapping is declared. Paired legacy
 and v5 SUPFs must have identical architecture and page records; a legacy SUPF's
 signature-blob hash must match its executable. Conflicts within the selected
 page-key class fail closed. Recovery uses one canonical set of runtime inputs
-without a broader license retry. Thin Mach-O images can also use signed `.supp` / `.v4.supp`
-page tables, indexed from file offset zero. The encrypted page records are
-selected by the declared encryption range, and legacy signature-blob bindings
-are checked. SUPP-only fat images are unsupported. Architecture-indexed SUPF
-files take precedence when present; a malformed selected class never triggers
-a retry with the other class. SINF manifests must declare exactly one source;
-existing replicas must match that source. Multi-source manifests are unsupported.
+without a broader license retry. Thin Mach-O images can also use signed
+`.supp`/`.v4.supp` page tables, indexed from file offset zero. The encrypted
+page records are selected by the declared encryption range, and legacy
+signature-blob bindings are checked. SUPP-only fat images are unsupported.
+Architecture-indexed SUPF files take precedence when present; a malformed
+selected class never triggers a retry with the other class. SINF manifests
+must declare exactly one source; existing replicas must match that source.
+Multi-source manifests are unsupported.
 
 Plaintext validation checks every CodeDirectory pre-encryption hash slot that
 intersects an encrypted range. Instruction scoring and sampled-page checks are
 not used. Every available pre-encryption table is checked. Older directories
 or a zero pre-encryption offset mean no table; a malformed nonzero table fails
 closed.
+
 Images with no table report validation as unavailable, and the overall
 `plaintext_verified` flag is false if any image lacks coverage. These checks
 establish consistency with the embedded hashes, not Apple CMS signature trust.
@@ -224,14 +235,16 @@ instruction-audit fields must migrate to the plaintext validation fields.
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.
 
-The IPA, installed app, Mac state, hardware identity, and model must belong to
-the same enrollment. Account or selector mismatches are rejected.
+During setup, the installed app, matching IPA, Mac state, and hardware identity
+must belong to the same enrollment. The resulting model can then decrypt other
+IPAs personalized for that enrollment. Account or selector mismatches are
+rejected.
 
 Keep capture and model files private. Do not share SIDB, SINF, hardware data,
 recovery models, or decrypted apps. Decrypted IPAs are analysis files and need
 signing before installation.
 
-## Branch beta testing
+## Reporting problems
 
 Private controls do not establish support for every layout or independent
 enrollment. Do not infer support from the macOS build alone.
