@@ -56,7 +56,7 @@ func TestSIDBNativeSourceAndBodyOracle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clear(source)
-	if len(expectedSource) < len(source) || !bytes.Equal(source, expectedSource[:len(source)]) {
+	if len(source) != layout.SourceBytes || layout.SourceBytes < selectionSourcePrefixBytes || len(expectedSource) < layout.SourceBytes || !bytes.Equal(source, expectedSource[:layout.SourceBytes]) {
 		t.Fatal("complete selection source differs from native oracle")
 	}
 	projected, err := decodeSelectionSIDBContainerWithLayout(container, layout)
@@ -64,26 +64,20 @@ func TestSIDBNativeSourceAndBodyOracle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clear(projected)
-	candidates, err := enrollmentKeyCandidates(source[selectionSourcePrefixBytes:])
+	key, err := deriveSelectedEnrollmentKey(source[selectionSourcePrefixBytes:layout.SourceBytes], layout.SelectedSlot)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("cannot derive selected native key")
 	}
-	defer clear(candidates)
-	matches := 0
-	for _, candidate := range candidates {
-		body, err := decryptSelectionSIDBPayloadDynamic(projected, candidate.Key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if bytes.Equal(body, expectedBody) {
-			matches++
-		}
-		clear(body)
+	body, err := decryptSelectionSIDBPayloadDynamic(projected, key)
+	clear(key[:])
+	if err != nil {
+		t.Fatal("cannot decode selected body")
 	}
-	if matches != 1 {
-		t.Fatalf("native body matched %d candidate keys, want one", matches)
+	defer clear(body)
+	if !bytes.Equal(body, expectedBody) {
+		t.Fatal("native selected body differs from oracle")
 	}
-	if _, err := parseDecodedSIDBRegistry(expectedBody); err != nil {
+	if _, err := parseDecodedSIDBRegistry(expectedBody, layout.RootCursor); err != nil {
 		t.Fatalf("native decoded body fails production grammar: %v", err)
 	}
 	t.Log("native source and body match")

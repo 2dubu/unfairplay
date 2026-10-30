@@ -1,18 +1,13 @@
 package recovery
 
 import (
-	"crypto"
 	"crypto/rsa"
-	"crypto/sha1"
-	"crypto/sha256"
-	"crypto/x509"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"strings"
-)
 
-const fairPlayCAModulusHex = "b2673c5d2ae78ff277cfef31bcd104fdea9fd08629900aa3ff644aef69f40ab9efc4c463ca3a2d213d528c238929aadb17dccb28c469cd7224c210c1f4781d3116c5e6ea191d2a33be80abdc1148062a1f0e6181cd799a5d12f48490c87cf6789b52f8faf1886e1072f85dcb88ecb6551497a44d0bc14f276799a6a4b3d7daad"
+	"github.com/DrWhax/unfairplay/internal/scinfo"
+)
 
 type currentSUPFEnvelope struct {
 	Variant      byte
@@ -27,6 +22,31 @@ func parseCurrentSUPFEnvelope(data []byte) (currentSUPFEnvelope, error) {
 		return result, fmt.Errorf("SUPF is truncated")
 	}
 	result.Variant = data[0]
+	if result.Variant == 1 || result.Variant == 4 {
+		cursor := 4
+		if result.Variant == 1 {
+			cursor += 20
+		}
+		if len(data)-cursor < 4 {
+			return result, fmt.Errorf("SUPP header is truncated")
+		}
+		pages := uint64(binary.BigEndian.Uint32(data[cursor : cursor+4]))
+		cursor += 4
+		if pages == 0 || len(data)-cursor < 4+128 || pages > uint64((len(data)-cursor-4-128)/32) {
+			return result, fmt.Errorf("SUPP page records have invalid bounds")
+		}
+		end := cursor + int(pages)*32
+		certificateBytes := uint64(binary.BigEndian.Uint32(data[end : end+4]))
+		certificateStart := end + 4
+		if certificateBytes == 0 || certificateBytes != uint64(len(data)-certificateStart-128) {
+			return result, fmt.Errorf("SUPP certificate and signature have invalid bounds")
+		}
+		certificateEnd := certificateStart + int(certificateBytes)
+		result.SignedPrefix = data[:end]
+		result.Certificate = data[certificateStart:certificateEnd]
+		result.Signature = data[certificateEnd:]
+		return result, nil
+	}
 	if result.Variant != 3 && result.Variant != 5 {
 		return result, fmt.Errorf("SUPF variant %d is unsupported", result.Variant)
 	}
@@ -82,63 +102,13 @@ func parseCurrentSUPFEnvelope(data []byte) (currentSUPFEnvelope, error) {
 	return result, nil
 }
 
-func fairPlayCAPublicKey() *rsa.PublicKey {
-	modulus, ok := new(big.Int).SetString(fairPlayCAModulusHex, 16)
-	if !ok || modulus.BitLen() != 1024 {
-		panic("invalid embedded FairPlay CA public key")
-	}
-	return &rsa.PublicKey{N: modulus, E: 65537}
-}
-
-func verifyFairPlayLeafCertificate(certificate *x509.Certificate, authority *rsa.PublicKey) error {
-	if certificate.SignatureAlgorithm != x509.SHA1WithRSA || len(certificate.Signature) != 128 {
-		return fmt.Errorf("SUPF certificate has unsupported authority signature")
-	}
-	if certificate.Issuer.CommonName != "Apple FairPlay Certification Authority" ||
-		len(certificate.Issuer.Organization) != 1 || certificate.Issuer.Organization[0] != "Apple Inc." ||
-		len(certificate.Issuer.OrganizationalUnit) != 1 || certificate.Issuer.OrganizationalUnit[0] != "Apple Certification Authority" {
-		return fmt.Errorf("SUPF certificate has an unexpected authority")
-	}
-	if len(certificate.Subject.Organization) != 1 || certificate.Subject.Organization[0] != "Apple Inc." ||
-		len(certificate.Subject.OrganizationalUnit) != 1 || certificate.Subject.OrganizationalUnit[0] != "Apple FairPlay" ||
-		(!strings.HasPrefix(certificate.Subject.CommonName, "SINF.") && !strings.HasPrefix(certificate.Subject.CommonName, "AP.")) || certificate.IsCA {
-		return fmt.Errorf("SUPF certificate has an unexpected subject")
-	}
-	digest := sha1.Sum(certificate.RawTBSCertificate)
-	if err := rsa.VerifyPKCS1v15(authority, crypto.SHA1, digest[:], certificate.Signature); err != nil {
-		return fmt.Errorf("verify SUPF certificate authority signature: %w", err)
-	}
-	return nil
-}
+func fairPlayCAPublicKey() *rsa.PublicKey { return scinfo.AuthorityPublicKey() }
 
 func verifyCurrentSUPFEnvelopeWithCA(envelope currentSUPFEnvelope, authority *rsa.PublicKey) error {
-	certificate, err := x509.ParseCertificate(envelope.Certificate)
-	if err != nil {
-		return fmt.Errorf("parse SUPF certificate: %w", err)
-	}
-	if err := verifyFairPlayLeafCertificate(certificate, authority); err != nil {
-		return err
-	}
-	publicKey, ok := certificate.PublicKey.(*rsa.PublicKey)
-	if !ok || publicKey.N.BitLen() != 1024 || publicKey.E != 65537 || len(envelope.Signature) != 128 {
-		return fmt.Errorf("SUPF certificate has unsupported RSA key geometry")
-	}
-	var hash crypto.Hash
-	var digest []byte
-	switch envelope.Variant {
-	case 3:
-		value := sha1.Sum(envelope.SignedPrefix)
-		hash, digest = crypto.SHA1, value[:]
-	case 5:
-		value := sha256.Sum256(envelope.SignedPrefix)
-		hash, digest = crypto.SHA256, value[:]
-	default:
+	if envelope.Variant != 1 && envelope.Variant != 3 && envelope.Variant != 4 && envelope.Variant != 5 {
 		return fmt.Errorf("SUPF variant %d is unsupported", envelope.Variant)
 	}
-	if err := rsa.VerifyPKCS1v15(publicKey, hash, digest, envelope.Signature); err != nil {
-		return fmt.Errorf("verify SUPF signed prefix: %w", err)
-	}
-	return nil
+	return scinfo.VerifyEnvelope(envelope.Variant, envelope.SignedPrefix, envelope.Certificate, envelope.Signature, authority)
 }
 
 func verifyCurrentSUPFEnvelope(envelope currentSUPFEnvelope) error {
@@ -148,12 +118,16 @@ func verifyCurrentSUPFEnvelope(envelope currentSUPFEnvelope) error {
 func validateCurrentSUPFFilesWithCA(files map[string][]byte, authority *rsa.PublicKey) (int, error) {
 	validated := 0
 	for name, data := range files {
-		if !strings.HasSuffix(name, ".supf") || len(data) == 0 {
+		if (!strings.HasSuffix(name, ".supf") && !strings.HasSuffix(name, ".supp")) || len(data) == 0 {
 			continue
 		}
 		envelope, err := parseCurrentSUPFEnvelope(data)
 		if err != nil {
 			return validated, fmt.Errorf("parse %s: %w", name, err)
+		}
+		pClass := strings.HasSuffix(name, ".supp")
+		if pClass != (envelope.Variant == 1 || envelope.Variant == 4) {
+			return validated, fmt.Errorf("keyfile %s has a variant inconsistent with its class", name)
 		}
 		if err := verifyCurrentSUPFEnvelopeWithCA(envelope, authority); err != nil {
 			return validated, fmt.Errorf("validate %s: %w", name, err)
@@ -161,7 +135,7 @@ func validateCurrentSUPFFilesWithCA(files map[string][]byte, authority *rsa.Publ
 		validated++
 	}
 	if validated == 0 {
-		return 0, fmt.Errorf("recovery requires one signed SUPF")
+		return 0, fmt.Errorf("recovery requires one signed keyfile")
 	}
 	return validated, nil
 }

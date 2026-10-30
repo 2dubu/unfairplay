@@ -61,9 +61,10 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
-The beta also decrypts ARMv7 slices. It validates Thumb-2 or classic ARM
-instruction structure and fails closed when a page key produces implausible
-code. ARMv6/Thumb-1-only binaries are not supported.
+The decryption path handles ARMv7 and ARM64 slices. ARMv6/Thumb-1 parsing is
+experimental and those binaries are not supported. Available pre-encryption
+page hashes must match; a mismatch fails closed. Older executables without
+these tables can decrypt, but report `plaintext_verified=false`.
 
 ### Convert an IPA for macOS
 
@@ -156,12 +157,14 @@ Each app still has its own key inside its personalized SINF.
 ### Why might another macOS build fail?
 
 Apple can change enrollment state layouts or semantic tables. UnfairPlay
-discovers bounded SIDB and SINF layouts structurally, but fails closed if the
-version or authenticated record format is genuinely different. It never
-publishes a model until the matching IPA decrypts and passes validation.
+follows explicit SIDB version, state-slot, root-cursor, and selector rules.
+An unmapped format or tag-constructor path stops recovery with an error. It never
+publishes a model until the matching IPA decrypts and passes the applicable
+validation checks; missing plaintext hashes remain explicitly unverified.
 
 Patches and test reports are welcome. Include the macOS build, UnfairPlay
-commit, and complete error. Never share SIDB, SINF, hardware
+commit, and a redacted error. Keep app identities, identifying IPA measurements
+and private paths out of public reports. Never share SIDB, SINF, hardware
 identity, enrollment models, decrypted apps, or Apple credentials.
 
 ### Can decryption run on another operating system?
@@ -173,23 +176,50 @@ license files, system SC Info state, built-in IOMACAddress, matching IPA, and
 macOS build metadata.
 
 The recovered model and personalized IPAs can then be used on macOS or Linux;
-fairplayd is never executed. Windows builds compile, but Windows decryption is
-not enabled until equivalent private-file permission checks are implemented.
+the native fairplayd daemon is never launched by this tool. Windows builds
+compile, but Windows decryption is not enabled until equivalent private-file
+permission checks are implemented.
 
 ## Support
 
-Recovery is not selected by the macOS build or a fairplayd hash. It uses typed
-Go algorithms and does not load or execute fairplayd. Unknown inputs are
-accepted only when structural recovery and full IPA validation succeed.
-This removes a build dependency; it does not prove that every SIDB or account
-layout is supported.
+Recovery follows the mapped current-container and tree format. It derives one
+state slot, a hardware-dependent root cursor and tag codebook, then selects the
+SINF's exact user/key path and authenticates its single value. It does not try
+other records or windows when that value fails authentication. Only the mapped
+tree format is supported.
 
-The 630-, 638-, 993-, and 1003-byte Mac SIDBs are independent controls. Other
-version-`0x0007000b` containers derive their encrypted-body boundary, decode
-bounded native trees, and authenticate the matching record with the
-personalized SINF. Current SINF records support the observed short and standard
-forms plus bounded appended rights. Every path still requires complete SINF
-authentication and IPA validation.
+The hardware tag constructor uses a byte mixer followed by AES-CBC and an
+affine map of each output word. Selection-state derivation processes the
+selected prefix with AES-CBC and a final AES key transform. All constants are
+part of the mapped algorithm. Production loads no native executable or
+constructor profile. Support is determined by format and authenticated route;
+unknown versions, tags and selected-route geometry fail closed. SINF
+authentication and complete IPA validation remain mandatory.
+
+IPA decryption uses explicit `SC_Info/Manifest.plist` SINF replication paths,
+or the executable's adjacent SINF when no mapping is declared. Paired legacy
+and v5 SUPFs must have identical architecture and page records; a legacy SUPF's
+signature-blob hash must match its executable. Conflicts within the selected
+page-key class fail closed. Recovery uses one canonical set of runtime inputs
+without a broader license retry. Thin Mach-O images can also use signed `.supp` / `.v4.supp`
+page tables, indexed from file offset zero. The encrypted page records are
+selected by the declared encryption range, and legacy signature-blob bindings
+are checked. SUPP-only fat images are unsupported. Architecture-indexed SUPF
+files take precedence when present; a malformed selected class never triggers
+a retry with the other class. SINF manifests must declare exactly one source;
+existing replicas must match that source. Multi-source manifests are unsupported.
+
+Plaintext validation checks every CodeDirectory pre-encryption hash slot that
+intersects an encrypted range. Instruction scoring and sampled-page checks are
+not used. Every available pre-encryption table is checked. Older directories
+or a zero pre-encryption offset mean no table; a malformed nonzero table fails
+closed.
+Images with no table report validation as unavailable, and the overall
+`plaintext_verified` flag is false if any image lacks coverage. These checks
+establish consistency with the embedded hashes, not Apple CMS signature trust.
+Unencrypted pages outside those ranges are not covered by this plaintext check.
+Decryption reports use `unfairplay-decryption-v2`; consumers of the removed
+instruction-audit fields must migrate to the plaintext validation fields.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.
@@ -203,13 +233,13 @@ signing before installation.
 
 ## Branch beta testing
 
-The portable recovery candidate is on `research/direct-enrollment-algorithm`.
-It passes four private controls, but independent larger SIDB layouts are still
-under test. Do not assume support from the macOS build alone.
+Private controls do not establish support for every layout or independent
+enrollment. Do not infer support from the macOS build alone.
 Build it from source and run `setup` normally. Confirm the binary with
 `./unfairplay --version`. Reports should include only that version output, the
-macOS build, SIDB byte count, SINF `priv`/`righ` byte counts, and the complete
-error. Never attach SIDB, SINF, hardware identity, models, credentials, or
+macOS build and a redacted error. Keep app identities, IPA measurements,
+account/hardware identifiers and private paths out of public reports. Never
+attach SIDB, SINF, hardware identity, models, credentials, or
 decrypted IPAs to a public issue.
 
 ## Releases

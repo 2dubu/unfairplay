@@ -2,61 +2,23 @@ package recovery
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"fmt"
 	"testing"
 )
 
 func TestSelectionSourceLayouts(t *testing.T) {
-	envelope := make([]byte, selectionSourceEnvelopeBytes)
-	for index := range envelope {
-		envelope[index] = byte(index*17 + 5)
-	}
-	layouts, err := selectionSourceLayouts(envelope)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(layouts) != 2 || len(layouts[0]) != selectionSourceBodyBytes || len(layouts[1]) != selectionSourceEnvelopeBytes ||
-		!bytes.Equal(layouts[0], envelope[selectionSourcePrefixBytes:]) || !bytes.Equal(layouts[1], envelope) {
-		t.Fatal("224-byte selection envelope was not split structurally")
-	}
-	body := envelope[:selectionSourceBodyBytes]
-	layouts, err = selectionSourceLayouts(body)
-	if err != nil || len(layouts) != 1 || !bytes.Equal(layouts[0], body) {
-		t.Fatal("192-byte selection body was not retained")
-	}
-	if _, err := selectionSourceLayouts(envelope[:208]); err == nil {
-		t.Fatal("unsupported selection source geometry was accepted")
-	}
-}
-
-func TestEnrollmentKeyCandidates(t *testing.T) {
-	for _, size := range []int{192, 224} {
-		source := make([]byte, size)
+	for count := 1; count <= maximumMappedSelectionModulus; count++ {
+		source := make([]byte, selectionSourcePrefixBytes+16*count)
 		for index := range source {
-			source[index] = byte(index*17 + size/16)
+			source[index] = byte(index*17 + 5)
 		}
-		candidates, err := enrollmentKeyCandidates(source)
-		if err != nil {
-			t.Fatal(err)
+		layouts, err := selectionSourceLayouts(source)
+		if err != nil || len(layouts) != 1 || len(layouts[0]) != 16*count || !bytes.Equal(layouts[0], source[selectionSourcePrefixBytes:]) {
+			t.Fatalf("invalid state source for %d slots", count)
 		}
-		if len(candidates) != size/16 {
-			t.Fatalf("%d-byte source produced %d candidates", size, len(candidates))
-		}
-		hash := sha256.New()
-		for slot, candidate := range candidates {
-			if candidate.Slot != slot {
-				t.Fatalf("candidate %d has slot %d", slot, candidate.Slot)
-			}
-			_, _ = hash.Write(candidate.State[:])
-			_, _ = hash.Write(candidate.Key[:])
-		}
-		want := map[int]string{
-			192: "47cf7fc4a1491cff9096df7be821f5836d2e1c583f9c54d17a3adfe0e382e4b1",
-			224: "b102a7ec812652ad76c7b01ae20cfc206b705462c1eb0439a290e6beb6333663",
-		}[size]
-		if got := fmt.Sprintf("%x", hash.Sum(nil)); got != want {
-			t.Fatalf("%d-byte candidate digest=%s, want %s", size, got, want)
+	}
+	for _, size := range []int{0, 32, 47, 255, 321, 336} {
+		if _, err := selectionSourceLayouts(make([]byte, size)); err == nil {
+			t.Fatalf("accepted unsupported source length %d", size)
 		}
 	}
 }

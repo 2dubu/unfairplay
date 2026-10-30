@@ -55,18 +55,16 @@ func selectionSourceFromOuterState(state *outerTableRoundState, sourceBytes int)
 	if state == nil {
 		return nil, fmt.Errorf("current outer state is unavailable")
 	}
-	switch sourceBytes {
-	case selectionSourceEnvelopeBytes:
-		return append([]byte(nil), state.Source[:]...), nil
-	case selectionSIDBLargerSourceBytes:
-		source := make([]byte, sourceBytes)
-		copy(source, state.Source[:])
-		copy(source[224:232], state.Writer[132:140])
-		copy(source[232:256], state.Tail[40:64])
-		return source, nil
-	default:
+	if sourceBytes < selectionSourcePrefixBytes+16 || sourceBytes > selectionSourcePrefixBytes+16*maximumMappedSelectionModulus || (sourceBytes-selectionSourcePrefixBytes)%16 != 0 {
 		return nil, fmt.Errorf("unsupported current selection source size %d", sourceBytes)
 	}
+	// The mapped continuation follows Source with eight Writer bytes and the
+	// tail beginning at offset 40. It is bounded to the currently mapped profile.
+	var full [selectionSourcePrefixBytes + 16*maximumMappedSelectionModulus]byte
+	copy(full[:], state.Source[:])
+	copy(full[224:232], state.Writer[132:140])
+	copy(full[232:], state.Tail[40:128])
+	return append([]byte(nil), full[:sourceBytes]...), nil
 }
 
 // nativeOuterStopStep evaluates the cycle-final dispatch at 0x10046119c.
@@ -139,10 +137,22 @@ func deriveNativeSelectionSource(container, hardware []byte) ([]byte, currentSID
 			if cycles >= 14 && nativeOuterStopStep(state.Words, &accumulator) {
 				bodyOffset := 4 + cycles
 				bodyBytes := len(container) - bodyOffset - selectionSIDBExtendedTrailerBytes
-				layout = currentSIDBLayout{CodecBytes: cycles, PayloadOffset: bodyOffset, PayloadBytes: bodyBytes, SourceBytes: selectionSIDBLargerSourceBytes, OuterIterations: iteration}
+				layout = currentSIDBLayout{CodecBytes: cycles, PayloadOffset: bodyOffset, PayloadBytes: bodyBytes, OuterIterations: iteration}
 				if bodyBytes <= 0 || bodyBytes%selectionSIDBBlockBytes != 0 || bodyBytes > maximumSelectionSIDBPayloadBytes {
 					return nil, layout, iteration, fmt.Errorf("current SIDB has invalid body geometry")
 				}
+				count := uint32(0x0976dec8) ^ (state.OptionalWord >> 4)
+				if count == 0 || count > maximumMappedSelectionModulus {
+					return nil, layout, iteration, fmt.Errorf("current SIDB selection modulus is outside mapped profile")
+				}
+				rootCursor, err := nativeSIDBRootCursor(hardware)
+				if err != nil {
+					return nil, layout, iteration, err
+				}
+				layout.RootCursor = rootCursor
+				layout.SelectorModulus = int(count)
+				layout.SourceBytes = selectionSourcePrefixBytes + 16*layout.SelectorModulus
+				layout.SelectedSlot = int(container[bodyOffset-1]) % layout.SelectorModulus
 				source, err := selectionSourceFromOuterState(&state, layout.SourceBytes)
 				return source, layout, iteration, err
 			}

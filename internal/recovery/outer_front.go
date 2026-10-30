@@ -19,7 +19,12 @@ func applyOuterFront(table *[outerTableWords]uint32, base uint32, state *outerTa
 	if !applyOuterDigestAtHardwareBase(&digest, &state.Hardware, &digestCodec, hardwareBase) {
 		return false
 	}
-	derivedHooks, ok := deriveOuterHookSeeds(table, base, &digest)
+	oldWord1, oldWord4 := state.Words[1], state.Words[4]
+	words, word2Core, ok := outerFrontWords(table, base, &digest)
+	if !ok {
+		return false
+	}
+	derivedHooks, ok := deriveOuterHookSeedsWithCore(table, base, &digest, word2Core)
 	if !ok {
 		return false
 	}
@@ -27,12 +32,7 @@ func applyOuterFront(table *[outerTableWords]uint32, base uint32, state *outerTa
 		*hooks = derivedHooks
 	}
 
-	oldWord1, oldWord4 := state.Words[1], state.Words[4]
-	words, ok := outerFrontWords(table, base, &digest)
-	if !ok {
-		return false
-	}
-	prefix, ok := outerFrontSourcePrefix(table, base, &digest)
+	prefix, ok := outerFrontSourcePrefix(table, base, words)
 	if !ok {
 		return false
 	}

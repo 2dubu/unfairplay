@@ -1,10 +1,10 @@
 package recovery
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
-	"sort"
 	"strings"
 )
 
@@ -33,16 +33,15 @@ type selectionRegistryDiagnostics struct {
 	KeyCandidates   int
 	DecodedBodies   int
 	TreeCandidates  int
-	FlatCandidates  int
 }
 
 func (diagnostics selectionRegistryDiagnostics) String() string {
 	return fmt.Sprintf(
-		"containers=%d container_bytes=%d codec_bytes=%d payload_bytes=%d source_bytes=%d iterations=%d source_layouts=%d key_candidates=%d decoded_bodies=%d tree_candidates=%d flat_candidates=%d",
+		"containers=%d container_bytes=%d codec_bytes=%d payload_bytes=%d source_bytes=%d iterations=%d source_layouts=%d key_candidates=%d decoded_bodies=%d tree_candidates=%d",
 		diagnostics.Containers, diagnostics.ContainerBytes, diagnostics.CodecBytes,
 		diagnostics.PayloadBytes, diagnostics.SourceBytes, diagnostics.OuterIterations,
 		diagnostics.SourceLayouts, diagnostics.KeyCandidates, diagnostics.DecodedBodies,
-		diagnostics.TreeCandidates, diagnostics.FlatCandidates,
+		diagnostics.TreeCandidates,
 	)
 }
 
@@ -52,28 +51,17 @@ const (
 	selectionSourceBodyBytes     = selectionSourceEnvelopeBytes - selectionSourcePrefixBytes
 )
 
+// selectionSourceLayouts accepts the mapped native source extent. The first
+// 32 bytes precede the modulus-sized state input projection.
 func selectionSourceLayouts(source []byte) ([][]byte, error) {
-	switch len(source) {
-	case selectionSIDBLargerSourceBytes:
-		// The older upstream enrollment family consumes the original shorter
-		// source; the current native path consumes the full continuation.
-		return [][]byte{source[selectionSourcePrefixBytes:], source[selectionSourcePrefixBytes:selectionSourceEnvelopeBytes]}, nil
-	case selectionSourceBodyBytes:
-		return [][]byte{source}, nil
-	case selectionSourceEnvelopeBytes:
-		// Current 224-byte account output is an envelope: the native selection
-		// stage advances past its 32-byte prefix before consuming twelve real
-		// state slots. Retain the full layout as a bounded alternative for the
-		// two additional slots; SINF authentication decides which is coherent.
-		return [][]byte{source[selectionSourcePrefixBytes:], source}, nil
-	default:
-		return nil, fmt.Errorf("selection source has %d bytes, want %d or %d", len(source), selectionSourceBodyBytes, selectionSourceEnvelopeBytes)
+	if len(source) < selectionSourcePrefixBytes+16 || len(source) > selectionSourcePrefixBytes+16*maximumMappedSelectionModulus || (len(source)-selectionSourcePrefixBytes)%16 != 0 {
+		return nil, fmt.Errorf("unsupported selection source size %d", len(source))
 	}
+	return [][]byte{source[selectionSourcePrefixBytes:]}, nil
 }
 
 func currentSIDBContainerFiles(files map[string][]byte) ([]currentSIDBContainerFile, error) {
 	var containers []currentSIDBContainerFile
-	seen := make(map[[sha256.Size]byte]bool)
 	for name, data := range files {
 		if !strings.HasSuffix(name, "SC Info.sidb") {
 			continue
@@ -81,17 +69,20 @@ func currentSIDBContainerFiles(files map[string][]byte) ([]currentSIDBContainerF
 		if len(data) < 4 || binary.BigEndian.Uint32(data[:4]) != currentSIDBContainerVersion {
 			continue
 		}
-		digest := sha256.Sum256(data)
-		if seen[digest] {
+		if len(containers) != 0 {
+			if !bytes.Equal(containers[0].data, data) {
+				return nil, fmt.Errorf("typed SIDB selection requires one distinct current SIDB container")
+			}
+			if name < containers[0].name {
+				containers[0].name = name
+			}
 			continue
 		}
-		seen[digest] = true
 		containers = append(containers, currentSIDBContainerFile{name: name, data: data})
 	}
 	if len(containers) == 0 {
 		return nil, fmt.Errorf("typed SIDB selection found no current SIDB container")
 	}
-	sort.Slice(containers, func(left, right int) bool { return containers[left].name < containers[right].name })
 	return containers, nil
 }
 
@@ -111,57 +102,42 @@ func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, se
 	if err != nil {
 		return result, err
 	}
-	if diagnostics != nil {
-		diagnostics.SourceLayouts += len(layouts)
+	if len(layouts[0]) != layout.SelectorModulus*16 || layout.SelectedSlot < 0 || layout.SelectedSlot >= layout.SelectorModulus {
+		return result, fmt.Errorf("invalid current SIDB selected state slot")
 	}
-	for _, layout := range layouts {
-		candidates, err := enrollmentKeyCandidates(layout)
-		if err != nil {
-			return result, err
-		}
-		if diagnostics != nil {
-			diagnostics.KeyCandidates += len(candidates)
-		}
-		for _, candidate := range candidates {
-			decoded, err := decryptSelectionSIDBPayloadDynamic(encoded, candidate.Key)
-			clear(candidate.Key[:])
-			if err != nil {
-				return result, err
-			}
-			if diagnostics != nil {
-				diagnostics.DecodedBodies++
-			}
-			digest := sha256.Sum256(decoded[:])
-			if seen[digest] {
-				clear(decoded[:])
-				continue
-			}
-			registries := decodedSIDBRegistryInterpretations(decoded)
-			if len(registries) == 0 {
-				clear(decoded)
-				continue
-			}
-			if diagnostics != nil {
-				for _, registry := range registries {
-					if registry.Tree {
-						diagnostics.TreeCandidates++
-					} else {
-						diagnostics.FlatCandidates++
-					}
-				}
-			}
-			seen[digest] = true
-			for _, registry := range registries {
-				data := append([]byte(nil), decoded...)
-				result = append(result, decodedSIDBRegistryCandidate{Registry: registry, Data: data})
-				if len(result) > maximumDecodedSIDBRegistryCandidates {
-					clear(decoded)
-					clearDecodedSIDBRegistryCandidates(result)
-					return nil, fmt.Errorf("typed SIDB selection found more than %d registry candidates", maximumDecodedSIDBRegistryCandidates)
-				}
-			}
-			clear(decoded)
-		}
+	key, err := deriveSelectedEnrollmentKey(layouts[0], layout.SelectedSlot)
+	if err != nil {
+		return result, err
+	}
+	if diagnostics != nil {
+		diagnostics.SourceLayouts++
+		diagnostics.KeyCandidates++
+	}
+	decoded, err := decryptSelectionSIDBPayloadDynamic(encoded, key)
+	clear(key[:])
+	if err != nil {
+		return result, err
+	}
+	defer clear(decoded)
+	if diagnostics != nil {
+		diagnostics.DecodedBodies++
+	}
+	digest := sha256.Sum256(decoded)
+	if seen[digest] {
+		return result, nil
+	}
+	registry, err := parseDecodedSIDBRegistry(decoded, layout.RootCursor)
+	if err != nil {
+		return result, fmt.Errorf("selected SIDB body has invalid tree geometry: %w", err)
+	}
+	if diagnostics != nil {
+		diagnostics.TreeCandidates++
+	}
+	seen[digest] = true
+	result = append(result, decodedSIDBRegistryCandidate{Registry: registry, Data: append([]byte(nil), decoded...)})
+	if len(result) > maximumDecodedSIDBRegistryCandidates {
+		clearDecodedSIDBRegistryCandidates(result)
+		return nil, fmt.Errorf("typed SIDB selection found more than %d registry candidates", maximumDecodedSIDBRegistryCandidates)
 	}
 	return result, nil
 }
@@ -179,6 +155,11 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 	for _, container := range containers {
 		source, layout, iterations, err := deriveNativeSelectionSource(container.data, hardware)
 		if err != nil {
+			clearDecodedSIDBRegistryCandidates(result)
+			return nil, "", iterations, err
+		}
+		if err := validateSIDBContainerAuthentication(container.data, source); err != nil {
+			clear(source)
 			clearDecodedSIDBRegistryCandidates(result)
 			return nil, "", iterations, err
 		}

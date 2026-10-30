@@ -6,82 +6,40 @@ import (
 )
 
 func TestParseDecodedSIDBRegistry(t *testing.T) {
-	data := make([]byte, 2*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
-	for index := range data {
-		data[index] = byte(index*29 + 7)
-	}
-	registry, err := parseDecodedSIDBRegistry(data)
+	data := syntheticSIDBRecordTree(2, 29, 7)
+	registry, err := parseDecodedSIDBRegistry(data, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(registry.Records) != 2 {
-		t.Fatalf("records = %d, want 2", len(registry.Records))
+	if !registry.Tree || len(registry.Records) != 2 {
+		t.Fatalf("unexpected tree records: %+v", registry)
 	}
-	if registry.FooterBytes != decodedSIDBFooterBytes {
-		t.Fatalf("footer bytes = %d, want %d", registry.FooterBytes, decodedSIDBFooterBytes)
-	}
-	for index, record := range registry.Records {
-		offset := index * decodedSIDBRecordBytes
-		if !bytes.Equal(record.Metadata[:], data[offset:offset+decodedSIDBMetadataBytes]) {
-			t.Fatalf("record %d metadata mismatch", index)
+	for i, record := range registry.Records {
+		offset := 22 + i*36
+		if record.SourceOffset != offset+20 || !bytes.Equal(record.Metadata[:], data[offset:offset+20]) || !bytes.Equal(record.Payload[:], data[offset+20:offset+36]) || record.TailAvailable != 0 {
+			t.Fatalf("record %d has incorrect geometry or bytes", i)
 		}
-		if !bytes.Equal(record.Payload[:], data[offset+decodedSIDBMetadataBytes:offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes]) {
-			t.Fatalf("record %d payload mismatch", index)
-		}
-		if !bytes.Equal(record.Tail[:], data[offset+decodedSIDBMetadataBytes+decodedSIDBPayloadBytes:offset+decodedSIDBRecordBytes]) {
-			t.Fatalf("record %d tail mismatch", index)
-		}
-	}
-	if !bytes.Equal(registry.Footer[:], data[len(data)-decodedSIDBFooterBytes:]) {
-		t.Fatal("footer mismatch")
 	}
 }
 
 func TestParseDecodedSIDBRegistryRejectsUnknownGeometry(t *testing.T) {
-	for _, size := range []int{0, decodedSIDBFooterBytes, decodedSIDBFooterBytes + 1, decodedSIDBFooterBytes + decodedSIDBRecordBytes - 1} {
-		if _, err := parseDecodedSIDBRegistry(make([]byte, size)); err == nil {
-			t.Fatalf("accepted %d-byte registry", size)
+	for _, size := range []int{0, 24, 25, 63, 104, 576, 11680} {
+		if _, err := parseDecodedSIDBRegistry(make([]byte, size), 2); err == nil {
+			t.Fatalf("accepted %d-byte invalid tree", size)
 		}
 	}
-	tooMany := make([]byte, (maximumDecodedSIDBRecords+1)*decodedSIDBRecordBytes+decodedSIDBFooterBytes)
-	if _, err := parseDecodedSIDBRegistry(tooMany); err == nil {
-		t.Fatal("accepted excessive record count")
-	}
 }
 
-func TestParseDecodedOlderSIDBRegistry(t *testing.T) {
-	data := make([]byte, 14*decodedSIDBRecordBytes+decodedSIDBOlderFooterBytes)
-	for index := range data {
-		data[index] = byte(index*17 + 5)
-	}
-	registry, err := parseDecodedSIDBRegistry(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(registry.Records) != 14 {
-		t.Fatalf("older records = %d, want 14", len(registry.Records))
-	}
-	if registry.FooterBytes != decodedSIDBOlderFooterBytes {
-		t.Fatalf("older footer bytes = %d, want %d", registry.FooterBytes, decodedSIDBOlderFooterBytes)
-	}
-	if !bytes.Equal(registry.Footer[:decodedSIDBOlderFooterBytes], data[len(data)-decodedSIDBOlderFooterBytes:]) || !bytes.Equal(registry.Footer[decodedSIDBOlderFooterBytes:], make([]byte, decodedSIDBFooterBytes-decodedSIDBOlderFooterBytes)) {
-		t.Fatal("older footer mismatch")
-	}
-}
-
-func TestParseDecodedRecordAlignedSIDBRegistry(t *testing.T) {
-	data := make([]byte, 292*decodedSIDBRecordBytes)
-	for index := range data {
-		data[index] = byte(index*11 + 9)
-	}
-	registry, err := parseDecodedSIDBRegistry(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(registry.Records) != 292 || registry.FooterBytes != decodedSIDBNoSeparateFooterBytes {
-		t.Fatalf("record-aligned registry = %d records, %d separate footer bytes", len(registry.Records), registry.FooterBytes)
-	}
-	if registry.Footer != [decodedSIDBFooterBytes]byte{} {
-		t.Fatal("record-aligned registry retained separate footer data")
+// Flat-looking sizes previously selected a historical interpretation before
+// tree geometry was understood. They are not evidence of a separate format.
+func TestParseDecodedSIDBRegistryRejectsSyntheticFlatShapes(t *testing.T) {
+	for _, size := range []int{2*40 + 24, 14*40 + 16, 292 * 40} {
+		data := make([]byte, size)
+		for i := range data {
+			data[i] = byte(i*17 + 5)
+		}
+		if _, err := parseDecodedSIDBRegistry(data, 2); err == nil {
+			t.Fatalf("accepted synthetic flat shape of %d bytes", size)
+		}
 	}
 }

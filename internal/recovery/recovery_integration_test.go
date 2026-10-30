@@ -24,7 +24,7 @@ func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mappings, stateFiles := canonical.RuntimeFileMappings(false)
+	mappings, stateFiles := canonical.RuntimeFileMappings()
 	if stateFiles == 0 {
 		t.Fatal("capture has no FairPlay state")
 	}

@@ -2,6 +2,15 @@ package recovery
 
 import "testing"
 
+// The standalone hook tests derive the shared core through the front path.
+func deriveOuterHookSeeds(table *[outerTableWords]uint32, base uint32, digest *outerDigestState) (outerHookSeeds, bool) {
+	_, core, ok := outerFrontWords(table, base, digest)
+	if !ok {
+		return outerHookSeeds{}, false
+	}
+	return deriveOuterHookSeedsWithCore(table, base, digest, core)
+}
+
 func TestOuterHookSeedsDeterministic(t *testing.T) {
 	var table [outerTableWords]uint32
 	for index := range table {

@@ -2,14 +2,12 @@ package recovery
 
 import "fmt"
 
-// classWorkspaceScheduleState carries the semantic residues of the three
-// nine-cell native planes. Each cell update consumes Product and Current,
-// and replaces the corresponding value in all three planes.
+// classWorkspaceScheduleState holds the product and current residues for
+// the nine-cell workspace. Each update replaces one cell in both planes.
 // Initialization and class-input selection are separate stages.
 type classWorkspaceScheduleState struct {
 	Product [9]uint16
 	Current [9]uint16
-	Forward [9]uint16
 	Seed    uint16
 }
 
@@ -38,18 +36,15 @@ func classWorkspaceScheduleCell(state *classWorkspaceScheduleState, row, column 
 		delta := uint32(state.Product[other*3+column]) - uint32(state.Product[position])
 		force += delta * weight // Native arithmetic wraps at 32 bits.
 	}
-	// The observed caller context cancels its transport bias. The 5-power
-	// period is 150 modulo 32767, so reducing the exponent preserves output.
+	// The 5-power period is 150 modulo 32767.
 	exponent := uint32(state.Product[position]) + uint32(state.Seed) + uint32(state.Current[position])
 	power := classWorkspaceModularPower(5, uint16(exponent%150))
-	sample := uint16(uint32(power) + uint32(classWorkspaceSampleCutoff))
-	peer := uint16(uint32(state.Seed) + uint32(classWorkspacePeerBias))
-	current := uint16(uint32(state.Current[position]) + uint32(classWorkspacePeerBias))
-	previous := uint16(uint32(state.Product[position]) + uint32(classWorkspaceSampleCutoff))
-	output := classWorkspaceLimbStep(sample, peer, current, previous, force, uint32(0xffff84f1))
-	state.Forward[position] = output.Forward ^ classWorkspaceOutputEncoding
-	state.Current[position] = output.Current - classWorkspacePeerBias
-	state.Product[position] = output.Previous - classWorkspaceSampleCutoff
+	// Force accumulation and this sum wrap at uint32 width before the
+	// modulus; widening the arithmetic changes the recurrence.
+	forward := (force + uint32(power) + uint32(state.Seed)) % classWorkspaceModulus
+	current := (forward + uint32(state.Current[position])) % classWorkspaceModulus
+	state.Current[position] = uint16(current)
+	state.Product[position] = uint16((uint32(state.Product[position]) + current) % classWorkspaceModulus)
 	return nil
 }
 

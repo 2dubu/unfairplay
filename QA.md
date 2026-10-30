@@ -2,6 +2,10 @@
 
 The control matrix is manual and opt-in. Private captures are never stored in
 the repository. Temporary decrypted IPAs are deleted when the command exits.
+Keep exact control hashes, IPA sizes, page counts and app identities in the
+private manifest and logs. Shared summaries should use anonymous control labels
+and omit account/hardware identifiers and identifying IPA measurements. Public
+OS and format constants are not private control measurements.
 
 Build UnfairPlay, create a mode-0600 manifest, then run:
 
@@ -42,7 +46,8 @@ Example manifest:
 ```
 
 Capture controls test complete recovery. IPA/model controls test reusable
-decryption across other accounts and app layouts. The command fails on any
+decryption for the supplied selectors and app layouts; independent-account
+coverage requires separate account controls. The command fails on any
 changed hash, image count, page count, or incomplete decryption. Use it before
 creating a release tag.
 
@@ -89,14 +94,17 @@ every ARMv7 report entry to contain:
 ```text
 architecture=armv7
 cryptid_after=0
-first_page_audit=armv7-thumb-instruction-structure
-first_page_structurally_plausible=true
+plaintext_validation=code-directory-pre-encryption-hashes
+pre_encryption_code_directories[*].matched_slots=pre_encryption_code_directories[*].slot_count
 ```
 
 Prefer the same app version from two independent Store enrollments. All Mach-O
 members must decrypt byte-identically; only personalized SINF and Store
-metadata may differ. Retain a wrong-page-key test that must fail the ARMv7
-audit. A pure 32-bit IPA is still desirable before a stable release.
+metadata may differ. Retain wrong-first-page and wrong-final-page key tests
+that must fail the pre-encryption hash audit, plus missing-table acceptance
+with unavailable plaintext validation and rejection of malformed present tables.
+Include thin 32-bit SUPP controls when available. Native execution and
+independent-enrollment coverage are separate validation goals.
 
 ## Compact frame AES profile
 
@@ -148,26 +156,38 @@ The test-only oracle is 1,618 bytes. Its compressed SHA-256 is
 The 43,392-byte decoded profile has SHA-256
 `f9362ea765534d3a3e578f5e40d3814d8cfa57dc67306aadf0e0e698b4344954`.
 
-## Current recovery checks
+## Recovery and decryption checks
 
-The standard suite runs all public algorithm and differential tests without
-build tags. Private native oracle tests skip unless their external inputs are
-provided. Run `go test ./...`, `go vet ./...`, and `go test -race ./...`.
+Run the public suite before submitting a change:
 
-The SIDB-key composition uses AES-128 with fixed input whitening; run
-`go test ./internal/recovery -run '^TestSIDBKey' -count=1` for its proof and
-controls. Tree parsing checks bounds and exact child spans; class-key selection
-requires complete, unique personalized-SINF authentication across the direct
-tree path and upstream flat compatibility families. Native comparisons
-are bounded controls, not proof for every account or future format.
+```sh
+go test ./...
+go vet ./...
+go test -race ./...
+```
 
-Optional source/body comparisons use `UNFAIRPLAY_TEST_CAPTURE`,
-`UNFAIRPLAY_SIDB_SOURCE_ORACLE`, and `UNFAIRPLAY_SIDB_BODY_ORACLE`. Other
-private class-key and workspace oracle inputs are documented in their tests.
-Keep all private inputs outside the repository.
+Recovery derives one state slot, hardware-selected tree root and user/key route.
+The selected license value must authenticate; failures must not select another
+record, source window or license file. Tests cover unsupported versions,
+malformed tree spans, duplicate selected-route entries, conflicting page-key
+metadata, wrong selectors and authentication failures.
 
-Before promoting portable SIDB support, run one native control whose decoded
-body uses the tree path rather than the flat compatibility parser. Configure:
+Tree offsets denote native length-field cursors: length at +0, tag at +4,
+identifier at +8, child count at +14, and children or payload at +20. Recovery
+requires the mapped root schemas `0x10001`/`0x10002`, account schema `0x10002`,
+a 24-byte `type` leaf, a 148-byte `sign` leaf, and a 36-byte first `valu` leaf.
+The value leaf contains exactly 16 payload bytes. Unknown schemas, unsupported
+selected-route tags and duplicate selected entries reject. Parser bounds and
+depth limits are tool restrictions, not a native malformed-input specification.
+
+The tag constructor and selection-state cipher use public algorithm constants.
+Private captures are not needed by the standard suite. To validate complete
+recovery, use a capture control in the matrix above: recover a fresh model and
+require the established model and decrypted-archive hashes. Reusing a model
+checks decryption but does not exercise the constructor or selection pipeline.
+Independent-enrollment coverage requires separate account controls.
+
+Optional source/body and class-key comparisons use:
 
 ```sh
 UNFAIRPLAY_TEST_CAPTURE=/private/path/App.capture \
@@ -179,6 +199,48 @@ go test ./internal/recovery \
   -count=1 -v
 ```
 
-Require both tests to run rather than skip, then require complete IPA
-validation from the recovered model. The current three-control matrix does not
-prove this tree path by itself.
+Require both tests to run rather than skip. Native controls establish behavior
+only for the supplied inputs; they do not establish every account layout or
+future format. Keep private inputs and exact identifying measurements outside
+the repository and public reports.
+
+## Page-key formats and plaintext validation
+
+Test architecture-indexed SUPF and thin-image SUPP containers. SUPF takes
+precedence when present; a malformed selected class must fail. Conflicting
+variants in that class reject. SUPP page records use file-origin indexing, and
+legacy signature-blob bindings must match the executable. SUPP-only fat images
+and multi-source SINF manifests are unsupported.
+
+Recovery authenticates its supplied page-key envelopes. SUPP decryption also
+verifies its selected envelope; standalone SUPF decryption checks geometry,
+binding and page hashes without verifying its certificate signature. Production
+does not establish Apple CMS trust, and `signature_verified` remains false.
+
+Require ciphertext CodeDirectory hashes and exact mutation scope to match.
+Every available pre-encryption hash table must match all slots intersecting the
+encrypted range. Missing tables produce `plaintext_verified=false` and
+`plaintext_validation=unavailable-no-pre-encryption-hashes`; malformed present
+tables reject. Include wrong-first-page and wrong-final-page negative controls.
+Disassembly or agreement between implementations does not replace plaintext
+hash coverage or a native execution control.
+
+Apple's public XNU pager validates source pages and carries their signing status
+into the decryption path. Source ciphertext consistency and optional plaintext
+hash checks therefore answer different questions. Neither establishes complete
+fairplayd or kernel policy equivalence.
+
+References: [XNU pager](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/vm/vm_apple_protect.c),
+[CodeDirectory pre-encryption slots](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_codesigning/lib/codedirectory.h),
+[SUPP format](https://github.com/vnc0/fairplay-scinfo).
+
+## Reports
+
+Decryption reports use `unfairplay-decryption-v2`. Consumers should read
+`plaintext_validation` and `pre_encryption_code_directories`; the overall
+`plaintext_verified` flag is true only when every decrypted image has coverage.
+The `recover` and `verify` summaries expose this boolean as well.
+
+For schema compatibility, `supf_member` names the selected page-key file even
+when it is a SUPP. Canonical capture metadata uses `architectures` for SUPFs and
+`file_origin_pages` for SUPPs; SUPP has no architecture identifier.

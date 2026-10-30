@@ -115,10 +115,9 @@ func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state 
 		return 0, false
 	}
 	encodedOptionalIndex := table[firstOptionalIndex] ^ 0x224ea33b
-	secondOptionalIndex := encodedOptionalIndex - uint32((uint64(encodedOptionalIndex)*0x621b97c3)>>38)*outerTableWords
-	if secondOptionalIndex >= outerTableWords {
-		return 0, false
-	}
+	// The recovered reciprocal quotient is exactly division by 167 for every
+	// uint32: 167*0x621b97c3 = 2^38+53 and 53*(2^32-1) < 2^38.
+	secondOptionalIndex := encodedOptionalIndex % outerTableWords
 	optionalInput := outerOptionalDecode(table[secondOptionalIndex])
 	state.OptionalWord = optionalInput
 	if outerOptionalActive(optionalInput) {
@@ -170,8 +169,12 @@ func applyOuterFullIteration(table *[outerTableWords]uint32, base uint32, state 
 }
 
 func advanceOuterSeed(seed, iterations uint32) uint32 {
-	for range iterations {
-		seed = outerWriterSeedStep(seed)
+	if iterations == 0 {
+		return seed
 	}
-	return seed
+	// The first step normalizes an arbitrary seed, including its wrapped
+	// addition. Subsequent steps advance the normalized phase by 36 modulo 167.
+	phase := outerWriterSeedStep(seed) - outerWriterSeedBase
+	phase = (phase + outerWriterSeedStride*((iterations-1)%outerWriterSeedStates)) % outerWriterSeedStates
+	return outerWriterSeedBase + phase
 }

@@ -14,7 +14,7 @@ import (
 
 func multiSINFImage(t *testing.T, logical [16]byte, word uint32) ([]byte, []byte, []byte) {
 	t.Helper()
-	blob, _ := signedAuditFixture(t, pageBytes, pageBytes, 12, 2)
+	blob, _ := signedPreEncryptionAuditFixture(t, pageBytes, pageBytes, 12, 2)
 	clear(blob[:pageBytes])
 	le := func(at int, value uint32) { binary.LittleEndian.PutUint32(blob[at:], value) }
 	le(0, mhMagic64)
@@ -46,6 +46,8 @@ func multiSINFImage(t *testing.T, logical [16]byte, word uint32) ([]byte, []byte
 	if err != nil {
 		t.Fatal(err)
 	}
+	copy(blob[pageBytes:2*pageBytes], plain)
+	setSyntheticPreEncryptionHashes(t, blob, machoLayout{signatureOffset: 2 * pageBytes})
 	cipher.NewCBCEncrypter(block, record[16:]).CryptBlocks(blob[pageBytes:2*pageBytes], plain)
 	directory := blob[2*pageBytes+20:]
 	for slot := 0; slot < 2; slot++ {
@@ -53,7 +55,7 @@ func multiSINFImage(t *testing.T, logical [16]byte, word uint32) ([]byte, []byte
 		if err != nil {
 			t.Fatal(err)
 		}
-		copy(directory[44+slot*32:], hash)
+		copy(directory[96+slot*32:], hash)
 	}
 	supf := make([]byte, 60)
 	supf[0] = 5
@@ -77,11 +79,11 @@ func writeMultiSINFArchive(t *testing.T, name string, members map[string][]byte)
 	order := []string{
 		"Payload/Test.app/Test",
 		"Payload/Test.app/SC_Info/Test.sinf",
-		"Payload/Test.app/SC_Info/Test.supf",
+		"Payload/Test.app/SC_Info/Test.v5.supf",
 		"Payload/Test.app/keep.txt",
 		"Payload/Test.app/PlugIns/Widget.appex/Test",
 		"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.sinf",
-		"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.supf",
+		"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.v5.supf",
 	}
 	for _, member := range order {
 		data, ok := members[member]
@@ -114,10 +116,10 @@ func TestDecryptMultipleSINFs(t *testing.T) {
 	widgetBlob, widgetSUPF, widgetPlain := multiSINFImage(t, widgetFixture.logical, 0xd65f03c0)
 	members := map[string][]byte{
 		mainPath: mainBlob, adjacentSINF(mainPath): mainFixture.sinf,
-		"Payload/Test.app/SC_Info/Test.supf": mainSUPF,
-		widgetPath:                           widgetBlob, adjacentSINF(widgetPath): widgetFixture.sinf,
-		"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.supf": widgetSUPF,
-		"Payload/Test.app/keep.txt":                               []byte("unchanged"),
+		"Payload/Test.app/SC_Info/Test.v5.supf": mainSUPF,
+		widgetPath:                              widgetBlob, adjacentSINF(widgetPath): widgetFixture.sinf,
+		"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.v5.supf": widgetSUPF,
+		"Payload/Test.app/keep.txt":                                  []byte("unchanged"),
 	}
 	input := filepath.Join(directory, "App.ipa")
 	writeMultiSINFArchive(t, input, members)
@@ -181,6 +183,23 @@ func TestDecryptMultipleSINFs(t *testing.T) {
 	if !report.Complete || len(report.Licenses) != 2 || len(report.Images) != 2 {
 		t.Fatalf("incomplete report: %+v", report)
 	}
+	if report.Schema != "unfairplay-decryption-v2" || !report.PlaintextVerified {
+		t.Fatalf("wrong report schema or plaintext coverage: %+v", report)
+	}
+	var wire struct {
+		Images []map[string]json.RawMessage `json:"images"`
+	}
+	if err := json.Unmarshal(reportData, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, image := range wire.Images {
+		if _, old := image["first_page_audit"]; old {
+			t.Fatal("v2 report retained obsolete instruction audit")
+		}
+		if len(image["pre_encryption_code_directories"]) == 0 {
+			t.Fatal("v2 report omitted plaintext hash coverage")
+		}
+	}
 	for _, image := range report.Images {
 		if image.SINFMember != adjacentSINF(image.Member) {
 			t.Fatalf("wrong SINF for %s", image.Member)
@@ -200,10 +219,10 @@ func TestMultipleSINFsFailBeforePublishing(t *testing.T) {
 	mainBlob, mainSUPF, _ := multiSINFImage(t, fixture.logical, 0xd503201f)
 	widgetBlob, widgetSUPF, _ := multiSINFImage(t, fixture.logical, 0xd65f03c0)
 	members := map[string][]byte{
-		mainPath:                             mainBlob,
-		"Payload/Test.app/SC_Info/Test.supf": mainSUPF,
-		widgetPath:                           widgetBlob,
-		"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.supf": widgetSUPF,
+		mainPath:                                mainBlob,
+		"Payload/Test.app/SC_Info/Test.v5.supf": mainSUPF,
+		widgetPath:                              widgetBlob,
+		"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.v5.supf": widgetSUPF,
 	}
 	input := filepath.Join(directory, "App.ipa")
 	writeMultiSINFArchive(t, input, members)
@@ -226,23 +245,24 @@ func TestMultipleSINFsFailBeforePublishing(t *testing.T) {
 	}
 }
 
-func TestSINFNameFallsBackToContainingApp(t *testing.T) {
-	main := "Payload/Test.app/SC_Info/Test.sinf"
-	child := "Payload/Test.app/PlugIns/Widget.appex/Widget"
-	got, err := sinfName(map[string]bool{main: true}, child)
-	if err != nil || got != main {
-		t.Fatalf("containing SINF=%q err=%v", got, err)
-	}
-	_, err = sinfName(map[string]bool{
-		main: true, "Payload/Test.app/SC_Info/Other.sinf": true,
-	}, child)
-	if err == nil {
-		t.Fatal("accepted an ambiguous containing license")
-	}
-}
-
 func TestAdjacentSINFTopLevel(t *testing.T) {
 	if got := adjacentSINF("App"); got != "SC_Info/App.sinf" {
 		t.Fatalf("top-level license path: %s", got)
+	}
+}
+
+func TestSINFMappingRequiresExplicitManifest(t *testing.T) {
+	const main = "Payload/Test.app/SC_Info/Test.sinf"
+	const target = "Payload/Test.app/PlugIns/Widget.appex/SC_Info/Widget.sinf"
+	const manifest = "Payload/Test.app/SC_Info/Manifest.plist"
+	entries := map[string][]byte{main: []byte("synthetic license")}
+	mapping, err := buildSINFAssociations(syntheticLicenseFiles(t, entries))
+	if err != nil || len(mapping) != 0 {
+		t.Fatalf("unexpected implicit association: %v, %v", mapping, err)
+	}
+	entries[manifest] = syntheticLicenseManifest(t, []string{"SC_Info/Test.sinf"}, []string{"PlugIns/Widget.appex/SC_Info/Widget.sinf"})
+	mapping, err = buildSINFAssociations(syntheticLicenseFiles(t, entries))
+	if err != nil || mapping[target] != main || len(mapping) != 1 {
+		t.Fatalf("explicit association: %v, %v", mapping, err)
 	}
 }

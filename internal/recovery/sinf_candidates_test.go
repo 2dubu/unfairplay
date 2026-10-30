@@ -4,7 +4,7 @@ import "testing"
 
 func TestDeriveClassPrecursorCandidates(t *testing.T) {
 	data := syntheticSIDBRecordTree(3, 17, 3)
-	registry, err := parseDecodedSIDBRegistry(data)
+	registry, err := parseDecodedSIDBRegistry(data, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -15,13 +15,13 @@ func TestDeriveClassPrecursorCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantCount := len(registry.Records) * (maximumClassWindowOffset + 1)
+	wantCount := len(registry.Records)
 	if len(candidates) != wantCount {
 		t.Fatalf("candidates = %d, want %d", len(candidates), wantCount)
 	}
 	for index, candidate := range candidates {
-		recordIndex := index / (maximumClassWindowOffset + 1)
-		windowOffset := index % (maximumClassWindowOffset + 1)
+		recordIndex := index
+		windowOffset := 0
 		if candidate.RecordIndex != recordIndex || candidate.WindowOffset != windowOffset || candidate.Record != registry.Records[recordIndex] {
 			t.Fatalf("candidate %d lost record/window identity", index)
 		}
@@ -37,7 +37,7 @@ func TestDeriveClassPrecursorCandidates(t *testing.T) {
 
 func TestDeriveCurrentClassPrecursorCandidates(t *testing.T) {
 	data := syntheticSIDBRecordTree(1, 29, 7)
-	registry, err := parseDecodedSIDBRegistry(data)
+	registry, err := parseDecodedSIDBRegistry(data, 2)
 	if err != nil {
 		t.Fatal(err)
 	}

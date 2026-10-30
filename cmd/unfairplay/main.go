@@ -216,35 +216,20 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	if err := writePrivateFile(filepath.Join(options.Output, "canonical-input.json"), append(canonicalDocument, '\n')); err != nil {
 		return outcome, err
 	}
-	var recovered recovery.Result
-	selectedProfile := ""
-	var recoveryErrors []error
-	for _, inputProfile := range []struct {
-		name     string
-		expanded bool
-	}{{"minimal-current-sinf", false}, {"expanded-capture", true}} {
-		select {
-		case <-ctx.Done():
-			return outcome, ctx.Err()
-		default:
-		}
-		mappings, stateFiles := canonical.RuntimeFileMappings(inputProfile.expanded)
-		if stateFiles == 0 {
-			recoveryErrors = append(recoveryErrors, fmt.Errorf("%s has no FairPlay state", inputProfile.name))
-			continue
-		}
-		recovered, err = recovery.Recover(recovery.Options{
-			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), Context: ctx,
-			Progress: recoveryProgressReporter(inputProfile.name),
-		})
-		if err == nil {
-			selectedProfile = inputProfile.name
-			break
-		}
-		recoveryErrors = append(recoveryErrors, fmt.Errorf("%s: %w", inputProfile.name, err))
+	const selectedProfile = "minimal-current-sinf"
+	if err := ctx.Err(); err != nil {
+		return outcome, err
 	}
-	if selectedProfile == "" {
-		return outcome, fmt.Errorf("derive enrollment: %w", errors.Join(recoveryErrors...))
+	mappings, stateFiles := canonical.RuntimeFileMappings()
+	if stateFiles == 0 {
+		return outcome, fmt.Errorf("derive enrollment: %s has no FairPlay state", selectedProfile)
+	}
+	recovered, err := recovery.Recover(recovery.Options{
+		FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), Context: ctx,
+		Progress: recoveryProgressReporter(selectedProfile),
+	})
+	if err != nil {
+		return outcome, fmt.Errorf("derive enrollment: %w", err)
 	}
 	defer clear(recovered.EnrollmentModel)
 	candidate := filepath.Join(options.Output, "fairplay-enrollment.candidate.bin")
@@ -275,6 +260,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 		"enrollment_model": enrollment, "decrypted_ipa": decrypted,
 		"decrypted_ipa_sha256": result.OutputSHA256, "encrypted_images": result.EncryptedImages,
 		"decrypted_pages": result.DecryptedPages, "input_profile": selectedProfile,
+		"plaintext_verified":  result.PlaintextVerified,
 		"recovery_iterations": recovered.Iterations, "recovery_state_sha256": recovered.StateSHA256,
 		"decoded_registry_candidates": recovered.DecodedRegistryCandidates,
 		"promotion_gate":              "complete-sinf-and-ipa-validation",
@@ -400,6 +386,7 @@ func verificationSummary(result fairplay.DecryptResult) map[string]any {
 		"encrypted_images":     result.EncryptedImages, "decrypted_pages": result.DecryptedPages,
 		"logical_key_sha256_by_sinf": result.LogicalKeySHA256BySINF,
 		"plaintext_retained":         false,
+		"plaintext_verified":         result.PlaintextVerified,
 	}
 	if result.LogicalKeySHA256 != "" {
 		summary["schema"] = "unfairplay-model-verification-v1"

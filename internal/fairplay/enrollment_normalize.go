@@ -1,6 +1,7 @@
 package fairplay
 
 import (
+	"crypto/rsa"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -30,9 +31,10 @@ type CanonicalSUPFArchitecture struct {
 }
 
 type CanonicalSUPF struct {
-	File          CanonicalEnrollmentFile     `json:"file"`
-	Variant       uint8                       `json:"variant"`
-	Architectures []CanonicalSUPFArchitecture `json:"architectures"`
+	File            CanonicalEnrollmentFile     `json:"file"`
+	Variant         uint8                       `json:"variant"`
+	Architectures   []CanonicalSUPFArchitecture `json:"architectures,omitempty"`
+	FileOriginPages int                         `json:"file_origin_pages,omitempty"`
 }
 
 type CanonicalSIDB struct {
@@ -97,9 +99,22 @@ func canonicalSIDB(file CanonicalEnrollmentFile) (CanonicalSIDB, error) {
 }
 
 func canonicalSUPF(file CanonicalEnrollmentFile) (CanonicalSUPF, error) {
+	return canonicalSUPFWithSUPPAuthority(file, nil)
+}
+
+// The authority override exists for synthetic signed SUPP tests; production
+// uses the pinned authority through the nil default.
+func canonicalSUPFWithSUPPAuthority(file CanonicalEnrollmentFile, authority *rsa.PublicKey) (CanonicalSUPF, error) {
 	data, err := os.ReadFile(file.localPath)
 	if err != nil {
 		return CanonicalSUPF{}, err
+	}
+	if strings.HasSuffix(file.VirtualPath, ".supp") {
+		parsed, err := parseSUPPWithCA(data, authority)
+		if err != nil {
+			return CanonicalSUPF{}, fmt.Errorf("parse %s: %w", file.CapturePath, err)
+		}
+		return CanonicalSUPF{File: file, Variant: parsed.variant, FileOriginPages: len(parsed.records)}, nil
 	}
 	parsed, err := parseSUPF(data)
 	if err != nil {
@@ -142,7 +157,10 @@ func (input CanonicalEnrollmentInput) PrivateExecutablePath() string {
 }
 func (input CanonicalEnrollmentInput) PrivateHardwarePath() string { return input.Hardware.localPath }
 
-func (input CanonicalEnrollmentInput) RuntimeFileMappings(expanded bool) ([]string, int) {
+// RuntimeFileMappings returns the single current-SINF recovery input set.
+// Additional captured licenses and state remain available in the canonical
+// metadata but are not alternate recovery inputs.
+func (input CanonicalEnrollmentInput) RuntimeFileMappings() ([]string, int) {
 	var mappings []string
 	stateFiles := 0
 	appendFile := func(file CanonicalEnrollmentFile, state bool) {
@@ -157,13 +175,8 @@ func (input CanonicalEnrollmentInput) RuntimeFileMappings(expanded bool) ([]stri
 	appendFile(input.InstalledSINFFile, false)
 	for _, value := range input.SUPFs {
 		name := filepath.Base(value.File.VirtualPath)
-		if expanded || name == input.ExecutableName+".supf" || name == input.ExecutableName+".v5.supf" {
+		if name == input.ExecutableName+".supf" || name == input.ExecutableName+".v5.supf" || name == input.ExecutableName+".supp" || name == input.ExecutableName+".v4.supp" {
 			appendFile(value.File, false)
-		}
-	}
-	if expanded {
-		for _, value := range input.AuxiliaryLicenses {
-			appendFile(value, false)
 		}
 	}
 	for _, value := range input.SIDBs {
@@ -171,7 +184,7 @@ func (input CanonicalEnrollmentInput) RuntimeFileMappings(expanded bool) ([]stri
 	}
 	for _, value := range input.StateFiles {
 		name := filepath.Base(value.VirtualPath)
-		if expanded || value.Role == "fpsd-state" && strings.HasPrefix(name, "SC Info.") {
+		if value.Role == "fpsd-state" && strings.HasPrefix(name, "SC Info.") {
 			appendFile(value, true)
 		}
 	}
@@ -277,7 +290,7 @@ func NormalizeEnrollmentCapture(capturePath string, manifest EnrollmentCaptureMa
 		}
 		lower := strings.ToLower(filepath.Base(captured))
 		switch {
-		case strings.HasSuffix(lower, ".supf"):
+		case strings.HasSuffix(lower, ".supf") || strings.HasSuffix(captured, ".supp"):
 			supf, parseErr := canonicalSUPF(file)
 			if parseErr != nil {
 				return result, parseErr
@@ -308,7 +321,7 @@ func NormalizeEnrollmentCapture(capturePath string, manifest EnrollmentCaptureMa
 		return result.StateFiles[left].VirtualPath < result.StateFiles[right].VirtualPath
 	})
 	if len(result.SUPFs) == 0 {
-		return result, fmt.Errorf("canonical input has no valid SUPF")
+		return result, fmt.Errorf("canonical input has no valid SUPF or SUPP key file")
 	}
 	if len(result.SIDBs) == 0 {
 		return result, fmt.Errorf("canonical input has no SIDB state")

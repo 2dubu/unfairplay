@@ -48,7 +48,6 @@ func TestClassWorkspaceSchedulerNativeCellOracle(t *testing.T) {
 		for i := range 9 {
 			s.Product[i] = binary.LittleEndian.Uint16(data[2+2*i:]) - classWorkspaceSampleCutoff
 			s.Current[i] = binary.LittleEndian.Uint16(data[20+2*i:]) - classWorkspacePeerBias
-			s.Forward[i] = binary.LittleEndian.Uint16(data[38+2*i:]) ^ classWorkspaceOutputEncoding
 		}
 		return s
 	}

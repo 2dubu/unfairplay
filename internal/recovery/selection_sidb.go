@@ -10,6 +10,7 @@ const (
 	selectionSIDBExtendedTrailerBytes = 16
 	selectionSIDBLargerSourceBytes    = 256
 	maximumSelectionSIDBPayloadBytes  = 1 << 20
+	maximumMappedSelectionModulus     = 18
 )
 
 type currentSIDBLayout struct {
@@ -17,6 +18,9 @@ type currentSIDBLayout struct {
 	PayloadOffset   int
 	PayloadBytes    int
 	SourceBytes     int
+	SelectorModulus int
+	SelectedSlot    int
+	RootCursor      int
 	OuterIterations int
 }
 

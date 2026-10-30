@@ -151,3 +151,106 @@ func TestParseCurrentSUPFEnvelopeRejectsGeometry(t *testing.T) {
 		}
 	}
 }
+
+func syntheticSignedSUPP(t *testing.T, variant byte) ([]byte, *rsa.PublicKey) {
+	t.Helper()
+	ca, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	leaf, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Apple FairPlay Certification Authority", Organization: []string{"Apple Inc."}, OrganizationalUnit: []string{"Apple Certification Authority"}}, NotBefore: time.Unix(1, 0), NotAfter: time.Unix(4, 0), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	subject := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "AP.synthetic", Organization: []string{"Apple Inc."}, OrganizationalUnit: []string{"Apple FairPlay"}}, NotBefore: time.Unix(1, 0), NotAfter: time.Unix(3, 0), SignatureAlgorithm: x509.SHA1WithRSA}
+	cert, err := x509.CreateCertificate(rand.Reader, subject, issuer, &leaf.PublicKey, ca)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := make([]byte, 4)
+	prefix[0] = variant
+	if variant == 1 {
+		prefix = append(prefix, make([]byte, 20)...)
+	}
+	var word [4]byte
+	binary.BigEndian.PutUint32(word[:], 2)
+	prefix = append(prefix, word[:]...)
+	prefix = append(prefix, make([]byte, 64)...)
+	var h crypto.Hash
+	var digest []byte
+	if variant == 1 {
+		v := sha1.Sum(prefix)
+		h, digest = crypto.SHA1, v[:]
+	} else {
+		v := sha256.Sum256(prefix)
+		h, digest = crypto.SHA256, v[:]
+	}
+	signature, err := rsa.SignPKCS1v15(rand.Reader, leaf, h, digest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := append([]byte(nil), prefix...)
+	binary.BigEndian.PutUint32(word[:], uint32(len(cert)))
+	result = append(result, word[:]...)
+	result = append(result, cert...)
+	result = append(result, signature...)
+	return result, &ca.PublicKey
+}
+
+func TestCurrentRecoverySUPPEnvelope(t *testing.T) {
+	for _, variant := range []byte{1, 4} {
+		t.Run(string(rune('0'+variant)), func(t *testing.T) {
+			data, authority := syntheticSignedSUPP(t, variant)
+			envelope, err := parseCurrentSUPFEnvelope(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if envelope.Variant != variant || len(envelope.Signature) != 128 {
+				t.Fatal("invalid envelope")
+			}
+			if err := verifyCurrentSUPFEnvelopeWithCA(envelope, authority); err != nil {
+				t.Fatal(err)
+			}
+			if count, err := validateCurrentSUPFFilesWithCA(map[string][]byte{"App.supp": data}, authority); err != nil || count != 1 {
+				t.Fatalf("SUPP-only validation failed: %d, %v", count, err)
+			}
+			if _, err := validateCurrentSUPFFilesWithCA(map[string][]byte{"App.supf": data}, authority); err == nil {
+				t.Fatal("accepted p-class envelope as an f-class file")
+			}
+			changed := append([]byte(nil), data...)
+			changed[len(envelope.SignedPrefix)-1] ^= 1
+			env, err := parseCurrentSUPFEnvelope(changed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if verifyCurrentSUPFEnvelopeWithCA(env, authority) == nil {
+				t.Fatal("accepted changed signed payload")
+			}
+			for _, bad := range [][]byte{data[:len(data)-1], append(append([]byte(nil), data...), 0), data[:12]} {
+				if _, err := parseCurrentSUPFEnvelope(bad); err == nil {
+					t.Fatal("accepted malformed SUPP")
+				}
+			}
+			malformed := append([]byte(nil), data...)
+			pos := 4
+			if variant == 1 {
+				pos += 20
+			}
+			binary.BigEndian.PutUint32(malformed[pos:], ^uint32(0))
+			if _, err := parseCurrentSUPFEnvelope(malformed); err == nil {
+				t.Fatal("accepted invalid page count")
+			}
+		})
+	}
+	if !isCurrentRecoveryFile("App.supp") || !isCurrentRecoveryFile("App.v4.supp") {
+		t.Fatal("SUPP omitted from recovery inputs")
+	}
+}
+
+func TestCurrentRecoveryRejectsFClassInSUPP(t *testing.T) {
+	data, authority := syntheticSignedSUPF(t, 3)
+	if _, err := validateCurrentSUPFFilesWithCA(map[string][]byte{"App.supp": data}, authority); err == nil {
+		t.Fatal("accepted f-class envelope as p-class file")
+	}
+}

@@ -167,3 +167,12 @@ func TestWritePrivateFileFailsIfDestinationExists(t *testing.T) {
 		t.Fatalf("private file changed to %q", data)
 	}
 }
+
+func TestVerificationSummaryReportsPlaintextCoverage(t *testing.T) {
+	for _, verified := range []bool{false, true} {
+		got := verificationSummary(fairplay.DecryptResult{PlaintextVerified: verified})
+		if got["plaintext_verified"] != verified {
+			t.Fatalf("plaintext verification status lost: %v", got)
+		}
+	}
+}

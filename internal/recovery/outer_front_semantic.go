@@ -60,19 +60,24 @@ var outerFrontWord1Terms = [...]outerFrontTerm{
 	{0xffffffff, 0x080000000}, {0xbfffffff, 0x100000000}, {0xffff3f7f, 0x200000000},
 }
 
-var outerFrontWord2Terms = [...]outerFrontTerm{
-	{0x1a83c5e4, 0x0000}, {0xffffffff, 0x0001}, {0x05401555, 0x0002},
-	{0xffffffff, 0x0004}, {0x218a3101, 0x0008}, {0x10c80002, 0x0010},
-	{0x00400000, 0x0012}, {0x8014c800, 0x0020}, {0x05000004, 0x0022},
-	{0x10000000, 0x0030}, {0x40006008, 0x0040}, {0x04002000, 0x0042},
-	{0x10000008, 0x0050}, {0x00024200, 0x0060}, {0x04000200, 0x0062},
-	{0x10020000, 0x0070}, {0x00008894, 0x0080}, {0x20002004, 0x0088},
+// The core is shared with the tail hook seed. The remaining terms depend
+// only on four additional table taps.
+var outerFrontWord2CoreTerms = [...]outerFrontTerm{
+	{0x1a83c5e4, 0x0000}, {0xffffffff, 0x0001}, {0xffffffff, 0x0004},
+	{0x218a3101, 0x0008}, {0x00008894, 0x0080}, {0x20002004, 0x0088},
 	{0xffffffff, 0x0100}, {0xc2304000, 0x0200}, {0x001a0000, 0x0208},
 	{0x14000000, 0x0280}, {0x224ea33b, 0x0400}, {0x158d2c0f, 0x0800},
 	{0xffffffff, 0x0c00}, {0xddb15cc4, 0x1000}, {0xffffffff, 0x1800},
 	{0x09441402, 0x2000}, {0x01001220, 0x2008}, {0x00000020, 0x2088},
 	{0x00200000, 0x2200}, {0x00000020, 0x2208}, {0x00000020, 0x2288},
 	{0xffffffff, 0x4000},
+}
+
+var outerFrontWord2ExtraTerms = [...]outerFrontTerm{
+	{0x05401555, 0x0002}, {0x10c80002, 0x0010}, {0x00400000, 0x0012},
+	{0x8014c800, 0x0020}, {0x05000004, 0x0022}, {0x10000000, 0x0030},
+	{0x40006008, 0x0040}, {0x04002000, 0x0042}, {0x10000008, 0x0050},
+	{0x00024200, 0x0060}, {0x04000200, 0x0062}, {0x10020000, 0x0070},
 }
 
 var outerFrontWord3Terms = [...]outerFrontTerm{
@@ -102,73 +107,15 @@ var outerFrontWord4Terms = [...]outerFrontTerm{
 	{0x08800000, 0x340}, {0xffffffff, 0x400},
 }
 
-var outerFrontSourceTerms = [...]outerFrontTerm{
-	{0x000000f3, 0x000000000000}, {0x000000c4, 0x000000000001},
-	{0x000000d4, 0x000000000002}, {0x0000003b, 0x000000000004},
-	{0x000000ff, 0x000000000008}, {0x000000ff, 0x000000000010},
-	{0x00000001, 0x000000000020}, {0x0000003b, 0x000000000040},
-	{0x0000007d, 0x000000000080}, {0x000000d9, 0x000000000100},
-	{0x000000ff, 0x000000000200}, {0x00000002, 0x000000000400},
-	{0x00000020, 0x000000000420}, {0x000000ff, 0x000000000800},
-	{0x0000006b, 0x000000001000}, {0x000000ff, 0x000000001001},
-	{0x000000ff, 0x000000001040}, {0x0000002b, 0x000000002000},
-	{0x000000ff, 0x000000002002}, {0x00000014, 0x000000004000},
-	{0x00000004, 0x000000004020}, {0x00000020, 0x000000004420},
-	{0x000000c4, 0x000000008000}, {0x000000ff, 0x000000008004},
-	{0x000000ff, 0x000000010000}, {0x000000ff, 0x000000020000},
-	{0x00000020, 0x000000040420}, {0x00000020, 0x000000044420},
-	{0x00000090, 0x000000080000}, {0x000000ad, 0x000000100000},
-	{0x000000ff, 0x000000200000}, {0x00000008, 0x000000400000},
-	{0x00000001, 0x000000800000}, {0x00000002, 0x000001000000},
-	{0x000000ff, 0x000002000000}, {0x0000003b, 0x000004000000},
-	{0x0000007f, 0x000008000000}, {0x00000040, 0x000010000000},
-	{0x00000040, 0x000010400000}, {0x00000010, 0x000020000000},
-	{0x00000010, 0x000020080000}, {0x00000040, 0x000040000000},
-	{0x00000009, 0x000040100000}, {0x00000002, 0x000041000000},
-	{0x000000ff, 0x000080000000}, {0x0000000f, 0x000100000000},
-	{0x0000007f, 0x000104000000}, {0x0000007f, 0x000200000000},
-	{0x00000025, 0x000400000000}, {0x00000020, 0x000410000000},
-	{0x00000008, 0x000800400000}, {0x00000020, 0x000c00000000},
-	{0x00000020, 0x000c10000000}, {0x00000014, 0x001000000000},
-	{0x00000012, 0x001000080000}, {0x00000010, 0x001020000000},
-	{0x00000010, 0x001020080000}, {0x00000044, 0x002000000000},
-	{0x0000007f, 0x002100000000}, {0x0000007f, 0x004000000000},
-	{0x0000007f, 0x008000000000}, {0x000000ff, 0x010000000000},
-	{0x0000007f, 0x020000000000}, {0x000000ff, 0x040000000000},
-	{0x000000ff, 0x080000000000}, {0x000000ff, 0x100000000000},
-	{0x000000ff, 0x200000000000}, {0x000000ff, 0x400000000000},
-}
-
-type outerFrontTableRoute struct {
-	multiplier uint32
-	offset     uint32
-}
-
-var outerFrontSourceCoreRoutes = [...]outerFrontTableRoute{
-	{1, 104}, {1, 109}, {1, 125}, {1, 130}, {1, 131}, {1, 132},
-	{1, 20}, {1, 25}, {1, 41}, {1, 46}, {1, 49}, {1, 6}, {1, 62},
-	{1, 67}, {1, 7}, {1, 83}, {1, 88}, {1, 89}, {1, 90},
-	{14, 10}, {14, 12}, {14, 13}, {14, 134}, {14, 136}, {14, 137},
-	{14, 138}, {14, 14}, {14, 141}, {14, 51}, {14, 52}, {14, 53},
-	{14, 55}, {14, 56}, {14, 57}, {14, 9}, {14, 93}, {14, 94},
-	{14, 98}, {14, 99},
-}
-
-var outerFrontSourceCoreShifts = [...]int{
-	0, 21, 0, 21, 0, 0, 0, 21, 0, 21, 0, 0, 0, 21, 0, 0,
-	21, 0, 0, 0, 21, 0, 0, 0, 21, 0, 0, 0, 0, 0, 21, 0,
-	0, 0, 0, 0, 0, 0, 0,
-}
-
 var outerFrontSourceExtras = [12][3]uint32{
 	{103, 60, 143}, {58, 15, 98}, {13, 137, 53}, {135, 92, 8},
 	{90, 47, 130}, {45, 2, 85}, {0, 124, 40}, {122, 79, 162},
 	{77, 34, 117}, {32, 156, 72}, {154, 111, 27}, {109, 66, 149},
 }
 
-func outerFrontWords(table *[outerTableWords]uint32, base uint32, digest *outerDigestState) ([5]uint32, bool) {
+func outerFrontWords(table *[outerTableWords]uint32, base uint32, digest *outerDigestState) ([5]uint32, uint32, bool) {
 	if table == nil || digest == nil || base >= outerTableWords {
-		return [5]uint32{}, false
+		return [5]uint32{}, 0, false
 	}
 	word0Inputs := [15]uint32{
 		table[(base+106)%outerTableWords], table[(base+127)%outerTableWords],
@@ -221,37 +168,29 @@ func outerFrontWords(table *[outerTableWords]uint32, base uint32, digest *outerD
 		table[(14*base+12)%outerTableWords], table[(14*base+137)%outerTableWords],
 		table[(14*base+53)%outerTableWords], table[(14*base+95)%outerTableWords], digest.X28,
 	}
+	word2Core := outerFrontPolynomial(word2Inputs[:], outerFrontWord2CoreTerms[:])
 	return [5]uint32{
 		outerFrontPolynomial(word0Inputs[:], outerFrontWord0Terms[:]),
 		outerFrontPolynomial(word1Inputs[:], outerFrontWord1Terms[:]),
-		outerFrontPolynomial(word2Inputs[:], outerFrontWord2Terms[:]),
+		word2Core ^ outerFrontPolynomial(word2Inputs[:], outerFrontWord2ExtraTerms[:]),
 		outerFrontPolynomial(word3Inputs[:], outerFrontWord3Terms[:]),
 		outerFrontPolynomial(word4Inputs[:], outerFrontWord4Terms[:]),
-	}, true
+	}, word2Core, true
 }
 
-func outerFrontSourcePrefix(table *[outerTableWords]uint32, base uint32, digest *outerDigestState) ([12]byte, bool) {
+// outerFrontSourcePrefix shares the front words already computed from the
+// digest. The common source circuit cancels to word 1 XOR word 4 shifted by
+// eleven; only three table taps vary between output bytes.
+func outerFrontSourcePrefix(table *[outerTableWords]uint32, base uint32, words [5]uint32) ([12]byte, bool) {
 	var output [12]byte
-	if table == nil || digest == nil || base >= outerTableWords {
+	if table == nil || base >= outerTableWords {
 		return output, false
 	}
-	var common [44]uint32
-	for index, route := range outerFrontSourceCoreRoutes {
-		word := table[(route.multiplier*base+route.offset)%outerTableWords]
-		common[index] = bits.RotateLeft32(word, outerFrontSourceCoreShifts[index])
-	}
-	digestWords := [...]uint32{digest.X0, digest.X4, digest.X10, digest.X27, digest.X28}
-	digestShifts := [...]int{0, 0, 0, 0, 21}
-	for index, word := range digestWords {
-		common[len(outerFrontSourceCoreRoutes)+index] = bits.RotateLeft32(word, digestShifts[index])
-	}
-	for outputIndex, offsets := range outerFrontSourceExtras {
-		var inputs [47]uint32
-		copy(inputs[:], common[:])
-		inputs[44] = table[(base+offsets[0])%outerTableWords]
-		inputs[45] = bits.RotateLeft32(table[(base+offsets[1])%outerTableWords], 23)
-		inputs[46] = bits.RotateLeft32(table[(base+offsets[2])%outerTableWords], 10)
-		output[outputIndex] = byte(outerFrontPolynomial(inputs[:], outerFrontSourceTerms[:]))
+	common := words[1] ^ words[4]>>11 ^ 0x3b
+	for index, offsets := range outerFrontSourceExtras {
+		output[index] = byte(common ^ table[(base+offsets[0])%outerTableWords] ^
+			table[(base+offsets[1])%outerTableWords]>>9 ^
+			table[(base+offsets[2])%outerTableWords]>>22)
 	}
 	return output, true
 }

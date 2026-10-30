@@ -1,7 +1,5 @@
 package recovery
 
-import "fmt"
-
 const (
 	decodedSIDBRecordBytes           = 40
 	decodedSIDBMetadataBytes         = 20
@@ -32,19 +30,14 @@ type decodedSIDBRegistry struct {
 	Tree        bool
 }
 
-// parseDecodedSIDBRegistry prefers the tree interpretation and otherwise
-// returns a flat compatibility interpretation. Neither is authenticated.
-func parseDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
-	nodes, err := parseDecodedSIDBTree(data)
+// parseDecodedSIDBRegistry exposes candidate payloads only from validated tree
+// geometry. Structural validity does not authenticate a selected record.
+func parseDecodedSIDBRegistry(data []byte, rootCursor int) (decodedSIDBRegistry, error) {
+	nodes, err := parseDecodedSIDBTree(data, rootCursor)
 	if err != nil {
-		return parseLegacyDecodedSIDBRegistry(data)
+		return decodedSIDBRegistry{}, err
 	}
-	return decodedSIDBRegistryFromTree(data, nodes), nil
-}
-
-func decodedSIDBRegistryFromTree(data []byte, nodes []decodedSIDBTreeNode) decodedSIDBRegistry {
 	result := decodedSIDBRegistry{Tree: true}
-	rootEnd := nodes[0].Offset + nodes[0].Length
 	for _, node := range nodes {
 		if node.ChildCount != 0 || node.Length != decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes {
 			continue
@@ -54,61 +47,8 @@ func decodedSIDBRegistryFromTree(data []byte, nodes []decodedSIDBTreeNode) decod
 		record.MaskOffset = (record.SourceOffset + 12) % len(currentClassRecordMask)
 		copy(record.Metadata[:], data[node.Offset:record.SourceOffset])
 		copy(record.Payload[:], data[record.SourceOffset:record.SourceOffset+decodedSIDBPayloadBytes])
-		tailStart := record.SourceOffset + decodedSIDBPayloadBytes
-		tailEnd := min(tailStart+decodedSIDBTailBytes, rootEnd)
-		record.TailAvailable = copy(record.Tail[:], data[tailStart:tailEnd])
+
 		result.Records = append(result.Records, record)
 	}
-	return result
-}
-
-// decodedSIDBRegistryInterpretations exposes only the native tree. The former
-// length-only flat fallback accepted random decryptions as hundreds of records
-// and is not a proved FairPlay format.
-func decodedSIDBRegistryInterpretations(data []byte) []decodedSIDBRegistry {
-	trees, err := parseDecodedSIDBTrees(data)
-	if err != nil {
-		return nil
-	}
-	registries := make([]decodedSIDBRegistry, 0, len(trees))
-	for _, tree := range trees {
-		registry := decodedSIDBRegistryFromTree(data, tree)
-		if tree[0].ChildCount != 0 && len(registry.Records) != 0 {
-			registries = append(registries, registry)
-		}
-	}
-	return registries
-}
-
-// The upstream flat interpretation is a compatibility candidate. Its
-// geometry alone does not authenticate a record or identify a native branch.
-func parseLegacyDecodedSIDBRegistry(data []byte) (decodedSIDBRegistry, error) {
-	footerBytes := -1
-	for _, candidate := range [...]int{decodedSIDBNoSeparateFooterBytes, decodedSIDBOlderFooterBytes, decodedSIDBFooterBytes} {
-		if len(data) > candidate && (len(data)-candidate)%decodedSIDBRecordBytes == 0 {
-			if footerBytes != -1 {
-				return decodedSIDBRegistry{}, fmt.Errorf("ambiguous SIDB registry geometry")
-			}
-			footerBytes = candidate
-		}
-	}
-	if footerBytes < 0 {
-		return decodedSIDBRegistry{}, fmt.Errorf("invalid SIDB registry geometry")
-	}
-	count := (len(data) - footerBytes) / decodedSIDBRecordBytes
-	if count == 0 || count > maximumDecodedSIDBRecords {
-		return decodedSIDBRegistry{}, fmt.Errorf("invalid SIDB registry count")
-	}
-	result := decodedSIDBRegistry{Records: make([]decodedSIDBRecord, count), FooterBytes: footerBytes}
-	for i := range result.Records {
-		offset := i * decodedSIDBRecordBytes
-		r := &result.Records[i]
-		r.SourceOffset = offset + decodedSIDBMetadataBytes
-		r.TailAvailable = decodedSIDBTailBytes
-		copy(r.Metadata[:], data[offset:r.SourceOffset])
-		copy(r.Payload[:], data[r.SourceOffset:r.SourceOffset+decodedSIDBPayloadBytes])
-		copy(r.Tail[:], data[r.SourceOffset+decodedSIDBPayloadBytes:offset+decodedSIDBRecordBytes])
-	}
-	copy(result.Footer[:], data[len(data)-footerBytes:])
 	return result, nil
 }

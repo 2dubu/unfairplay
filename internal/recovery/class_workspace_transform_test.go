@@ -334,3 +334,54 @@ func TestLegacyClassWorkspaceValueSyntheticControl(t *testing.T) {
 		t.Fatalf("legacy class value = %x, want %x", got, want)
 	}
 }
+
+// Encoded native boundaries used by the upstream research controls.
+const (
+	classWorkspaceSampleCutoff   = uint16(0x7b0f)
+	classWorkspacePeerBias       = uint16(0x54ce)
+	classWorkspaceOutputEncoding = uint16(0xe748)
+	classWorkspaceProductBias    = uint32(0x5a39f893)
+)
+
+type classWorkspaceLimbOutputs struct {
+	Forward  uint16
+	Current  uint16
+	Previous uint16
+}
+
+func classWorkspaceProductWord(limbs [9]uint16) uint32 {
+	return classWorkspacePolynomialWord(limbs) + classWorkspaceProductBias
+}
+
+func classWorkspaceResidue(sample, peer uint16, left, right uint32) uint16 {
+	sampleWord := uint32(sample)
+	if sample < classWorkspaceSampleCutoff {
+		sampleWord += 1 << 16
+	}
+	peerWord := uint32(uint16(peer - classWorkspacePeerBias))
+	sum := left + sampleWord + peerWord + right
+	return uint16(sum % classWorkspaceModulus)
+}
+
+func classWorkspaceResidueStep(sample, peer uint16, left, right uint32) uint16 {
+	return classWorkspaceResidue(sample, peer, left, right) ^ classWorkspaceOutputEncoding
+}
+
+func classWorkspaceLimbStep(sample, peer, current, previous uint16, left, right uint32) classWorkspaceLimbOutputs {
+	forwardResidue := classWorkspaceResidue(sample, peer, left, right)
+
+	currentWord := uint32(uint16(current - classWorkspacePeerBias))
+	currentResidue := uint16((uint32(forwardResidue) + currentWord) % classWorkspaceModulus)
+
+	previousWord := uint32(previous)
+	if previous < classWorkspaceSampleCutoff {
+		previousWord += 1 << 16
+	}
+	previousResidue := uint16((previousWord + uint32(currentResidue) + right) % classWorkspaceModulus)
+
+	return classWorkspaceLimbOutputs{
+		Forward:  forwardResidue ^ classWorkspaceOutputEncoding,
+		Current:  uint16(uint32(currentResidue) + uint32(classWorkspacePeerBias)),
+		Previous: uint16(uint32(previousResidue) + uint32(classWorkspaceSampleCutoff)),
+	}
+}

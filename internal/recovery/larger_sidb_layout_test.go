@@ -97,23 +97,23 @@ func TestLargerSIDBSourceContinuation(t *testing.T) {
 	if !bytes.Equal(source[:224], state.Source[:]) || !bytes.Equal(source[224:232], state.Writer[132:140]) || !bytes.Equal(source[232:256], state.Tail[40:64]) {
 		t.Fatal("incorrect source continuation")
 	}
+	full, err := selectionSourceFromOuterState(&state, 320)
+	if err != nil || !bytes.Equal(full[:256], source) || !bytes.Equal(full[256:], state.Tail[64:128]) {
+		t.Fatal("incorrect eighteen-slot source continuation")
+	}
 	layouts, err := selectionSourceLayouts(source)
-	if err != nil || len(layouts) != 2 || !bytes.Equal(layouts[0], source[32:]) || !bytes.Equal(layouts[1], source[32:224]) {
+	if err != nil || len(layouts) != 1 || !bytes.Equal(layouts[0], source[32:]) {
 		t.Fatal("incorrect larger source layout")
 	}
-	states, count, err := transformSelectionStateSlots(layouts[0])
-	if err != nil || count != 14 {
-		t.Fatal("incorrect state count")
+	key, err := deriveSelectedEnrollmentKey(layouts[0], 12)
+	if err != nil {
+		t.Fatal(err)
 	}
 	altered := append([]byte(nil), source...)
 	altered[224] ^= 1
-	changed, _, err := transformSelectionStateSlots(altered[32:])
-	if err != nil || changed[12] == states[12] {
-		t.Fatal("slot 12 did not use continuation")
-	}
-	candidates, err := enrollmentKeyCandidates(layouts[0])
-	if err != nil || len(candidates) != 14 || candidates[12].State != states[12] {
-		t.Fatal("missing slot 12 candidate")
+	changed, err := deriveSelectedEnrollmentKey(altered[32:], 12)
+	if err != nil || changed == key {
+		t.Fatal("selected slot did not use source continuation")
 	}
 	if _, err := selectionSourceFromOuterState(&state, 255); err == nil {
 		t.Fatal("accepted unsupported source length")
@@ -138,7 +138,7 @@ func syntheticNativeSIDB(t *testing.T, bodyBytes int) ([]byte, []byte, currentSI
 		}
 		data = data[:4+layout.CodecBytes+bodyBytes+selectionSIDBExtendedTrailerBytes]
 		_, checked, _, err := deriveNativeSelectionSource(data, hardware)
-		if err == nil && checked.CodecBytes == layout.CodecBytes {
+		if err == nil && checked.CodecBytes == layout.CodecBytes && checked.SelectedSlot < 14 {
 			return data, hardware, checked
 		}
 	}
@@ -153,8 +153,11 @@ func TestNativeSIDBContentDependentBoundary(t *testing.T) {
 		t.Fatalf("synthetic native codec boundary changed: %d/%d", base.CodecBytes, base.OuterIterations)
 	}
 	source, layout, iterations, err := deriveNativeSelectionSource(data, hardware)
-	if err != nil || layout != base || iterations != 11*layout.CodecBytes-2 || len(source) != 256 {
+	if err != nil || layout != base || iterations != 11*layout.CodecBytes-2 || len(source) != layout.SourceBytes || len(source) != 32+16*layout.SelectorModulus {
 		t.Fatalf("native source geometry: %+v %d %v", layout, iterations, err)
+	}
+	if layout.SelectorModulus < 1 || layout.SelectorModulus > maximumMappedSelectionModulus || layout.SelectedSlot != int(data[layout.PayloadOffset-1])%layout.SelectorModulus {
+		t.Fatal("invalid native selected slot")
 	}
 	changed := false
 	for offset := 4; offset < 17; offset++ {

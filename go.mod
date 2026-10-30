@@ -4,7 +4,6 @@ go 1.26.0
 
 require (
 	github.com/spf13/cobra v1.10.2
-	golang.org/x/arch v0.32.0
 	howett.net/plist v1.0.1
 )
 

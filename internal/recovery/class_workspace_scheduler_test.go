@@ -7,11 +7,11 @@ func TestClassWorkspaceScheduleCellZeroControl(t *testing.T) {
 	if err := classWorkspaceScheduleCell(&state, 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	if state.Product[0] != 1 || state.Current[0] != 1 || state.Forward[0] != 1 {
+	if state.Product[0] != 1 || state.Current[0] != 1 {
 		t.Fatal("zero control did not produce expected unit residues")
 	}
 	for i := 1; i < 9; i++ {
-		if state.Product[i] != 0 || state.Current[i] != 0 || state.Forward[i] != 0 {
+		if state.Product[i] != 0 || state.Current[i] != 0 {
 			t.Fatal("cell updated a neighboring position")
 		}
 	}

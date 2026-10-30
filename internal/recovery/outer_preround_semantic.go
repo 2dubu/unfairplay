@@ -37,12 +37,6 @@ var outerPreRoundStep5Terms = [...]outerFrontTerm{
 	{0x00000002, 0xb4},
 }
 
-var outerPreRoundStep7Terms = [...]outerFrontTerm{
-	{0x525c4637, 0x0}, {0xffffffff, 0x1}, {0x224ea33b, 0x2},
-	{0x28001aef, 0x4}, {0xddb15cc4, 0x8}, {0xffffffff, 0x6},
-	{0xffffffff, 0xc},
-}
-
 var outerPreRoundStep13Terms = [...]outerFrontTerm{
 	{0x1fcfff3f, 0x0}, {0x88600008, 0x1}, {0xffffffff, 0x2},
 	{0x00300080, 0x4}, {0x28500048, 0x8}, {0xa0000000, 0x10},
@@ -66,11 +60,6 @@ var outerPreRoundStep16Terms = [...]outerFrontTerm{
 	{0x224a0321, 0x85}, {0x236907a1, 0xa1}, {0x4517ecd6, 0xa4},
 	{0x00000110, 0x150}, {0x00000010, 0x310}, {0x00800000, 0x340},
 	{0xad6b07c1, 0x405}, {0xaf6b07e1, 0xa5}, {0x00000010, 0x350},
-}
-
-var outerPreRoundStep17Terms = [...]outerFrontTerm{
-	{0xdd3114c4, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
-	{0x224ea33b, 0x4}, {0xfd7fb7cf, 0x8}, {0xffffffff, 0x6},
 }
 
 var outerPreRoundStep18Terms = [...]outerFrontTerm{
@@ -138,23 +127,6 @@ var outerPreRoundStep22Terms = [...]outerFrontTerm{
 	{0x00008000, 0x1e},
 }
 
-var outerPreRoundStep23Terms = [...]outerFrontTerm{
-	{0xa49bf5a3, 0x0}, {0xffffffff, 0x1}, {0x224ea33b, 0x2},
-	{0x20741d9d, 0x4}, {0xddb15cc4, 0x8}, {0xffffffff, 0x6},
-	{0xffffffff, 0xc},
-}
-
-var outerPreRoundStep24Terms = [...]outerFrontTerm{
-	{0x0db05cc0, 0x0}, {0xffffffff, 0x1}, {0x2ff6ffcb, 0x2},
-	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0xc},
-}
-
-var outerPreRoundStep25Terms = [...]outerFrontTerm{
-	{0xc90242b0, 0x0}, {0xffffffff, 0x1}, {0xb4757417, 0x2},
-	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0x6},
-	{0xffffffff, 0xa},
-}
-
 var outerPreRoundStep28Terms = [...]outerFrontTerm{
 	{0xcd579428, 0x0}, {0xbffdfffe, 0x1}, {0xfffffffd, 0x2},
 	{0xf3ffffff, 0x4}, {0xffffffff, 0x8}, {0xb4757415, 0x10},
@@ -164,33 +136,12 @@ var outerPreRoundStep28Terms = [...]outerFrontTerm{
 	{0xbffdfffe, 0x500}, {0xfffffffd, 0x1010},
 }
 
-var outerPreRoundStep29Terms = [...]outerFrontTerm{
-	{0xcd0054c0, 0x0}, {0xffffffff, 0x1}, {0xed4af7e9, 0x2},
-	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0xc},
-}
-
-var outerPreRoundStep30Terms = [...]outerFrontTerm{
-	{0xd5b15884, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
-	{0x224ea33b, 0x4}, {0xf7fffb9f, 0x8}, {0xffffffff, 0x6},
-}
-
 var outerPreRoundStep32Terms = [...]outerFrontTerm{
 	{0xbca990cb, 0x0}, {0xffffffff, 0x1}, {0x862021e0, 0x2},
 	{0x10460240, 0x4}, {0x60000c0a, 0x8}, {0x20184004, 0x10},
 	{0x00000050, 0x6}, {0x40002400, 0xa}, {0x00040000, 0xc},
 	{0x00006000, 0x12}, {0x00500004, 0x14}, {0x21000000, 0x18},
 	{0x00002000, 0x1a},
-}
-
-var outerPreRoundStep33Terms = [...]outerFrontTerm{
-	{0x51b15c84, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
-	{0x224ea33b, 0x4}, {0x73b9dfae, 0x8}, {0xffffffff, 0x6},
-}
-
-var outerPreRoundStep34Terms = [...]outerFrontTerm{
-	{0x48dfad7f, 0x0}, {0xffffffff, 0x1}, {0xddb15cc4, 0x2},
-	{0x224ea33b, 0x4}, {0x6c24fc61, 0x8}, {0xffffffff, 0xa},
-	{0xffffffff, 0xc},
 }
 
 var outerPreRoundStep35Terms = [...]outerFrontTerm{
@@ -209,12 +160,6 @@ var outerPreRoundStep36Terms = [...]outerFrontTerm{
 	{0x00040000, 0x1a}, {0x40000000, 0x1c}, {0x40000000, 0x1e},
 }
 
-var outerPreRoundStep37Terms = [...]outerFrontTerm{
-	{0x7ae11e0b, 0x0}, {0xffffffff, 0x1}, {0x45ce9fb5, 0x2},
-	{0xddb15cc4, 0x4}, {0x224ea33b, 0x8}, {0xffffffff, 0x6},
-	{0xffffffff, 0xa},
-}
-
 var outerPreRoundStep38Terms = [...]outerFrontTerm{
 	{0x5fe0076e, 0x0}, {0xffffffff, 0x1}, {0x80110288, 0x2},
 	{0x2906a041, 0x4}, {0x10200010, 0x8}, {0x00400300, 0x10},
@@ -223,11 +168,15 @@ var outerPreRoundStep38Terms = [...]outerFrontTerm{
 	{0x00049800, 0x16}, {0x00001000, 0x1a}, {0x00001000, 0x1e},
 }
 
-// outerPreRoundSignedByte maps one byte to the signed bit contribution
-// used by the four byte-heavy state updates.
-func outerPreRoundSignedByte(value byte, signMask byte, shift uint, constant uint32) uint32 {
-	signed := uint32(value) - (uint32(value&signMask) << 1)
-	return constant + signed<<shift
+// The tap mixes use the same complementary masks across successive updates.
+const outerPreRoundTapMask = uint32(0x224ea33b)
+
+func outerPreRoundPivotMix(a, b, pivot, mask uint32) uint32 {
+	return (a &^ outerPreRoundTapMask) ^ (b & outerPreRoundTapMask) ^ (pivot & (a ^ b ^ mask))
+}
+
+func outerPreRoundPairMix(a, b, third, mask uint32) uint32 {
+	return ((a ^ outerPreRoundTapMask) &^ (b ^ outerPreRoundTapMask)) ^ (third & mask)
 }
 
 // applyOuterPreRound performs the live state writes in program order.
@@ -257,45 +206,20 @@ func applyOuterPreRound(table *[outerTableWords]uint32, base uint32, state *oute
 	}
 	c5 := outerFrontPolynomial(inputs5[:], outerPreRoundStep5Terms[:])
 	c6 := 0x80f13aff ^ w1 ^ tap(17) ^ tap(100) ^ tap(142)
-	inputs7 := [...]uint32{
-		c2, tap(57), tap(99), tap(141),
-	}
-	c7 := outerFrontPolynomial(inputs7[:], outerPreRoundStep7Terms[:])
+	c7 := c2 ^ 0x525c4637 ^ outerPreRoundPivotMix(tap(141), tap(57), tap(99), 0x28001aef)
 	c8 := 0x7d32827c ^ c1 ^ tap(14) ^ tap(56) ^ tap(98)
-	h2a := outerPreRoundSignedByte(hardware(2), 0xca, 7, 0x28ebe500)
-	c14a := outerPreRoundSignedByte(state.Codec[14], 0x55, 8, 0xbe665500)
-	h3a := outerPreRoundSignedByte(hardware(3), 0xfc, 14, 0x923f0000)
-	c12a := outerPreRoundSignedByte(state.Codec[12], 0x64, 16, 0x7e640000)
-	h4a := outerPreRoundSignedByte(hardware(4), 0x42, 0, 0xc6d23a42)
-	c10a := outerPreRoundSignedByte(state.Codec[10], 0xca, 21, 0x79400000)
-	h4a = bits.RotateLeft32(h4a, -7)
-	gate9 := h2a ^ c14a ^ h3a ^ c12a ^ 0x72df73f3
-	c9 := c3 ^ c10a ^ (h4a & 0xf6842404) ^ ((h4a ^ 0x7a725b8b) & gate9) ^ 0xf5cde7f7
-	h3b := outerPreRoundSignedByte(hardware(3), 0xe6, 6, 0x506af980)
-	c6b := outerPreRoundSignedByte(state.Codec[6], 0xe2, 3, 0x7b862710)
-	h4b := outerPreRoundSignedByte(hardware(4), 0x2f, 11, 0xea297800)
-	c4b := outerPreRoundSignedByte(state.Codec[4], 0x69, 17, 0x3ad20000)
-	h5b := outerPreRoundSignedByte(hardware(5), 0x55, 24, 0x55000000)
-	c15b := outerPreRoundSignedByte(state.Codec[15], 0xc0, 0, 0xe82ecdc0)
-	c10 := c5 ^ h3b ^ c6b ^ h4b ^ c4b ^ h5b ^ bits.RotateLeft32(c15b, -2) ^ 0x941c15e0
-	h4c := outerPreRoundSignedByte(hardware(4), 0xbd, 1, 0xfc91777a)
-	c11c := outerPreRoundSignedByte(state.Codec[11], 0xb3, 9, 0x02656600)
-	h5c := outerPreRoundSignedByte(hardware(5), 0xba, 9, 0xa72b7400)
-	c9c := outerPreRoundSignedByte(state.Codec[9], 0xfa, 19, 0xa7d00000)
-	h0c := outerPreRoundSignedByte(hardware(0), 0x8e, 0, 0x9344768e)
-	c7c := outerPreRoundSignedByte(state.Codec[7], 0xa4, 0, 0x502e68a4)
-	mix11 := (h4c ^ 0x4ae771ed) & (c11c ^ 0xbd9a99ff)
-	mix11 ^= (c11c & 0x0001f800) ^ h5c ^ 0xe4f4b084
-	mix11 &= c9c ^ 0x582fffff
-	c11 := mix11 ^ c6 ^ (c9c & 0x0a500000) ^ bits.RotateLeft32(h0c, -3) ^ bits.RotateLeft32(c7c, -1) ^ 0x0d871890
-	h5d := outerPreRoundSignedByte(hardware(5), 0x94, 4, 0xef483940)
-	c16d := outerPreRoundSignedByte(state.Codec[16], 0xac, 11, 0xecf56000)
-	h0d := outerPreRoundSignedByte(hardware(0), 0xcf, 12, 0x01fcf000)
-	c14d := outerPreRoundSignedByte(state.Codec[14], 0x25, 20, 0xf2500000)
-	h1d := outerPreRoundSignedByte(hardware(1), 0x49, 20, 0x44900000)
-	c12d := outerPreRoundSignedByte(state.Codec[12], 0x93, 0, 0x7f0b9493)
-	gate12 := h5d ^ h0d ^ 0x348f8e00 ^ c16d
-	c12 := c7 ^ (c14d & 0xc9300000) ^ ((c14d ^ 0x0daffff0) & gate12) ^ h1d ^ bits.RotateLeft32(c12d, -6) ^ 0xffb20912
+	// Hardware and codec bytes contribute through fixed XOR bit routes.
+	// Rotations preserve the wrapped byte bits.
+	h := func(offset int) uint32 { return uint32(hardware(offset)) }
+	c := func(offset int) uint32 { return uint32(state.Codec[offset]) }
+	c9 := c3 ^ h(2)<<7 ^ c(14)<<8 ^ h(3)<<14 ^ c(12)<<16 ^
+		bits.RotateLeft32(h(4), -7) ^ c(10)<<21
+	c10 := c5 ^ h(3)<<6 ^ c(6)<<3 ^ h(4)<<11 ^ c(4)<<17 ^ h(5)<<24 ^
+		bits.RotateLeft32(c(15), -2)
+	c11 := c6 ^ h(4)<<1 ^ c(11)<<9 ^ h(5)<<9 ^ c(9)<<19 ^
+		bits.RotateLeft32(h(0), -3) ^ bits.RotateLeft32(c(7), -1)
+	c12 := c7 ^ h(5)<<4 ^ c(16)<<11 ^ h(0)<<12 ^ c(14)<<20 ^ h(1)<<20 ^
+		bits.RotateLeft32(c(12), -6)
 	inputs13 := [...]uint32{
 		bits.RotateLeft32(c10, -2), c8, bits.RotateLeft32(c8, 2), bits.RotateLeft32(c9, 3),
 		bits.RotateLeft32(c9, -15),
@@ -308,10 +232,7 @@ func applyOuterPreRound(table *[outerTableWords]uint32, base uint32, state *oute
 		tap(95), tap(137), tap(138),
 	}
 	c16 := outerFrontPolynomial(inputs16[:], outerPreRoundStep16Terms[:])
-	inputs17 := [...]uint32{
-		c9, tap(13), tap(55), tap(138),
-	}
-	c17 := outerFrontPolynomial(inputs17[:], outerPreRoundStep17Terms[:])
+	c17 := c9 ^ 0xdd3114c4 ^ outerPreRoundPairMix(tap(13), tap(55), tap(138), 0xfd7fb7cf)
 	inputs18 := [...]uint32{
 		c14, tap(10), tap(52), tap(94),
 		tap(136),
@@ -334,18 +255,6 @@ func applyOuterPreRound(table *[outerTableWords]uint32, base uint32, state *oute
 		tap(132),
 	}
 	c22 := outerFrontPolynomial(inputs22[:], outerPreRoundStep22Terms[:])
-	inputs23 := [...]uint32{
-		c16, tap(47), tap(89), tap(131),
-	}
-	c23 := outerFrontPolynomial(inputs23[:], outerPreRoundStep23Terms[:])
-	inputs24 := [...]uint32{
-		c18, tap(4), tap(46), tap(88),
-	}
-	c24 := outerFrontPolynomial(inputs24[:], outerPreRoundStep24Terms[:])
-	inputs25 := [...]uint32{
-		c20, tap(3), tap(45), tap(128),
-	}
-	c25 := outerFrontPolynomial(inputs25[:], outerPreRoundStep25Terms[:])
 	c26 := 0xfbd326d7 ^ c21 ^ tap(2) ^ tap(85) ^ tap(127)
 	inputs28 := [...]uint32{
 		c18, c20, c21, c22,
@@ -354,28 +263,22 @@ func applyOuterPreRound(table *[outerTableWords]uint32, base uint32, state *oute
 		tap(128),
 	}
 	c28 := outerFrontPolynomial(inputs28[:], outerPreRoundStep28Terms[:])
-	inputs29 := [...]uint32{
-		c23, tap(166), tap(41), tap(83),
-	}
-	c29 := outerFrontPolynomial(inputs29[:], outerPreRoundStep29Terms[:])
-	inputs30 := [...]uint32{
-		c24, tap(165), tap(40), tap(123),
-	}
-	c30 := outerFrontPolynomial(inputs30[:], outerPreRoundStep30Terms[:])
-	c31 := 0x6f4bdc75 ^ c25 ^ tap(164) ^ tap(80) ^ tap(122)
+	// Fold the consecutive XOR updates into their downstream values.
+	c30 := c18 ^ 0xd8010444 ^
+		outerPreRoundPairMix(tap(46), tap(88), tap(4), 0x2ff6ffcb) ^
+		outerPreRoundPairMix(tap(165), tap(40), tap(123), 0xf7fffb9f)
+	c31 := c20 ^ 0xa6499ec5 ^ tap(164) ^ tap(80) ^ tap(122) ^
+		outerPreRoundPivotMix(tap(45), tap(128), tap(3), 0xb4757417)
 	inputs32 := [...]uint32{
 		c26, tap(162), tap(37), tap(79),
 		tap(121),
 	}
 	c32 := outerFrontPolynomial(inputs32[:], outerPreRoundStep32Terms[:])
-	inputs33 := [...]uint32{
-		c28, tap(36), tap(78), tap(161),
-	}
-	c33 := outerFrontPolynomial(inputs33[:], outerPreRoundStep33Terms[:])
-	inputs34 := [...]uint32{
-		c29, tap(35), tap(118), tap(160),
-	}
-	c34 := outerFrontPolynomial(inputs34[:], outerPreRoundStep34Terms[:])
+	c33 := c28 ^ 0x51b15c84 ^ outerPreRoundPairMix(tap(36), tap(78), tap(161), 0x73b9dfae)
+	c34 := c16 ^ 0x21440c1c ^
+		outerPreRoundPivotMix(tap(131), tap(47), tap(89), 0x20741d9d) ^
+		outerPreRoundPairMix(tap(41), tap(83), tap(166), 0xed4af7e9) ^
+		outerPreRoundPivotMix(tap(35), tap(118), tap(160), 0x6c24fc61)
 	inputs35 := [...]uint32{
 		c30, tap(33), tap(75), tap(117),
 		tap(159),
@@ -386,10 +289,7 @@ func applyOuterPreRound(table *[outerTableWords]uint32, base uint32, state *oute
 		tap(157),
 	}
 	c36 := outerFrontPolynomial(inputs36[:], outerPreRoundStep36Terms[:])
-	inputs37 := [...]uint32{
-		c32, tap(31), tap(73), tap(156),
-	}
-	c37 := outerFrontPolynomial(inputs37[:], outerPreRoundStep37Terms[:])
+	c37 := c32 ^ 0x7ae11e0b ^ outerPreRoundPivotMix(tap(73), tap(156), tap(31), 0x45ce9fb5)
 	inputs38 := [...]uint32{
 		c33, tap(30), tap(71), tap(113),
 		tap(155),

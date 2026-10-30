@@ -37,23 +37,11 @@ func enrollmentAtom(blob []byte, start, limit int, name string) (int, int, error
 }
 
 func enrollmentSINFSelector(blob []byte) (uint32, uint32, error) {
-	rootStart, rootEnd, err := enrollmentAtom(blob, 0, len(blob), "sinf")
-	if err != nil || rootStart != 8 || rootEnd != len(blob) {
-		return 0, 0, fmt.Errorf("SINF root is invalid")
-	}
-	schiStart, schiEnd, err := enrollmentAtom(blob, rootStart, rootEnd, "schi")
+	parsed, err := parseRecoverySINF(blob)
 	if err != nil {
 		return 0, 0, err
 	}
-	values := [2]uint32{}
-	for index, name := range []string{"user", "key "} {
-		start, end, atomErr := enrollmentAtom(blob, schiStart, schiEnd, name)
-		if atomErr != nil || end-start != 4 {
-			return 0, 0, fmt.Errorf("SINF selector atom %q is invalid", name)
-		}
-		values[index] = binary.BigEndian.Uint32(blob[start:end])
-	}
-	return values[0], values[1], nil
+	return parsed.selector.User, parsed.selector.Key, nil
 }
 
 func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegistryCandidate, hardware []byte) ([]byte, error) {

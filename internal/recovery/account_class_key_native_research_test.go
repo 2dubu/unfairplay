@@ -27,7 +27,7 @@ func TestAccountClassKeyNativeOracle(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clear(hardware)
-	fileMappings, _ := canonical.RuntimeFileMappings(false)
+	fileMappings, _ := canonical.RuntimeFileMappings()
 	var sinf []byte
 	for _, mapping := range fileMappings {
 		name, path, ok := strings.Cut(mapping, "=")

@@ -66,135 +66,8 @@ func TestIPAInventoryDuplicateDirectoryMarkers(t *testing.T) {
 	}
 }
 
-func TestAuditARM64AcceptsARMv82HalfPrecisionSIMD(t *testing.T) {
-	words := []uint32{
-		0x4f001214, // fmla.8h v20, v16, v0[0]
-		0x4f15127f, // fmla.8h v31, v19, v5[1]
-		0x4e443694, // fmax.8h v20, v20, v4
-		0x4ec537ff, // fmin.8h v31, v31, v5
-	}
-	page := make([]byte, pageBytes)
-	for offset := 0; offset < len(page); offset += 4 {
-		binary.LittleEndian.PutUint32(page[offset:offset+4], words[(offset/4)%len(words)])
-	}
-
-	valid, mnemonics := auditARM64(page)
-	if valid != pageBytes/4 {
-		t.Fatalf("valid ARM64 words = %d, want %d", valid, pageBytes/4)
-	}
-	if mnemonics["FMLA"] != 512 || mnemonics["FMAX"] != 256 || mnemonics["FMIN"] != 256 {
-		t.Fatalf("unexpected mnemonic counts: %v", mnemonics)
-	}
-}
-
-func TestAuditARM64AcceptsLSEAtomics(t *testing.T) {
-	words := []uint32{
-		0xc8a07c41, // cas x0, x1, [x2]
-		0xc8e0fc41, // casal x0, x1, [x2]
-		0x48207c82, // casp x0, x1, x2, x3, [x4]
-		0x4860fc82, // caspal x0, x1, x2, x3, [x4]
-		0xf8200041, // ldadd x0, x1, [x2]
-		0xf8e02041, // ldeoral x0, x1, [x2]
-		0x38a00041, // ldaddab w0, w1, [x2]
-		0xf8e08041, // swpal x0, x1, [x2]
-	}
-	page := make([]byte, len(words)*4)
-	for index, word := range words {
-		binary.LittleEndian.PutUint32(page[index*4:index*4+4], word)
-	}
-	valid, mnemonics := auditARM64(page)
-	if valid != len(words) || mnemonics["CAS"] != 2 || mnemonics["CASP"] != 2 ||
-		mnemonics["LDADD"] != 2 || mnemonics["LDEOR"] != 1 || mnemonics["SWP"] != 1 {
-		t.Fatalf("LSE audit = %d/%d, %#v", valid, len(words), mnemonics)
-	}
-}
-
-func TestSupplementalARM64MnemonicRejectsNearbyUnallocatedEncodings(t *testing.T) {
-	for _, word := range []uint32{0x4f801214, 0x4e643694, 0x4ee537ff, 0xc8a07841, 0x48207882, 0xf8209041} {
-		if mnemonic, ok := supplementalARM64Mnemonic(word); ok {
-			t.Errorf("%#08x unexpectedly decoded as %s", word, mnemonic)
-		}
-	}
-}
-
-func TestAuditARM64FirstPageUsesInstructionSections(t *testing.T) {
-	page := bytes.Repeat([]byte{0xff}, pageBytes)
-	const instructionOffset = 0x180
-	const instructionBytes = 0x280
-	for offset := instructionOffset; offset < instructionOffset+instructionBytes; offset += 4 {
-		binary.LittleEndian.PutUint32(page[offset:offset+4], 0xd503201f) // nop
-	}
-	valid, words, mnemonics := auditARM64FirstPage(
-		page,
-		0x4000,
-		[]machoFileRange{{offset: 0x4000 + instructionOffset, size: instructionBytes}},
-	)
-	if valid != instructionBytes/4 || words != instructionBytes/4 || mnemonics["NOP"] != instructionBytes/4 {
-		t.Fatalf("section audit = valid %d, words %d, mnemonics %#v", valid, words, mnemonics)
-	}
-}
-
-func TestAuditARM64StubHelperIgnoresLazyBindOffsets(t *testing.T) {
-	page := make([]byte, pageBytes)
-	binary.LittleEndian.PutUint32(page[:4], 0xd503201f) // Prologue alignment word.
-	for offset := 4; offset+12 <= len(page); offset += 12 {
-		binary.LittleEndian.PutUint32(page[offset:offset+4], 0x18000050)    // ldr w16, #8
-		binary.LittleEndian.PutUint32(page[offset+4:offset+8], 0x14000000)  // b .
-		binary.LittleEndian.PutUint32(page[offset+8:offset+12], 0x00000001) // Lazy-bind data.
-	}
-	ranges := []machoFileRange{{
-		offset: 0x4000, size: pageBytes, segment: "__TEXT", section: "__stub_helper",
-		flags: sectionAttrPureInstructions | sectionAttrSomeInstructions,
-	}}
-	valid, words, mnemonics := auditARM64FirstPage(page, 0x4000, ranges)
-	if valid != 682 || words != 682 || mnemonics["LDR"] != 341 || mnemonics["B"] != 341 {
-		t.Fatalf("stub-helper audit = %d/%d, %#v", valid, words, mnemonics)
-	}
-
-	for offset := 4; offset+12 <= len(page); offset += 12 {
-		binary.LittleEndian.PutUint32(page[offset:offset+4], 0xd503201f)
-	}
-	valid, words, _ = auditARM64FirstPage(page, 0x4000, ranges)
-	if valid*100 >= words*minimumARM64InstructionValidPercent {
-		t.Fatalf("non-stub mixed page passed at %d/%d", valid, words)
-	}
-}
-
-func TestAuditARM32PlaintextModes(t *testing.T) {
-	ranges := []machoFileRange{{
-		offset: pageBytes, size: pageBytes, segment: "__TEXT", section: "__text",
-		flags: sectionAttrPureInstructions | sectionAttrSomeInstructions,
-	}}
-	thumb := make([]byte, 2*pageBytes)
-	for offset := pageBytes; offset < len(thumb); offset += 4 {
-		binary.LittleEndian.PutUint16(thumb[offset:offset+2], 0xf000)
-		binary.LittleEndian.PutUint16(thumb[offset+2:offset+4], 0xf800)
-	}
-	audit, err := auditARM32Plaintext(thumb, pageBytes, 2*pageBytes, ranges)
-	if err != nil || audit.mode != "armv7-thumb" || audit.wide != pageBytes/4 || audit.traps != 0 {
-		t.Fatalf("Thumb audit = %+v, %v", audit, err)
-	}
-
-	arm := make([]byte, 2*pageBytes)
-	for offset := pageBytes; offset < len(arm); offset += 4 {
-		binary.LittleEndian.PutUint32(arm[offset:offset+4], 0xe1a00000) // mov r0, r0
-	}
-	audit, err = auditARM32Plaintext(arm, pageBytes, 2*pageBytes, ranges)
-	if err != nil || audit.mode != "armv7-arm" || audit.valid != pageBytes/4 || audit.traps != 0 {
-		t.Fatalf("ARM audit = %+v, %v", audit, err)
-	}
-
-	traps := make([]byte, 2*pageBytes)
-	for offset := pageBytes; offset < len(traps); offset += 2 {
-		binary.LittleEndian.PutUint16(traps[offset:offset+2], 0xde00) // udf #0
-	}
-	if _, err := auditARM32Plaintext(traps, pageBytes, 2*pageBytes, ranges); err == nil {
-		t.Fatal("trap-heavy ARMv7 plaintext passed the structural audit")
-	}
-}
-
 func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
-	blob, layout := signedAuditFixture(t, pageBytes, pageBytes, 12, 2)
+	blob, layout := signedPreEncryptionAuditFixture(t, pageBytes, pageBytes, 12, 2)
 	layout.cpuType = cpuTypeARM
 	layout.cpuSubtype = 9
 	layout.cryptID = 1
@@ -225,6 +98,8 @@ func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	copy(blob[pageBytes:2*pageBytes], plaintext)
+	setSyntheticPreEncryptionHashes(t, blob, layout)
 	cipher.NewCBCEncrypter(block, record[16:]).CryptBlocks(blob[pageBytes:2*pageBytes], plaintext)
 	clear(key[:])
 
@@ -234,7 +109,7 @@ func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		copy(directory[44+slot*32:], hash)
+		copy(directory[96+slot*32:], hash)
 	}
 	encrypted := append([]byte(nil), blob...)
 	image := encryptedImage{member: "Payload/Test.app/Test", layout: layout, sliceSize: uint64(len(blob))}
@@ -243,7 +118,7 @@ func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(blob[pageBytes:2*pageBytes], plaintext) || report.Architecture != "armv7" ||
-		report.FirstPageAudit != "armv7-thumb-instruction-structure" || !report.FirstPageStructurallyPlausible {
+		report.PlaintextValidation != "code-directory-pre-encryption-hashes" || len(report.PreEncryptionCodeDirectories) != 1 {
 		t.Fatalf("unexpected ARMv7 result: %+v", report)
 	}
 
@@ -253,42 +128,13 @@ func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
 	wrongDeriver := newPageKeyDeriver(wrongMask)
 	binary.LittleEndian.PutUint32(encrypted[layout.cryptIDOffset:], 1)
 	if _, err := decryptImage(encrypted, image, [][32]byte{record}, wrongMask, wrongDeriver); err == nil ||
-		!strings.Contains(err.Error(), "ARMv7 plaintext audit failed") {
+		!strings.Contains(err.Error(), "plaintext page hash mismatch") {
 		t.Fatalf("wrong ARMv7 page key returned %v", err)
 	}
 }
 
-func TestFirstARM64AuditPageSkipsEncryptedDataPage(t *testing.T) {
-	start, end := 0x4000, 0x40000
-	ranges := []machoFileRange{{offset: 0x5d10, size: 0x32cf8}}
-	page, ok := firstARM64AuditPage(start, end, ranges)
-	if !ok || page != 0x5000 {
-		t.Fatalf("audit page = %#x, %v; want %#x, true", page, ok, 0x5000)
-	}
-}
-
-func TestAuditAdditionalARM64PagesRejectsWrongPageKey(t *testing.T) {
-	const start = pageBytes
-	ranges := []machoFileRange{{offset: start, size: 4 * pageBytes}}
-	output := make([]byte, 5*pageBytes)
-	for index := 0; index < 4; index++ {
-		for offset := start + index*pageBytes; offset < start+(index+1)*pageBytes; offset += 4 {
-			binary.LittleEndian.PutUint32(output[offset:offset+4], 0xd503201f) // nop
-		}
-	}
-	if err := auditAdditionalARM64Pages(output, start, 4, 0, ranges); err != nil {
-		t.Fatal(err)
-	}
-	for offset := start + pageBytes; offset < len(output); offset++ {
-		output[offset] = 0xff
-	}
-	if err := auditAdditionalARM64Pages(output, start, 4, 0, ranges); err == nil {
-		t.Fatal("invalid later code pages were accepted")
-	}
-}
-
-func TestDecryptRejectsMixedInstructionPageWithDiagnostics(t *testing.T) {
-	blob, layout := signedAuditFixture(t, pageBytes, pageBytes, 12, 2)
+func TestDecryptMixedPageUsesPreEncryptionHash(t *testing.T) {
+	blob, layout := signedPreEncryptionAuditFixture(t, pageBytes, pageBytes, 12, 2)
 	layout.cpuType = cpuTypeARM64
 	layout.cryptID = 1
 	layout.cryptIDOffset = 16
@@ -317,6 +163,8 @@ func TestDecryptRejectsMixedInstructionPageWithDiagnostics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	copy(blob[pageBytes:2*pageBytes], plaintext)
+	setSyntheticPreEncryptionHashes(t, blob, layout)
 	cipher.NewCBCEncrypter(block, record[16:]).CryptBlocks(blob[pageBytes:2*pageBytes], plaintext)
 	clear(key[:])
 
@@ -326,23 +174,37 @@ func TestDecryptRejectsMixedInstructionPageWithDiagnostics(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		copy(directory[44+slot*32:], hash)
+		copy(directory[96+slot*32:], hash)
 	}
 
 	image := encryptedImage{member: "Payload/Test.app/Test", layout: layout, sliceSize: uint64(len(blob))}
-	_, err = decryptImage(blob, image, [][32]byte{record}, mask, deriver)
-	if err == nil {
-		t.Fatal("mixed instruction page passed the structural audit")
+	missingTable := append([]byte(nil), blob...)
+	binary.BigEndian.PutUint32(missingTable[int(layout.signatureOffset)+20+92:], 0)
+	noHashWrongKey := append([]byte(nil), missingTable...)
+	unverified, err := decryptImage(missingTable, image, [][32]byte{record}, mask, deriver)
+	if err != nil || unverified.PlaintextValidation != "unavailable-no-pre-encryption-hashes" || len(unverified.PreEncryptionCodeDirectories) != 0 || !bytes.Equal(missingTable[pageBytes:2*pageBytes], plaintext) {
+		t.Fatalf("missing table result: report=%+v err=%v", unverified, err)
 	}
-	for _, want := range []string{"409/598", "__TEXT,__mixed", "full-page=none", "offset-trials=[absolute-per-page=409/598"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("diagnostic error %q does not contain %q", err, want)
-		}
+	wrongLogical := logical
+	wrongLogical[0] ^= 0xff
+	wrongMask := appMaskFromLogicalKey(wrongLogical)
+	unverified, err = decryptImage(noHashWrongKey, image, [][32]byte{record}, wrongMask, newPageKeyDeriver(wrongMask))
+	if err != nil || unverified.PlaintextValidation != "unavailable-no-pre-encryption-hashes" || len(unverified.PreEncryptionCodeDirectories) != 0 || bytes.Equal(noHashWrongKey[pageBytes:2*pageBytes], plaintext) {
+		t.Fatalf("unverified wrong-key result: report=%+v err=%v", unverified, err)
+	}
+	malformedTable := append([]byte(nil), blob...)
+	binary.BigEndian.PutUint32(malformedTable[int(layout.signatureOffset)+20+92:], ^uint32(0))
+	if _, err := decryptImage(malformedTable, image, [][32]byte{record}, mask, deriver); err == nil || !strings.Contains(err.Error(), "pre-encryption table") {
+		t.Fatalf("malformed pre-encryption hash table returned %v", err)
+	}
+	report, err := decryptImage(blob, image, [][32]byte{record}, mask, deriver)
+	if err != nil || !bytes.Equal(blob[pageBytes:2*pageBytes], plaintext) || report.PlaintextValidation != "code-directory-pre-encryption-hashes" {
+		t.Fatalf("mixed plaintext page rejected: %v", err)
 	}
 }
 
 func TestDecryptUniversalSliceUsesEachPageOffset(t *testing.T) {
-	blob, layout := signedAuditFixture(t, pageBytes, 2*pageBytes, 12, 2)
+	blob, layout := signedPreEncryptionAuditFixture(t, pageBytes, 2*pageBytes, 12, 2)
 	layout.cpuType = cpuTypeARM64
 	layout.cryptID = 1
 	layout.cryptIDOffset = 16
@@ -350,7 +212,7 @@ func TestDecryptUniversalSliceUsesEachPageOffset(t *testing.T) {
 	binary.LittleEndian.PutUint32(blob[layout.cryptIDOffset:], 1)
 
 	image := encryptedImage{
-		member: "Payload/Test.app/Test", supfMember: "Payload/Test.app/SC_Info/Test.supf",
+		member: "Payload/Test.app/Test", supfMember: "Payload/Test.app/SC_Info/Test.v5.supf",
 		sliceOffset: 0x4000, sliceSize: uint64(len(blob)), layout: layout,
 	}
 	var logical [16]byte
@@ -366,6 +228,8 @@ func TestDecryptUniversalSliceUsesEachPageOffset(t *testing.T) {
 	mask := appMaskFromLogicalKey(logical)
 	deriver := newPageKeyDeriver(mask)
 	plaintext := make([]byte, 2*pageBytes)
+	copy(blob[pageBytes:3*pageBytes], plaintext)
+	setSyntheticPreEncryptionHashes(t, blob, layout)
 	for page := range records {
 		key := deriver.pageKey(
 			records[page][:16],
@@ -382,7 +246,7 @@ func TestDecryptUniversalSliceUsesEachPageOffset(t *testing.T) {
 	}
 
 	directory := blob[int(layout.signatureOffset)+20:]
-	hashOffset, hashSize := 44, 32
+	hashOffset, hashSize := 96, 32
 	for slot := 0; slot < int(layout.signatureOffset)/pageBytes; slot++ {
 		hash, err := hashCodePage(2, blob[slot*pageBytes:(slot+1)*pageBytes])
 		if err != nil {
@@ -392,6 +256,7 @@ func TestDecryptUniversalSliceUsesEachPageOffset(t *testing.T) {
 	}
 
 	encryptedHash := digest(blob)
+	encrypted := append([]byte(nil), blob...)
 	report, err := decryptImage(blob, image, records, mask, deriver)
 	if err != nil {
 		t.Fatal(err)
@@ -402,7 +267,26 @@ func TestDecryptUniversalSliceUsesEachPageOffset(t *testing.T) {
 	if report.EncryptedSHA256 != encryptedHash || report.DecryptedSHA256 != digest(blob) {
 		t.Fatalf("unexpected image hashes: %+v", report)
 	}
-	if report.Architecture != "arm64" || report.FirstPageAudit != "arm64-instruction-decode" || !report.FirstPageStructurallyPlausible {
+	if report.Architecture != "arm64" || report.PlaintextValidation != "code-directory-pre-encryption-hashes" || len(report.PreEncryptionCodeDirectories) != 1 {
 		t.Fatalf("unexpected report: %+v", report)
+	}
+	badRecords := append([][32]byte(nil), records...)
+	badRecords[1][0] ^= 0xff
+	if _, err := decryptImage(encrypted, image, badRecords, mask, deriver); err == nil || !strings.Contains(err.Error(), "plaintext page hash mismatch") {
+		t.Fatalf("wrong final page key returned %v", err)
+	}
+}
+
+// setSyntheticPreEncryptionHashes records the expected plaintext before encryption.
+func setSyntheticPreEncryptionHashes(t *testing.T, blob []byte, layout machoLayout) {
+	t.Helper()
+	directory := blob[int(layout.signatureOffset)+20:]
+	slots := int(layout.signatureOffset) / pageBytes
+	for slot := 0; slot < slots; slot++ {
+		hash, err := hashCodePage(2, blob[slot*pageBytes:(slot+1)*pageBytes])
+		if err != nil {
+			t.Fatal(err)
+		}
+		copy(directory[96+slots*32+slot*32:], hash)
 	}
 }

@@ -19,7 +19,7 @@ func TestOuterFrontWordsAndSourceTailMatchCircuit(t *testing.T) {
 		if !applyOuterFrontTailCircuit(&table, base, &state, &digest) {
 			t.Fatal("circuit rejected input")
 		}
-		words, ok := outerFrontWords(&table, base, &digest)
+		words, _, ok := outerFrontWords(&table, base, &digest)
 		if !ok || words != state.Words {
 			t.Fatalf("sample %d base %d words=%08x/%08x/%08x/%08x/%08x want=%08x/%08x/%08x/%08x/%08x", sample, base,
 				words[0], words[1], words[2], words[3], words[4], state.Words[0], state.Words[1], state.Words[2], state.Words[3], state.Words[4])
@@ -28,7 +28,7 @@ func TestOuterFrontWordsAndSourceTailMatchCircuit(t *testing.T) {
 		if !ok || tail != [4]byte(state.Source[12:16]) {
 			t.Fatalf("sample %d source tail differs", sample)
 		}
-		prefix, ok := outerFrontSourcePrefix(&table, base, &digest)
+		prefix, ok := outerFrontSourcePrefix(&table, base, words)
 		if !ok || prefix != [12]byte(state.Source[:12]) {
 			t.Fatalf("sample %d source prefix differs", sample)
 		}

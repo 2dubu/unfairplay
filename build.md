@@ -1,5 +1,8 @@
 # Build-independent recovery plan
 
+These are historical upstream research notes. See [README.md](README.md) for
+the supported implementation and [QA.md](QA.md) for validation requirements.
+
 ## Goal
 
 FairPlay enrollment must use one shared Go implementation. A macOS build must

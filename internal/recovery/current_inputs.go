@@ -12,7 +12,7 @@ type currentRecoveryInputs struct {
 }
 
 func isCurrentRecoveryFile(name string) bool {
-	return strings.HasSuffix(name, ".sinf") || strings.HasSuffix(name, ".supf") || strings.HasSuffix(name, "SC Info.sidb")
+	return strings.HasSuffix(name, ".sinf") || strings.HasSuffix(name, ".supf") || strings.HasSuffix(name, ".supp") || strings.HasSuffix(name, "SC Info.sidb")
 }
 
 func loadCurrentRecoveryInputs(fileSpecs []string, hardwarePath string) (*currentRecoveryInputs, error) {
