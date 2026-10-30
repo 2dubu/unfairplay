@@ -27,23 +27,19 @@ type qaControl struct {
 	Capture                 string `json:"capture,omitempty"`
 	IPA                     string `json:"ipa,omitempty"`
 	Model                   string `json:"model,omitempty"`
-	Reference               string `json:"reference_binary,omitempty"`
 	ExpectedModelSHA256     string `json:"expected_model_sha256,omitempty"`
 	ExpectedIPASHA256       string `json:"expected_ipa_sha256,omitempty"`
-	ExpectedEvaluatorSHA256 string `json:"expected_evaluator_source_sha256,omitempty"`
 	ExpectedReferenceSource string `json:"expected_reference_code_source,omitempty"`
 	ExpectedImages          int    `json:"expected_images,omitempty"`
 	ExpectedPages           int    `json:"expected_pages,omitempty"`
 }
 
 type recoveryResult struct {
-	Success               bool   `json:"success"`
-	DecryptedIPASHA256    string `json:"decrypted_ipa_sha256"`
-	EncryptedImages       int    `json:"encrypted_images"`
-	DecryptedPages        int    `json:"decrypted_pages"`
-	EvaluatorSourceSHA256 string `json:"evaluator_source_sha256"`
-	ReferenceCodeSource   string `json:"reference_code_source"`
-	ExtractedBlockHits    int    `json:"exact_extracted_block_hits"`
+	Success             bool   `json:"success"`
+	DecryptedIPASHA256  string `json:"decrypted_ipa_sha256"`
+	EncryptedImages     int    `json:"encrypted_images"`
+	DecryptedPages      int    `json:"decrypted_pages"`
+	ReferenceCodeSource string `json:"reference_code_source"`
 }
 
 type qaResult struct {
@@ -54,7 +50,6 @@ type qaResult struct {
 	EncryptedImages     int    `json:"encrypted_images"`
 	DecryptedPages      int    `json:"decrypted_pages"`
 	ReferenceCodeSource string `json:"reference_code_source"`
-	ExtractedBlockHits  int    `json:"exact_extracted_block_hits"`
 }
 
 func validSHA256(value string) bool {
@@ -73,11 +68,11 @@ func validateManifest(manifest qaManifest) error {
 	for _, control := range manifest.Controls {
 		recoveryMode := control.Capture != ""
 		verifyMode := control.IPA != "" || control.Model != ""
-		if control.Name == "" || filepath.Base(control.Name) != control.Name || seen[control.Name] || recoveryMode == verifyMode || verifyMode && (control.IPA == "" || control.Model == "") || !recoveryMode && control.Reference != "" {
+		if control.Name == "" || filepath.Base(control.Name) != control.Name || seen[control.Name] || recoveryMode == verifyMode || verifyMode && (control.IPA == "" || control.Model == "") {
 			return fmt.Errorf("invalid QA control %q", control.Name)
 		}
 		seen[control.Name] = true
-		for _, value := range []string{control.ExpectedModelSHA256, control.ExpectedIPASHA256, control.ExpectedEvaluatorSHA256} {
+		for _, value := range []string{control.ExpectedModelSHA256, control.ExpectedIPASHA256} {
 			if !validSHA256(value) {
 				return fmt.Errorf("control %s has an invalid expected SHA256", control.Name)
 			}
@@ -109,7 +104,6 @@ func checkControl(control qaControl, result recoveryResult, modelSHA256 string) 
 	checks := []struct{ got, want, label string }{
 		{modelSHA256, control.ExpectedModelSHA256, "model SHA256"},
 		{result.DecryptedIPASHA256, control.ExpectedIPASHA256, "IPA SHA256"},
-		{result.EvaluatorSourceSHA256, control.ExpectedEvaluatorSHA256, "evaluator SHA256"},
 		{result.ReferenceCodeSource, control.ExpectedReferenceSource, "reference source"},
 	}
 	for _, check := range checks {
@@ -134,9 +128,6 @@ func runControl(ctx context.Context, binary, root string, control qaControl) (qa
 		mode = "recover"
 		output := filepath.Join(root, control.Name)
 		arguments = []string{"recover", "--capture", control.Capture, "--output", output}
-		if control.Reference != "" {
-			arguments = append(arguments, "--reference-binary", control.Reference)
-		}
 		modelPath = filepath.Join(output, "fairplay-enrollment.bin")
 	}
 	command := exec.CommandContext(ctx, binary, arguments...)
@@ -164,7 +155,7 @@ func runControl(ctx context.Context, binary, root string, control qaControl) (qa
 	return qaResult{
 		Name: control.Name, Mode: mode, ModelSHA256: modelSHA256, DecryptedIPASHA256: recovered.DecryptedIPASHA256,
 		EncryptedImages: recovered.EncryptedImages, DecryptedPages: recovered.DecryptedPages,
-		ReferenceCodeSource: recovered.ReferenceCodeSource, ExtractedBlockHits: recovered.ExtractedBlockHits,
+		ReferenceCodeSource: recovered.ReferenceCodeSource,
 	}, nil
 }
 

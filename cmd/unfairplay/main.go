@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/DrWhax/unfairplay/internal/fairplay"
@@ -15,6 +16,35 @@ import (
 )
 
 var version = "dev"
+
+func executableVersion() string {
+	if version != "dev" {
+		return version
+	}
+	information, ok := debug.ReadBuildInfo()
+	if !ok {
+		return version
+	}
+	revision, modified := "", false
+	for _, setting := range information.Settings {
+		switch setting.Key {
+		case "vcs.revision":
+			revision = setting.Value
+		case "vcs.modified":
+			modified = setting.Value == "true"
+		}
+	}
+	if revision == "" {
+		return version
+	}
+	if len(revision) > 12 {
+		revision = revision[:12]
+	}
+	if modified {
+		revision += "-dirty"
+	}
+	return version + "-" + revision
+}
 
 func main() {
 	root := newRootCommand()
@@ -30,9 +60,9 @@ func newRootCommand() *cobra.Command {
 		Short:         "Recover native Mac FairPlay enrollment and decrypt personalized IPAs",
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Version:       version,
+		Version:       executableVersion(),
 	}
-	root.AddCommand(newSetupCommand(), newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newConvertIPAMacOSCommand(), newVerifyCommand(), newDoctorCommand(), newProfileCommand())
+	root.AddCommand(newSetupCommand(), newCollectCommand(), newRecoverCommand(), newDecryptCommand(), newConvertIPAMacOSCommand(), newVerifyCommand(), newDoctorCommand())
 	return root
 }
 
@@ -105,7 +135,6 @@ func newCollectCommand() *cobra.Command {
 	flags.StringVar(&options.InstalledExecutablePath, "installed-executable-path", "", "Original absolute executable path for an archived app")
 	flags.StringVar(&options.IPAPath, "ipa", "", "Matching personalized encrypted IPA")
 	flags.StringVar(&options.OutputPath, "output", "", "New private capture directory")
-	flags.StringVar(&options.FairPlaydPath, "fairplayd", "", "fairplayd Mach-O (defaults to the system CoreFP framework)")
 	flags.StringVar(&options.SystemStatePath, "system-state", "", "System SC Info directory")
 	flags.StringVar(&options.SharedStatePath, "shared-state", "", "Shared SC Info directory")
 	flags.StringVar(&options.ADIPath, "adi-state", "", "Native ADI state directory")
@@ -119,10 +148,8 @@ func newCollectCommand() *cobra.Command {
 }
 
 type recoverOptions struct {
-	Reference          string
-	SelectionMaxBlocks int
-	Capture            string
-	Output             string
+	Capture string
+	Output  string
 }
 
 func newRecoverCommand() *cobra.Command {
@@ -134,8 +161,6 @@ func newRecoverCommand() *cobra.Command {
 			return recoverEnrollment(command.Context(), options)
 		},
 	}
-	command.Flags().StringVar(&options.Reference, "reference-binary", "", "Override hash-matched fairplayd reference code")
-	command.Flags().IntVar(&options.SelectionMaxBlocks, "selection-max-blocks", 2_000_000, "Selection execution limit (1..20000000)")
 	command.Flags().StringVar(&options.Capture, "capture", "", "Private capture directory")
 	command.Flags().StringVar(&options.Output, "output", "", "New private recovery directory")
 	_ = command.MarkFlagRequired("capture")
@@ -143,34 +168,25 @@ func newRecoverCommand() *cobra.Command {
 	return command
 }
 
-func recoveryReference(options recoverOptions, manifest fairplay.EnrollmentCaptureManifest) (string, string, error) {
-	if options.Reference != "" {
-		return options.Reference, "explicit-binary", nil
-	}
-	if manifest.FairPlay.EvaluatorSHA256 == "" || !strings.EqualFold(manifest.FairPlay.EvaluatorSHA256, manifest.FairPlayd.SHA256) {
-		return "", "embedded-profile", nil
-	}
-	relative := filepath.FromSlash(manifest.FairPlayd.Path)
-	clean := filepath.Clean(relative)
-	if relative == "" || filepath.IsAbs(relative) || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", "", fmt.Errorf("capture contains an unsafe fairplayd path")
-	}
-	return filepath.Join(options.Capture, clean), "captured-exact-binary", nil
-}
-
 type enrollmentRecoveryOutcome struct {
 	Summary   map[string]any
 	ModelPath string
 }
 
-func enrollmentRecoverySupportError(manifest fairplay.EnrollmentCaptureManifest) error {
-	if manifest.FairPlay.Recovery {
-		return nil
+func recoveryProgressReporter(profile string) func(recovery.Progress) {
+	return func(event recovery.Progress) {
+		if event.Total == 0 {
+			fmt.Fprintf(os.Stderr, "recovery build=%s profile=%s phase=%s\n", executableVersion(), profile, event.Phase)
+			return
+		}
+		percent := event.Completed * 100 / event.Total
+		fmt.Fprintf(
+			os.Stderr,
+			"recovery build=%s profile=%s phase=%s progress=%d%% comparisons=%d/%d registries=%d records=%d windows=%d\n",
+			executableVersion(), profile, event.Phase, percent, event.Completed, event.Total,
+			event.RegistryCandidates, event.RecordCandidates, event.WindowCandidates,
+		)
 	}
-	if manifest.FairPlay.Status == "unsupported-beta-build" {
-		return fmt.Errorf("macOS beta build %s is not supported for enrollment recovery", manifest.BuildVersion)
-	}
-	return fmt.Errorf("fairplayd build %s is not supported for enrollment recovery (%s)", manifest.BuildVersion, manifest.FairPlay.Status)
 }
 
 func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrollmentRecoveryOutcome, error) {
@@ -178,9 +194,6 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	manifest, err := fairplay.LoadEnrollmentCapture(options.Capture, true)
 	if err != nil {
 		return outcome, fmt.Errorf("validate capture: %w", err)
-	}
-	if err := enrollmentRecoverySupportError(manifest); err != nil {
-		return outcome, err
 	}
 	if manifest.IPA == nil {
 		return outcome, errors.New("capture has no matching personalized IPA")
@@ -192,10 +205,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	if !canonical.RecoveryReady {
 		return outcome, errors.New("canonical enrollment input is not recovery-ready")
 	}
-	referencePath, referenceSource, err := recoveryReference(options, manifest)
-	if err != nil {
-		return outcome, err
-	}
+	referenceSource := "typed-go"
 	if err := os.Mkdir(options.Output, 0o700); err != nil {
 		return outcome, err
 	}
@@ -206,40 +216,20 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	if err := writePrivateFile(filepath.Join(options.Output, "canonical-input.json"), append(canonicalDocument, '\n')); err != nil {
 		return outcome, err
 	}
-	executablePath := manifest.App.ExecutablePath
-	if executablePath == "" {
-		executablePath = filepath.Join("/Applications", manifest.App.Executable+".app", manifest.App.Executable)
+	const selectedProfile = "minimal-current-sinf"
+	if err := ctx.Err(); err != nil {
+		return outcome, err
 	}
-	var recovered recovery.Result
-	selectedProfile := ""
-	var recoveryErrors []error
-	for _, inputProfile := range []struct {
-		name     string
-		expanded bool
-	}{{"minimal-current-sinf", false}, {"expanded-capture", true}} {
-		select {
-		case <-ctx.Done():
-			return outcome, ctx.Err()
-		default:
-		}
-		mappings, stateFiles := canonical.RuntimeFileMappings(inputProfile.expanded)
-		if stateFiles == 0 {
-			recoveryErrors = append(recoveryErrors, fmt.Errorf("%s has no FairPlay state", inputProfile.name))
-			continue
-		}
-		mappings = append([]string{"/" + manifest.App.Executable + "=" + canonical.PrivateExecutablePath()}, mappings...)
-		recovered, err = recovery.Recover(recovery.Options{
-			FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), ExecutablePath: executablePath,
-			ReferencePath: referencePath, SelectionMaxBlocks: options.SelectionMaxBlocks,
-		})
-		if err == nil {
-			selectedProfile = inputProfile.name
-			break
-		}
-		recoveryErrors = append(recoveryErrors, fmt.Errorf("%s: %w", inputProfile.name, err))
+	mappings, stateFiles := canonical.RuntimeFileMappings()
+	if stateFiles == 0 {
+		return outcome, fmt.Errorf("derive enrollment: %s has no FairPlay state", selectedProfile)
 	}
-	if selectedProfile == "" {
-		return outcome, fmt.Errorf("derive enrollment: %w", errors.Join(recoveryErrors...))
+	recovered, err := recovery.Recover(recovery.Options{
+		FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(), Context: ctx,
+		Progress: recoveryProgressReporter(selectedProfile),
+	})
+	if err != nil {
+		return outcome, fmt.Errorf("derive enrollment: %w", err)
 	}
 	defer clear(recovered.EnrollmentModel)
 	candidate := filepath.Join(options.Output, "fairplay-enrollment.candidate.bin")
@@ -249,6 +239,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	ipa := filepath.Join(options.Capture, filepath.FromSlash(manifest.IPA.Path))
 	decrypted := filepath.Join(options.Output, "App.decrypted.ipa")
 	decryptionReport := filepath.Join(options.Output, "App.decrypted.json")
+	fmt.Fprintf(os.Stderr, "recovery build=%s profile=%s phase=validate-ipa\n", executableVersion(), selectedProfile)
 	result, err := fairplay.DecryptIPA(fairplay.DecryptOptions{
 		InputPath: ipa, OutputPath: decrypted, ReportPath: decryptionReport, ModelPath: candidate,
 	})
@@ -261,18 +252,19 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	}
 	summary := map[string]any{
 		"schema": "unfairplay-enrollment-recovery-v1", "success": true,
-		"selector": manifest.App.SelectorID, "fairplayd_sha256": manifest.FairPlayd.SHA256,
-		"fairplayd_status": manifest.FairPlay.Status, "validation_basis": manifest.FairPlay.ValidationBasis,
-		"evaluator_profile": manifest.FairPlay.EvaluatorProfile, "evaluator_source_sha256": manifest.FairPlay.EvaluatorSHA256,
-		"portable_semantic_evaluator": manifest.FairPlay.EvaluatorSHA256 != "" && manifest.FairPlay.EvaluatorSHA256 != manifest.FairPlayd.SHA256,
+		"selector":          manifest.App.SelectorID,
+		"enrollment_status": manifest.FairPlay.Status, "validation_basis": manifest.FairPlay.ValidationBasis,
+		"evaluator_profile":           "typed-current-enrollment",
+		"portable_semantic_evaluator": true,
 		"canonical_contract":          canonical.Contract, "canonical_input_sha256": canonical.FingerprintSHA256,
 		"enrollment_model": enrollment, "decrypted_ipa": decrypted,
 		"decrypted_ipa_sha256": result.OutputSHA256, "encrypted_images": result.EncryptedImages,
 		"decrypted_pages": result.DecryptedPages, "input_profile": selectedProfile,
+		"plaintext_verified":  result.PlaintextVerified,
 		"recovery_iterations": recovered.Iterations, "recovery_state_sha256": recovered.StateSHA256,
-		"exact_extracted_block_hits": recovered.ExtractedBlockHits,
-		"promotion_gate":             "complete-sinf-and-ipa-validation",
-		"reference_code_source":      referenceSource,
+		"decoded_registry_candidates": recovered.DecodedRegistryCandidates,
+		"promotion_gate":              "complete-sinf-and-ipa-validation",
+		"reference_code_source":       referenceSource,
 	}
 	document, err := json.MarshalIndent(summary, "", "  ")
 	if err != nil {
@@ -394,6 +386,7 @@ func verificationSummary(result fairplay.DecryptResult) map[string]any {
 		"encrypted_images":     result.EncryptedImages, "decrypted_pages": result.DecryptedPages,
 		"logical_key_sha256_by_sinf": result.LogicalKeySHA256BySINF,
 		"plaintext_retained":         false,
+		"plaintext_verified":         result.PlaintextVerified,
 	}
 	if result.LogicalKeySHA256 != "" {
 		summary["schema"] = "unfairplay-model-verification-v1"
@@ -475,45 +468,5 @@ func newDoctorCommand() *cobra.Command {
 	flags.StringVar(&ipa, "ipa", "", "Personalized encrypted IPA")
 	flags.StringVar(&model, "model", "", "Private enrollment model file or directory")
 	flags.StringVar(&reportPath, "report", "", "New private JSON diagnostic report")
-	return command
-}
-
-func newProfileCommand() *cobra.Command {
-	var binaryPath, outputPath, recoveryProfilePath string
-	command := &cobra.Command{
-		Use:   "profile",
-		Short: "Inspect an arm64e fairplayd without executing it",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			profile, err := fairplay.InspectFairPlayBinaryProfile(binaryPath)
-			if err != nil {
-				return err
-			}
-			if recoveryProfilePath != "" {
-				encoded, summary, err := fairplay.BuildFairPlayRecoveryCodeProfile(binaryPath)
-				if err != nil {
-					return err
-				}
-				defer clear(encoded)
-				if err := writePrivateFile(recoveryProfilePath, encoded); err != nil {
-					return err
-				}
-				profile.RecoveryCodeProfile = &summary
-			}
-			if outputPath != "" {
-				document, err := json.MarshalIndent(profile, "", "  ")
-				if err != nil {
-					return err
-				}
-				if err := writePrivateFile(outputPath, append(document, '\n')); err != nil {
-					return err
-				}
-			}
-			return printJSON(profile)
-		},
-	}
-	command.Flags().StringVar(&binaryPath, "binary", "", "arm64e or universal fairplayd Mach-O")
-	command.Flags().StringVar(&outputPath, "output", "", "New private JSON profile")
-	command.Flags().StringVar(&recoveryProfilePath, "recovery-profile-output", "", "New hash-bound recovery code profile")
-	_ = command.MarkFlagRequired("binary")
 	return command
 }

@@ -15,7 +15,7 @@ infringement, or unauthorized distribution of decrypted apps.
 
 ## Discord
 
-Feel free to hang out in the [Discord](https://discord.gg/hpwvuQHfaf).
+Project discussion and support: [UnfairPlay Discord](https://discord.gg/hpwvuQHfaf).
 
 ## Build
 
@@ -36,21 +36,12 @@ sudo ./unfairplay setup \
   --ipa App.ipa
 ```
 
+Large enrollment databases print bounded recovery progress to standard error.
+The final JSON result remains on standard output.
+
 The saved model is private. It is tied to the Mac App Store enrollment, not to
 one app, so it can decrypt other personalized IPAs from the same enrollment.
-
-Some stable portable-evaluator paths may require the exact evaluator
-`fairplayd` arm64e slice as hash-checked reference data. If diagnostics request
-it, pass a private copy without committing or sharing it:
-
-```sh
-sudo ./unfairplay setup \
-  --app /Applications/App.app \
-  --ipa App.ipa \
-  --reference-binary /private/path/fairplayd.arm64e
-```
-
-The reference binary is parsed as data and is never loaded or executed.
+Back it up only in encrypted storage and never share it.
 
 Decrypt another IPA:
 
@@ -75,17 +66,26 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
+The decryption path handles ARMv7, ARM64, and ARM64_32/watchOS slices.
+ARMv6/Thumb-1 parsing is experimental and those binaries are not supported.
+Available pre-encryption page hashes must match; a mismatch fails closed.
+Older executables without these tables can decrypt, but report
+`plaintext_verified=false`.
+
 ### Convert an IPA for macOS
 
 This requires an encrypted IPA personalized for the same Store enrollment as
 your saved model. Convert it with:
 
 ```sh
-./unfairplay convert-ipa-macos --input App.ipa
+./unfairplay convert-ipa-macos \
+  --input App.ipa \
+  --model /private/path/fairplay-enrollment.bin
 ```
 
-The default output is `App.macos.ipa`. Use `--output` to choose another path or
-`--force` to replace an existing output.
+Omit `--model` to use the saved model. The default output is `App.macos.ipa`.
+Use `--output` to choose another path or `--force` to replace an existing
+output.
 
 The command uses a saved version-2 enrollment model. You can instead use a
 matching private 16-byte credential:
@@ -99,11 +99,15 @@ chmod 600 credential.bin
 
 The conversion:
 
+- decodes the current private record with the direct enrollment model;
 - validates and rewrites the personalized SINF into the macOS layout;
 - preserves its app key, signature, rights, and other private fields;
 - adds every SINF copy declared by Apple for encrypted frameworks and
   extensions; and
 - leaves all Mach-O executables byte-identical and encrypted.
+
+Model-based conversion supports the observed 440- and 448-byte private SINF
+records and the same bounded appended-rights geometry used by recovery.
 
 The result is still an IPA, not a macOS installer. A macOS iOS-app wrapper or
 compatible installer must preserve this basic layout:
@@ -123,24 +127,12 @@ services that are not present on macOS.
 ## Advanced commands
 
 `collect` and `recover` expose the two setup stages for diagnostics and
-archived captures. `doctor` checks a capture, IPA, or model. `profile` inspects
-an arm64e fairplayd without executing it.
+archived captures. `doctor` checks a capture, IPA, or model.
 
 ```sh
 sudo ./unfairplay collect --app /Applications/App.app --ipa App.ipa --output App.capture
 ./unfairplay recover --capture App.capture --output App.recovery
 ```
-
-Create a code profile for an exact fairplayd binary:
-
-```sh
-./unfairplay profile --binary /path/to/fairplayd.arm64e \
-  --recovery-profile-output fairplayd.recovery-profile.gz
-```
-
-The profile contains code locations and import names. It contains no account
-data and does not execute fairplayd. It helps add native support for new macOS
-builds, but creating it alone does not enable decryption.
 
 ## FAQ
 
@@ -154,10 +146,11 @@ turns that state into a reusable private model.
 
 - **Personalized SINF:** an app license created for one Store enrollment. It
   identifies the enrollment and protects the app-specific key.
-- **SUPF:** per-executable records used to derive keys and IVs for encrypted
-  Mach-O pages. Apps, extensions, frameworks, and watch apps may each have one.
+- **SUPF/SUPP:** signed per-executable records used to derive keys and IVs for
+  encrypted Mach-O pages. Apps, extensions, frameworks, and watch apps may each
+  have one.
 - **`SC_Info`:** the directory inside an installed app or IPA that contains its
-  SINF and SUPF license files.
+  SINF and SUPF/SUPP license files.
 - **System `SC Info`:** the private Mac FairPlay state directory. Its SIDB and
   SIDS files contain enrollment state, not app content.
 
@@ -170,12 +163,15 @@ Each app still has its own key inside its personalized SINF.
 
 ### Why might another macOS build fail?
 
-Apple changes fairplayd code and state layouts between builds. UnfairPlay fails
-closed when a path is not verified. It never publishes a recovered model until
-the matching IPA decrypts and passes validation.
+Apple can change enrollment state layouts or semantic tables. UnfairPlay
+follows explicit SIDB version, state-slot, root-cursor, and selector rules.
+An unmapped format or tag-constructor path stops recovery with an error. It never
+publishes a model until the matching IPA decrypts and passes the applicable
+validation checks; missing plaintext hashes remain explicitly unverified.
 
-Patches and test reports are welcome. Include the macOS build, fairplayd
-SHA-256, UnfairPlay commit, and complete error. Never share SIDB, SINF, hardware
+Patches and test reports are welcome. Include the macOS build, UnfairPlay
+commit, and a redacted error. Keep app identities, identifying IPA measurements
+and private paths out of public reports. Never share SIDB, SINF, hardware
 identity, enrollment models, decrypted apps, or Apple credentials.
 
 ### Can decryption run on another operating system?
@@ -183,40 +179,81 @@ identity, enrollment models, decrypted apps, or Apple credentials.
 Yes. Collection must start on an enrolled Mac. You can either run `setup` on
 that Mac and securely copy the resulting model, or copy a complete private
 `collect` bundle and run `recover` elsewhere. The bundle contains the installed
-license files, system SC Info state, built-in IOMACAddress, matching IPA, macOS
-build metadata, and hash-checked fairplayd reference bytes.
+license files, system SC Info state, built-in IOMACAddress, matching IPA, and
+macOS build metadata.
 
 The recovered model and personalized IPAs can then be used on macOS or Linux;
-fairplayd is never executed. Windows builds compile, but Windows decryption is
-not enabled until equivalent private-file permission checks are implemented.
+the native fairplayd daemon is never launched by this tool. Windows builds
+compile, but Windows decryption is not enabled until equivalent private-file
+permission checks are implemented.
 
 ## Support
 
-Verified enrollment contracts: `25G83`, `26A428`/`26A434`, and `26B118`.
-`25G83` and `26B118` use the portable semantic evaluator; native fairplayd
-execution is not required. Unknown arm64e builds are accepted only when model
-recovery and full IPA validation succeed.
+Recovery follows the mapped current-container and tree format. It derives one
+state slot, a hardware-dependent root cursor and tag codebook, then selects the
+SINF's exact user/key path and authenticates its single value. It does not try
+other records or windows when that value fails authentication. Only the mapped
+tree format is supported.
 
-Some `26B118` enrollment paths are known to leave the embedded evaluator trace
-and require the exact `26A428`/`26A434` evaluator reference through
-`--reference-binary`. These paths remain fail-closed without it.
+The hardware tag constructor uses a byte mixer followed by AES-CBC and an
+affine map of each output word. Selection-state derivation processes the
+selected prefix with AES-CBC and a final AES key transform. All constants are
+part of the mapped algorithm. Production loads no native executable or
+constructor profile. Support is determined by format and authenticated route;
+unknown versions, tags and selected-route geometry fail closed. SINF
+authentication, complete IPA processing, and every applicable validation check
+remain mandatory. Older IPAs without pre-encryption hashes remain explicitly
+unverified rather than being reported as verified.
 
-Beta or seed builds are not supported. Build identifiers with a trailing
-lowercase seed suffix, such as `26B5091g`, fail before enrollment recovery; use
-a stable macOS release when collecting a reusable model.
+IPA decryption uses explicit `SC_Info/Manifest.plist` SINF replication paths,
+or the executable's adjacent SINF when no mapping is declared. Paired legacy
+and v5 SUPFs must have identical architecture and page records; a legacy SUPF's
+signature-blob hash must match its executable. Conflicts within the selected
+page-key class fail closed. Recovery uses one canonical set of runtime inputs
+without a broader license retry. Thin Mach-O images can also use signed
+`.supp`/`.v4.supp` page tables, indexed from file offset zero. The encrypted
+page records are selected by the declared encryption range, and legacy
+signature-blob bindings are checked. SUPP-only fat images are unsupported.
+Architecture-indexed SUPF files take precedence when present; a malformed
+selected class never triggers a retry with the other class. SINF manifests
+must declare exactly one source; existing replicas must match that source.
+Multi-source manifests are unsupported.
 
-The evaluator source build is recorded for audit purposes. UnfairPlay does not
-load or run that fairplayd binary during recovery.
+Plaintext validation checks every CodeDirectory pre-encryption hash slot that
+intersects an encrypted range. Instruction scoring and sampled-page checks are
+not used. Every available pre-encryption table is checked. Older directories
+or a zero pre-encryption offset mean no table; a malformed nonzero table fails
+closed.
+
+Images with no table report validation as unavailable, and the overall
+`plaintext_verified` flag is false if any image lacks coverage. These checks
+establish consistency with the embedded hashes, not Apple CMS signature trust.
+Unencrypted pages outside those ranges are not covered by this plaintext check.
+Decryption reports use `unfairplay-decryption-v2`; consumers of the removed
+instruction-audit fields must migrate to the plaintext validation fields.
 
 macOS arm64 and Linux amd64/arm64 are supported. Windows is compile-tested but
 cannot yet enforce the required private-file permissions.
 
-The IPA, installed app, Mac state, hardware identity, and model must belong to
-the same enrollment. Account or selector mismatches are rejected.
+During setup, the installed app, matching IPA, Mac state, and hardware identity
+must belong to the same enrollment. The resulting model can then decrypt other
+IPAs personalized for that enrollment. Account or selector mismatches are
+rejected.
 
 Keep capture and model files private. Do not share SIDB, SINF, hardware data,
 recovery models, or decrypted apps. Decrypted IPAs are analysis files and need
 signing before installation.
+
+## Reporting problems
+
+Private controls do not establish support for every layout or independent
+enrollment. Do not infer support from the macOS build alone.
+Build it from source and run `setup` normally. Confirm the binary with
+`./unfairplay --version`. Reports should include only that version output, the
+macOS build and a redacted error. Keep app identities, IPA measurements,
+account/hardware identifiers and private paths out of public reports. Never
+attach SIDB, SINF, hardware identity, models, credentials, or
+decrypted IPAs to a public issue.
 
 ## Releases
 

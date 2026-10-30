@@ -242,10 +242,14 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	if err != nil {
 		return nil, report, err
 	}
-	expectedFields := map[string]bool{"user": true, "key ": true, "iviv": true, "righ": true, "name": true, "priv": true}
+	requiredFields := [...]string{"user", "key ", "iviv", "righ", "name", "priv"}
+	allowedFields := map[string]bool{
+		"user": true, "key ": true, "iviv": true, "righ": true, "name": true, "priv": true,
+		"crdt": true, "asdt": true,
+	}
 	values := make(map[string][]byte, len(fields)+2)
 	for _, field := range fields {
-		if !expectedFields[field.typ] {
+		if !allowedFields[field.typ] {
 			return nil, report, fmt.Errorf("unsupported current SINF field %q", field.typ)
 		}
 		if _, exists := values[field.typ]; exists {
@@ -253,52 +257,47 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 		}
 		values[field.typ] = blob[field.start:field.end]
 	}
-	if len(values) != len(expectedFields) {
-		return nil, report, fmt.Errorf("current SINF does not contain the required six fields")
-	}
-	rights := values["righ"]
-	expectedRights := []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32"}
-	if len(rights) != 88 && len(rights) != 80 {
-		return nil, report, fmt.Errorf("current SINF rights have %d bytes, want 80 or 88", len(rights))
-	}
-	suffixBytes := len(rights) - 80
-	privateBytes := 440 + suffixBytes
-	if suffixBytes == 0 {
-		expectedRights = expectedRights[:9]
-	}
-	for index, typ := range expectedRights {
-		if string(rights[index*8:index*8+4]) != typ {
-			return nil, report, fmt.Errorf("current SINF right %d is not %q", index, typ)
+	for _, typ := range requiredFields {
+		if _, ok := values[typ]; !ok {
+			return nil, report, fmt.Errorf("current SINF does not contain required field %q", typ)
 		}
 	}
+	for _, typ := range [...]string{"crdt", "asdt"} {
+		if value := values[typ]; value != nil && len(value) != 4 {
+			return nil, report, fmt.Errorf("current SINF optional field %q has invalid geometry", typ)
+		}
+	}
+	rights := values["righ"]
+	namedRightsBytes, err := currentSINFRightsGeometry(rights)
+	if err != nil {
+		return nil, report, err
+	}
+	privateBytes := 360 + len(rights)
 	if len(values["user"]) != 4 || len(values["key "]) != 4 || len(values["iviv"]) != aes.BlockSize ||
 		len(values["name"]) != 256 || len(values["priv"]) != privateBytes {
 		return nil, report, fmt.Errorf("current SINF has unsupported IV or private-record geometry")
 	}
-	encryptedPrivate := values["priv"]
-	if suffixBytes == 0 {
-		if !bytes.Equal(encryptedPrivate[432:], make([]byte, 8)) {
-			return nil, report, fmt.Errorf("short SINF private record has nonzero trailer")
+	trailerBytes := privateBytes % aes.BlockSize
+	if trailerBytes != 0 && trailerBytes != 8 {
+		return nil, report, fmt.Errorf("current SINF private record has invalid trailer geometry")
+	}
+	encryptedPrivate := values["priv"][:privateBytes-trailerBytes]
+	for _, value := range values["priv"][privateBytes-trailerBytes:] {
+		if value != 0 {
+			return nil, report, fmt.Errorf("current SINF private record has nonzero trailer")
 		}
-		encryptedPrivate = encryptedPrivate[:432]
 	}
 	cleartext, err := macOSSINFCrypt(encryptedPrivate, credential, values["name"], values["iviv"], false)
 	if err != nil {
 		return nil, report, err
 	}
-	if suffixBytes == 0 {
-		cleartext = append(cleartext, values["priv"][432:]...)
-	}
+	cleartext = append(cleartext, values["priv"][privateBytes-trailerBytes:]...)
 	defer clear(cleartext)
 	privateFields, err := validateMacOSSINFPrivate(cleartext, rights)
 	if err != nil {
 		return nil, report, err
 	}
-	roundTripClear := cleartext
-	if suffixBytes == 0 {
-		roundTripClear = cleartext[:432]
-	}
-	roundTrip, err := macOSSINFCrypt(roundTripClear, credential, values["name"], values["iviv"], true)
+	roundTrip, err := macOSSINFCrypt(cleartext[:len(cleartext)-trailerBytes], credential, values["name"], values["iviv"], true)
 	if err != nil {
 		return nil, report, err
 	}
@@ -308,19 +307,13 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	}
 	clear(roundTrip)
 
-	namedRights := rights[:len(expectedRights)*8]
-	modeAt, err := macOSSINFRightsValue(namedRights, "mode")
+	modeAt, err := macOSSINFRightsValue(rights[:namedRightsBytes], "mode")
 	if err != nil {
 		return nil, report, err
 	}
 	originalMode := binary.BigEndian.Uint32(rights[modeAt : modeAt+4])
-	normalizedRights := append([]byte(nil), rights[:80]...)
-	// The shorter current layout has nine named rights followed by an opaque
-	// eight-byte suffix. Native installed controls use eight zero bytes here.
-	// Keep the target geometry while preserving all nine named rights.
-	if suffixBytes == 0 {
-		clear(normalizedRights[72:])
-	}
+	normalizedRights := make([]byte, 80)
+	copy(normalizedRights, rights[:min(namedRightsBytes, len(normalizedRights))])
 	binary.BigEndian.PutUint32(normalizedRights[modeAt:modeAt+4], 0)
 
 	normalizedClear := append([]byte(nil), cleartext[:16]...)
@@ -341,7 +334,7 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	}
 	private = append(private, normalizedClear[len(normalizedClear)-8:]...)
 	defer clear(private)
-	tranAt, err := macOSSINFRightsValue(namedRights, "tran")
+	tranAt, err := macOSSINFRightsValue(rights[:namedRightsBytes], "tran")
 	if err != nil {
 		return nil, report, err
 	}
@@ -386,10 +379,117 @@ func normalizeMacOSSINF(blob, credential []byte) ([]byte, MacOSSINFRecordReport,
 	}
 	report = MacOSSINFRecordReport{
 		InputBytes: len(blob), OutputBytes: len(result), OriginalMode: originalMode,
-		ConvertedMode: 0, NamedRightsPreserved: len(expectedRights),
-		RightsSuffixRemovedBytes: suffixBytes, PrivateKeyMaterialPreserved: true,
+		ConvertedMode: 0, NamedRightsPreserved: min(namedRightsBytes/8, len(normalizedRights)/8),
+		RightsSuffixRemovedBytes: len(rights) - len(normalizedRights), PrivateKeyMaterialPreserved: true,
 	}
 	return result, report, nil
+}
+
+func replaceCurrentSINFPrivate(blob, private []byte) ([]byte, error) {
+	roots, err := sinfAtoms(blob, 0, len(blob))
+	if err != nil || len(roots) != 1 || roots[0].typ != "sinf" || roots[0].start != 8 || roots[0].end != len(blob) {
+		return nil, fmt.Errorf("SINF must contain one complete root atom")
+	}
+	outer, err := sinfAtoms(blob, roots[0].start, roots[0].end)
+	if err != nil {
+		return nil, err
+	}
+	schi, err := uniqueAtom(outer, "schi")
+	if err != nil {
+		return nil, err
+	}
+	fields, err := sinfAtoms(blob, schi.start, schi.end)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := uniqueAtom(fields, "priv"); err != nil {
+		return nil, err
+	}
+	var scheme []byte
+	for _, field := range fields {
+		payload := blob[field.start:field.end]
+		if field.typ == "priv" {
+			payload = private
+		}
+		scheme = append(scheme, macOSSINFAtom(field.typ, payload)...)
+	}
+	var rootPayload []byte
+	for _, field := range outer {
+		payload := blob[field.start:field.end]
+		if field.typ == "schi" {
+			payload = scheme
+		}
+		rootPayload = append(rootPayload, macOSSINFAtom(field.typ, payload)...)
+	}
+	clear(scheme)
+	result := macOSSINFAtom("sinf", rootPayload)
+	clear(rootPayload)
+	return result, nil
+}
+
+func normalizeMacOSSINFWithModel(blob []byte, model currentSINFModel) ([]byte, MacOSSINFRecordReport, error) {
+	var report MacOSSINFRecordReport
+	if model.version != 2 || !model.hasSelector {
+		return nil, report, fmt.Errorf("macOS conversion requires a selector-bound version-2 model")
+	}
+	fields, err := parseSINFFields(blob)
+	if err != nil {
+		return nil, report, err
+	}
+	selector, err := sinfSelector(blob, fields)
+	if err != nil {
+		return nil, report, err
+	}
+	if selector != model.selector {
+		return nil, report, fmt.Errorf("enrollment model selector does not match SINF selector %s", selector.Identifier())
+	}
+	source, err := sinfPrivatePayload(blob, fields)
+	if err != nil {
+		return nil, report, err
+	}
+	atoms, err := currentSINFPrivatePlaintextLegacy(model, source)
+	if err != nil {
+		return nil, report, err
+	}
+	defer clear(atoms)
+	cleartext := make([]byte, 16, 16+len(atoms))
+	copy(cleartext, "itun")
+	binary.BigEndian.PutUint32(cleartext[4:8], 12)
+	copy(cleartext[8:12], "vers")
+	binary.BigEndian.PutUint32(cleartext[12:16], 1)
+	cleartext = append(cleartext, atoms...)
+	defer clear(cleartext)
+	trailerBytes := len(cleartext) % aes.BlockSize
+	for _, value := range cleartext[len(cleartext)-trailerBytes:] {
+		if value != 0 {
+			return nil, report, fmt.Errorf("current SINF decoded private trailer is not zero")
+		}
+	}
+	name, err := macOSSINFField(blob, fields, "name")
+	if err != nil {
+		return nil, report, err
+	}
+	iviv, err := macOSSINFField(blob, fields, "iviv")
+	if err != nil {
+		return nil, report, err
+	}
+	credential := make([]byte, aes.BlockSize)
+	for position, value := range model.key {
+		credential[position] = value ^ 0x30
+	}
+	defer clear(credential)
+	private, err := macOSSINFCrypt(cleartext[:len(cleartext)-trailerBytes], credential, name, iviv, true)
+	if err != nil {
+		return nil, report, err
+	}
+	private = append(private, cleartext[len(cleartext)-trailerBytes:]...)
+	defer clear(private)
+	rewritten, err := replaceCurrentSINFPrivate(blob, private)
+	if err != nil {
+		return nil, report, err
+	}
+	defer clear(rewritten)
+	return normalizeMacOSSINF(rewritten, credential)
 }
 
 func normalizeMacOSSINFWithModels(blob []byte, packs [][]byte) ([]byte, MacOSSINFRecordReport, error) {
@@ -400,26 +500,33 @@ func normalizeMacOSSINFWithModels(blob []byte, packs [][]byte) ([]byte, MacOSSIN
 		return nil, selectedReport, err
 	}
 	matching := 0
+	var lastError error
 	for index, pack := range packs {
 		model, parseErr := parseCurrentSINFModel(pack)
 		if parseErr != nil {
 			clear(selected)
 			return nil, selectedReport, fmt.Errorf("parse FairPlay model %d: %w", index, parseErr)
 		}
-		// The account credential relation is privately validated for selector-
-		// bound version-2 models. Version 3 uses another protected codec and is
-		// rejected until the same relation is independently proven there.
+		// Version 3 uses another protected codec and is rejected until the same
+		// conversion relation is independently proven there.
 		if model.version != 2 || !model.hasSelector || model.selector != selector {
 			continue
 		}
 		matching++
-		credential := make([]byte, aes.BlockSize)
-		for position, value := range model.key {
-			credential[position] = value ^ 0x30
-		}
-		converted, report, convertErr := normalizeMacOSSINF(blob, credential)
-		clear(credential)
+		converted, report, convertErr := normalizeMacOSSINFWithModel(blob, model)
+		directErr := convertErr
 		if convertErr != nil {
+			// Version-2 models produced before direct enrollment stored the same
+			// AES key but were paired with the legacy private-record wrapper.
+			credential := make([]byte, aes.BlockSize)
+			for position, value := range model.key {
+				credential[position] = value ^ 0x30
+			}
+			converted, report, convertErr = normalizeMacOSSINF(blob, credential)
+			clear(credential)
+		}
+		if convertErr != nil {
+			lastError = fmt.Errorf("direct model: %v; legacy wrapper: %v", directErr, convertErr)
 			continue
 		}
 		if selected != nil {
@@ -435,7 +542,7 @@ func normalizeMacOSSINFWithModels(blob []byte, packs [][]byte) ([]byte, MacOSSIN
 	if matching == 0 {
 		return nil, selectedReport, fmt.Errorf("no version-2 enrollment model matches SINF selector %s", selector.Identifier())
 	}
-	return nil, selectedReport, fmt.Errorf("matching enrollment model cannot derive the macOS credential for SINF selector %s", selector.Identifier())
+	return nil, selectedReport, fmt.Errorf("matching enrollment model cannot derive the macOS credential for SINF selector %s: %v", selector.Identifier(), lastError)
 }
 
 func macOSSINFMember(root, relative string) (string, error) {

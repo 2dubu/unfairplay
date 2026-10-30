@@ -1,27 +1,38 @@
 package recovery
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"sync"
 )
 
+// Progress reports bounded, non-secret recovery work. Completed and Total are
+// candidate comparisons, not bytes or key material.
+type Progress struct {
+	Phase              string
+	Completed          uint64
+	Total              uint64
+	RegistryCandidates int
+	RecordCandidates   int
+	WindowCandidates   int
+}
+
 // Options describes the private runtime inputs used to derive one
 // selector-bound enrollment model. FileMappings use SUFFIX=FILE syntax.
 type Options struct {
-	FileMappings       []string
-	HardwarePath       string
-	ExecutablePath     string
-	ReferencePath      string
-	SelectionMaxBlocks int
+	FileMappings []string
+	HardwarePath string
+	Context      context.Context
+	Progress     func(Progress)
 }
 
 // Result is the output of one bounded enrollment recovery.
 type Result struct {
-	EnrollmentModel    []byte
-	StateSHA256        string
-	Iterations         int
-	ExtractedBlockHits int
+	EnrollmentModel           []byte
+	StateSHA256               string
+	Iterations                int
+	DecodedRegistryCandidates int
 }
 
 var recoveryMu sync.Mutex
@@ -37,9 +48,9 @@ func readPrivateInput(path string) ([]byte, error) {
 	return os.ReadFile(path)
 }
 
-// Recover derives a selector-bound enrollment model from a normalized native
-// Mac capture. The embedded model contains build-global state only; private
-// SIDB, SINF, SUPF, executable, and hardware bytes are supplied at runtime.
+// Recover derives a selector-bound enrollment model from structurally parsed
+// SIDB, SINF, SUPF, and hardware inputs. Native code and the captured
+// executable are not part of the production recovery path.
 func Recover(options Options) (Result, error) {
 	recoveryMu.Lock()
 	defer recoveryMu.Unlock()
@@ -50,84 +61,39 @@ func Recover(options Options) (Result, error) {
 	if options.HardwarePath == "" {
 		return Result{}, fmt.Errorf("recovery requires a hardware identity file")
 	}
-	if options.ExecutablePath == "" {
-		return Result{}, fmt.Errorf("recovery requires an installed executable path")
+	ctx := options.Context
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	value, err := loadModelBytes(embeddedModelBytes())
-	if err != nil {
-		return Result{}, fmt.Errorf("load embedded recovery model: %w", err)
-	}
-	defer clearPrivateRecoveryState(value)
-	limit, err := selectionBlockLimit(options.SelectionMaxBlocks)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
-	value.selectionMaxBlocks = limit
-	if err := addReferencePages(value, options.ReferencePath); err != nil {
-		return Result{}, err
+	if options.Progress != nil {
+		options.Progress(Progress{Phase: "load-inputs"})
 	}
-	if err := configureRawSourceRuntime(value, "enrollment-sinf", options.FileMappings,
-		options.HardwarePath, options.ExecutablePath, 0); err != nil {
-		return Result{}, err
-	}
-	digest, iterations, err := runRawSource(value, "enrollment-sinf", false, 0)
+	inputs, err := loadCurrentRecoveryInputs(options.FileMappings, options.HardwarePath)
 	if err != nil {
 		return Result{}, err
 	}
-	pack, err := currentRawSourceEnrollmentPack()
+	defer inputs.clear()
+	if _, err := validateCurrentSUPFFiles(inputs.files); err != nil {
+		return Result{}, err
+	}
+	if options.Progress != nil {
+		options.Progress(Progress{Phase: "decode-sidb"})
+	}
+	registries, digest, iterations, err := deriveCurrentSelectionRegistryCandidates(inputs.files, inputs.hardware)
 	if err != nil {
 		return Result{}, err
 	}
-	hits := 0
-	if lastRawSourceState != nil {
-		hits = lastRawSourceState.extractedBlockHits
+	pack, err := currentEnrollmentPackWithContext(ctx, inputs.files, registries, inputs.hardware, options.Progress)
+	if err != nil {
+		clearDecodedSIDBRegistryCandidates(registries)
+		return Result{}, err
 	}
-	return Result{EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations, ExtractedBlockHits: hits}, nil
-}
-
-const defaultSelectionMaxBlocks = 2_000_000
-const maximumSelectionMaxBlocks = 20_000_000
-
-func selectionBlockLimit(requested int) (int, error) {
-	if requested == 0 {
-		return defaultSelectionMaxBlocks, nil
-	}
-	if requested < 1 || requested > maximumSelectionMaxBlocks {
-		return 0, fmt.Errorf("selection block limit must be between 1 and %d", maximumSelectionMaxBlocks)
-	}
-	return requested, nil
-}
-
-func clearPrivateRecoveryState(value *model) {
-	if lastRawSourceState != nil {
-		for _, page := range lastRawSourceState.writable {
-			clear(page)
-		}
-		for _, page := range lastRawSourceState.mapped {
-			clear(page)
-		}
-		clear(lastRawSourceState.writable)
-		clear(lastRawSourceState.mapped)
-		clear(lastRawSourceState.initialized)
-		lastRawSourceState = nil
-	}
-	if activeRawSourceRuntime != nil {
-		for name, data := range activeRawSourceRuntime.files {
-			clear(data)
-			delete(activeRawSourceRuntime.files, name)
-		}
-		clear(activeRawSourceRuntime.mac)
-		for key, item := range activeRawSourceRuntime.fakeCFValues {
-			clear(item.data)
-			delete(activeRawSourceRuntime.fakeCFValues, key)
-		}
-		activeRawSourceRuntime = nil
-	}
-	if value != nil {
-		for address, page := range value.pages {
-			clear(page)
-			delete(value.pages, address)
-		}
-		clear(value.registers[:])
-	}
+	clearDecodedSIDBRegistryCandidates(registries)
+	return Result{
+		EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations,
+		DecodedRegistryCandidates: len(registries),
+	}, nil
 }

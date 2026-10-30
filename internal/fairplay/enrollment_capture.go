@@ -23,104 +23,44 @@ import (
 )
 
 const (
-	EnrollmentCaptureSchema       = "unfairplay-native-enrollment-capture-v1"
-	legacyEnrollmentCaptureSchema = "ipatool-fairplay-native-enrollment-capture-v1"
-)
-
-const (
-	FairPlayBuild25G83Hash  = "93b8db9c7140cedbd04a3bbbce297b68ba9060e8a4f39ef52a1017964f3da4c5"
-	FairPlayBuild26A428Hash = "1e58d37e9602dd0ca5e24b14762063b6c310248b4d3a94272771d815e4ea1784"
-	FairPlayBuild26B118Hash = "f68e4407e90af5466d2766e1b1c4637260d08cb0518f991e1797ac6c4964439d"
+	EnrollmentCaptureSchema                 = "unfairplay-native-enrollment-capture-v2"
+	legacyUnfairPlayEnrollmentCaptureSchema = "unfairplay-native-enrollment-capture-v1"
+	legacyEnrollmentCaptureSchema           = "ipatool-fairplay-native-enrollment-capture-v1"
 )
 
 type FairPlayBuildSupport struct {
-	Profile          string `json:"profile"`
-	Build            string `json:"build"`
-	Status           string `json:"status"`
-	ValidationBasis  string `json:"validation_basis,omitempty"`
-	Recovery         bool   `json:"recovery"`
-	Decrypt          bool   `json:"end_to_end_decryption"`
-	EvaluatorProfile string `json:"evaluator_profile,omitempty"`
-	EvaluatorSHA256  string `json:"evaluator_source_sha256,omitempty"`
+	Profile         string `json:"profile"`
+	Build           string `json:"build"`
+	Status          string `json:"status"`
+	ValidationBasis string `json:"validation_basis,omitempty"`
+	Recovery        bool   `json:"recovery"`
+	Decrypt         bool   `json:"end_to_end_decryption"`
 }
 
-var supportedFairPlayHashes = map[string]FairPlayBuildSupport{
-	FairPlayBuild25G83Hash: {
-		Profile: "portable-current-sinf", Build: "25G83", Status: "portable-semantic-verified", ValidationBasis: "canonical-contract-with-portable-semantic-evaluator", Recovery: true, Decrypt: true,
-		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
-	},
-	FairPlayBuild26A428Hash: {
-		Profile: "macos26a428", Build: "26A428", Status: "supported", ValidationBasis: "exact-binary-profile-and-canonical-contract", Recovery: true, Decrypt: true,
-		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
-	},
-	FairPlayBuild26B118Hash: {
-		Profile: "portable-current-sinf", Build: "26B118", Status: "portable-semantic-verified", ValidationBasis: "canonical-contract-with-portable-semantic-evaluator", Recovery: true, Decrypt: true,
-		EvaluatorProfile: "macos26a428", EvaluatorSHA256: FairPlayBuild26A428Hash,
-	},
-}
-
-func LookupFairPlayBuild(hash string) (FairPlayBuildSupport, bool) {
-	result, ok := supportedFairPlayHashes[strings.ToLower(hash)]
-	return result, ok
-}
-
-func isBetaBuildVersion(build string) bool {
-	build = strings.TrimSpace(build)
-	if len(build) < 4 || build[len(build)-1] < 'a' || build[len(build)-1] > 'z' {
-		return false
-	}
-	index := 0
-	for index < len(build)-1 && build[index] >= '0' && build[index] <= '9' {
-		index++
-	}
-	if index == 0 || index >= len(build)-1 || build[index] < 'A' || build[index] > 'Z' {
-		return false
-	}
-	index++
-	digitStart := index
-	for index < len(build)-1 && build[index] >= '0' && build[index] <= '9' {
-		index++
-	}
-	return index == len(build)-1 && index > digitStart
-}
-
-// ResolveFairPlayBuildSupport returns exact validation metadata for known
-// builds and a fail-closed portable recovery candidate for every other build.
-// The portable path does not execute the captured daemon. It consumes the
-// captured enrollment inputs with the portable semantic evaluator and promotes a model
-// only after complete SINF and IPA validation succeeds.
+// ResolveFairPlayBuildSupport validates an optional legacy daemon identity and
+// always returns the same typed recovery contract. The daemon hash is
+// provenance only; it never selects an algorithm.
 func ResolveFairPlayBuildSupport(hash, build string) (FairPlayBuildSupport, bool) {
+	if hash == "" {
+		return FairPlayBuildSupport{
+			Profile: "typed-current-enrollment", Build: build, Status: "portable-validation-required",
+			ValidationBasis: "structural-enrollment-plus-complete-ipa-validation",
+			Recovery:        true, Decrypt: false,
+		}, false
+	}
 	normalized := strings.ToLower(hash)
 	decoded, err := hex.DecodeString(normalized)
 	if err != nil || len(decoded) != sha256.Size {
 		return FairPlayBuildSupport{Build: build, Status: "invalid-fairplayd-identity"}, false
 	}
-	if isBetaBuildVersion(build) {
-		return FairPlayBuildSupport{Build: build, Status: "unsupported-beta-build"}, false
-	}
-	if support, ok := LookupFairPlayBuild(normalized); ok {
-		return support, true
-	}
 	return FairPlayBuildSupport{
-		Profile:          "portable-current-sinf",
-		Build:            build,
-		Status:           "portable-semantic-validation-required",
-		ValidationBasis:  "portable-semantic-evaluator-plus-complete-ipa-promotion-gate",
-		Recovery:         true,
-		Decrypt:          false,
-		EvaluatorProfile: "macos26a428",
-		EvaluatorSHA256:  FairPlayBuild26A428Hash,
+		Profile:         "typed-current-enrollment",
+		Build:           build,
+		Status:          "portable-validation-required",
+		ValidationBasis: "structural-enrollment-plus-personalized-sinf-and-complete-ipa-validation",
+		Recovery:        true,
+		Decrypt:         false,
 	}, false
-}
-
-func applyFairPlayBinaryProfile(support FairPlayBuildSupport, known bool, profile *FairPlayBinaryProfile) FairPlayBuildSupport {
-	if known || !support.Recovery || profile == nil || !profile.PortableCandidate {
-		return support
-	}
-	support.Profile = profile.StructuralFamily
-	support.Status = "portable-semantic-structure-matched"
-	support.ValidationBasis = "structural-profile-plus-portable-semantic-promotion-gate"
-	return support
 }
 
 type EnrollmentCaptureFile struct {
@@ -146,9 +86,8 @@ type EnrollmentCaptureManifest struct {
 	CreatedAt      string                  `json:"created_at"`
 	ProductVersion string                  `json:"product_version"`
 	BuildVersion   string                  `json:"build_version"`
-	FairPlayd      EnrollmentCaptureFile   `json:"fairplayd"`
+	FairPlayd      EnrollmentCaptureFile   `json:"fairplayd,omitzero"`
 	FairPlay       FairPlayBuildSupport    `json:"enrollment_support"`
-	BinaryProfile  *FairPlayBinaryProfile  `json:"fairplay_binary_profile,omitempty"`
 	HardwareMAC    EnrollmentCaptureFile   `json:"hardware_iomac"`
 	App            EnrollmentCaptureApp    `json:"app"`
 	IPA            *EnrollmentCaptureFile  `json:"ipa,omitempty"`
@@ -161,7 +100,6 @@ type EnrollmentCollectOptions struct {
 	InstalledExecutablePath string
 	IPAPath                 string
 	OutputPath              string
-	FairPlaydPath           string
 	SystemStatePath         string
 	SharedStatePath         string
 	ADIPath                 string
@@ -364,58 +302,6 @@ func copyDirectoryFiles(source, destination, captureRoot string) ([]EnrollmentCa
 	return result, err
 }
 
-func thinArm64eMachO(source, destination string) (EnrollmentCaptureFile, error) {
-	fat, err := macho.OpenFat(source)
-	if err != nil {
-		// A previously thinned exact-build image is also accepted.
-		thin, thinErr := macho.Open(source)
-		if thinErr != nil {
-			return EnrollmentCaptureFile{}, fmt.Errorf("open fairplayd Mach-O: %w", err)
-		}
-		defer thin.Close()
-		if thin.Cpu != macho.CpuArm64 || uint32(thin.SubCpu)&0x00ffffff != 2 {
-			return EnrollmentCaptureFile{}, fmt.Errorf("fairplayd has no arm64e slice")
-		}
-		return copyPrivateFile(source, destination)
-	}
-	defer fat.Close()
-	var selected *macho.FatArch
-	for index := range fat.Arches {
-		arch := &fat.Arches[index]
-		if arch.Cpu == macho.CpuArm64 && uint32(arch.SubCpu)&0x00ffffff == 2 {
-			selected = arch
-			if uint32(arch.SubCpu)&0xff000000 == 0 {
-				break
-			}
-		}
-	}
-	if selected == nil {
-		return EnrollmentCaptureFile{}, fmt.Errorf("fairplayd has no arm64e slice")
-	}
-	input, err := os.Open(source)
-	if err != nil {
-		return EnrollmentCaptureFile{}, err
-	}
-	defer input.Close()
-	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
-		return EnrollmentCaptureFile{}, err
-	}
-	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return EnrollmentCaptureFile{}, err
-	}
-	value := sha256.New()
-	written, copyErr := io.Copy(io.MultiWriter(output, value), io.NewSectionReader(input, int64(selected.Offset), int64(selected.Size)))
-	closeErr := output.Close()
-	if copyErr != nil {
-		return EnrollmentCaptureFile{}, copyErr
-	}
-	if closeErr != nil {
-		return EnrollmentCaptureFile{}, closeErr
-	}
-	return EnrollmentCaptureFile{Path: filepath.ToSlash(destination), Bytes: written, SHA256: hex.EncodeToString(value.Sum(nil)), Mode: "0600"}, nil
-}
-
 func arm64eMachOHash(source string) (string, int64, error) {
 	fat, err := macho.OpenFat(source)
 	if err != nil {
@@ -479,8 +365,8 @@ func parseIORegistryHardwareMAC(output []byte, interfaceName string) ([]byte, er
 		roots = append(roots, value)
 	case []any:
 		for _, entry := range value {
-			// Skip any non-dictionary subtree rather than abandoning the
-			// search; a valid interface may still appear in another subtree.
+			// Skip a malformed unrelated subtree; a valid built-in interface
+			// may still appear in another result from the filtered query.
 			if root, ok := entry.(map[string]any); ok {
 				roots = append(roots, root)
 			}
@@ -617,9 +503,6 @@ func CollectEnrollment(options EnrollmentCollectOptions) (EnrollmentCaptureManif
 	if err != nil {
 		return manifest, err
 	}
-	if options.FairPlaydPath == "" {
-		options.FairPlaydPath = "/System/Library/PrivateFrameworks/CoreFP.framework/Versions/A/fairplayd"
-	}
 	if options.SystemStatePath == "" {
 		options.SystemStatePath = "/private/var/db/fpsd/SC Info"
 	}
@@ -649,20 +532,7 @@ func CollectEnrollment(options EnrollmentCollectOptions) (EnrollmentCaptureManif
 	}
 
 	var files []EnrollmentCaptureFile
-	fairplaydPath := filepath.Join(options.OutputPath, "fairplayd", "fairplayd.arm64e")
-	fairplayd, err := thinArm64eMachO(options.FairPlaydPath, fairplaydPath)
-	if err != nil {
-		return manifest, err
-	}
-	var binaryProfile *FairPlayBinaryProfile
-	profile, profileErr := InspectFairPlayBinaryProfile(fairplaydPath)
-	if profileErr == nil {
-		binaryProfile = &profile
-	}
-	fairplayd = relativeCaptureFile(options.OutputPath, fairplayd)
-	files = append(files, fairplayd)
-	support, known := ResolveFairPlayBuildSupport(fairplayd.SHA256, options.BuildVersion)
-	support = applyFairPlayBinaryProfile(support, known, binaryProfile)
+	support, _ := ResolveFairPlayBuildSupport("", options.BuildVersion)
 
 	var mac []byte
 	if options.MACAddressPath != "" {
@@ -712,7 +582,7 @@ func CollectEnrollment(options EnrollmentCollectOptions) (EnrollmentCaptureManif
 		}
 		files = append(files, captured...)
 	}
-	if len(files) == 4+len(licenseFiles) {
+	if len(files) == 3+len(licenseFiles) {
 		return manifest, fmt.Errorf("capture found no native FairPlay state files")
 	}
 
@@ -760,7 +630,7 @@ func CollectEnrollment(options EnrollmentCollectOptions) (EnrollmentCaptureManif
 	manifest = EnrollmentCaptureManifest{
 		Schema: EnrollmentCaptureSchema, CreatedAt: time.Now().UTC().Format(time.RFC3339),
 		ProductVersion: options.ProductVersion, BuildVersion: options.BuildVersion,
-		FairPlayd: fairplayd, FairPlay: support, BinaryProfile: binaryProfile, HardwareMAC: hardware,
+		FairPlay: support, HardwareMAC: hardware,
 		App: EnrollmentCaptureApp{
 			BundleIdentifier: metadata.BundleIdentifier, Executable: metadata.Executable,
 			ExecutablePath: installedExecutablePath,
@@ -773,16 +643,6 @@ func CollectEnrollment(options EnrollmentCollectOptions) (EnrollmentCaptureManif
 	}
 	if ipaFile == nil {
 		manifest.Warnings = append(manifest.Warnings, "capture has no IPA; recovery requires a matching personalized IPA")
-	}
-	if support.Status == "unsupported-beta-build" {
-		manifest.Warnings = append(manifest.Warnings,
-			"beta macOS builds are not supported; use a stable macOS release for enrollment recovery")
-	} else if !known {
-		manifest.Warnings = append(manifest.Warnings,
-			"fairplayd hash is not independently verified; portable recovery requires complete SINF and IPA validation")
-	}
-	if profileErr != nil {
-		manifest.Warnings = append(manifest.Warnings, "fairplayd structural profiling failed: "+profileErr.Error())
 	}
 	if err := writePrivateJSON(filepath.Join(options.OutputPath, "manifest.json"), manifest); err != nil {
 		return EnrollmentCaptureManifest{}, err
@@ -830,19 +690,15 @@ func LoadEnrollmentCapture(path string, verify bool) (EnrollmentCaptureManifest,
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return manifest, err
 	}
-	if manifest.Schema != EnrollmentCaptureSchema && manifest.Schema != legacyEnrollmentCaptureSchema {
+	if manifest.Schema != EnrollmentCaptureSchema && manifest.Schema != legacyUnfairPlayEnrollmentCaptureSchema && manifest.Schema != legacyEnrollmentCaptureSchema {
 		return manifest, fmt.Errorf("unsupported enrollment capture schema %q", manifest.Schema)
 	}
-	support, known := ResolveFairPlayBuildSupport(manifest.FairPlayd.SHA256, manifest.BuildVersion)
-	manifest.FairPlay = support
-	if manifest.BinaryProfile == nil {
-		if full, pathErr := captureFilePath(path, manifest.FairPlayd.Path); pathErr == nil {
-			if profile, profileErr := InspectFairPlayBinaryProfile(full); profileErr == nil {
-				manifest.BinaryProfile = &profile
-			}
-		}
+	if manifest.FairPlayd.SHA256 == "" {
+		manifest.FairPlay, _ = ResolveFairPlayBuildSupport("", manifest.BuildVersion)
+	} else {
+		support, _ := ResolveFairPlayBuildSupport(manifest.FairPlayd.SHA256, manifest.BuildVersion)
+		manifest.FairPlay = support
 	}
-	manifest.FairPlay = applyFairPlayBinaryProfile(manifest.FairPlay, known, manifest.BinaryProfile)
 	if !verify {
 		return manifest, nil
 	}

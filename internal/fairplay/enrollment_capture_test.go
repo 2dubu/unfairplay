@@ -126,6 +126,11 @@ func currentLayoutSINF(selector SINFSelector) []byte {
 	user[0], user[1], user[2], user[3] = byte(selector.User>>24), byte(selector.User>>16), byte(selector.User>>8), byte(selector.User)
 	key[0], key[1], key[2], key[3] = byte(selector.Key>>24), byte(selector.Key>>16), byte(selector.Key>>8), byte(selector.Key)
 	fields := append(testAtom("user", user), testAtom("key ", key)...)
+	rights := make([]byte, 88)
+	for index, name := range append(currentSINFRequiredRights[:], "hi32") {
+		copy(rights[index*8:index*8+4], name)
+	}
+	fields = append(fields, testAtom("righ", rights)...)
 	fields = append(fields, testAtom("priv", make([]byte, 448))...)
 	return testAtom("sinf", testAtom("schi", fields))
 }
@@ -136,7 +141,7 @@ func TestInspectSINFAndModel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diagnostic.Selector != selector || !diagnostic.CurrentLayout || diagnostic.LegacyMarkers || diagnostic.PrivateBytes != 448 {
+	if diagnostic.Selector != selector || !diagnostic.CurrentLayout || diagnostic.LegacyMarkers || diagnostic.PrivateBytes != 448 || diagnostic.RightsBytes != 88 {
 		t.Fatalf("unexpected SINF diagnostic: %#v", diagnostic)
 	}
 	modelPath := filepath.Join(t.TempDir(), "model.bin")
@@ -152,98 +157,80 @@ func TestInspectSINFAndModel(t *testing.T) {
 	}
 }
 
-func TestFairPlayBuildRecoverySupport(t *testing.T) {
-	legacy, ok := LookupFairPlayBuild(FairPlayBuild25G83Hash)
-	if !ok || !legacy.Recovery || !legacy.Decrypt || legacy.Status != "portable-semantic-verified" ||
-		legacy.ValidationBasis != "canonical-contract-with-portable-semantic-evaluator" || legacy.EvaluatorSHA256 != FairPlayBuild26A428Hash {
-		t.Fatalf("25G83 support = %#v, %v", legacy, ok)
-	}
-	stable, ok := LookupFairPlayBuild(FairPlayBuild26A428Hash)
-	if !ok || !stable.Recovery || !stable.Decrypt {
-		t.Fatalf("26A428 support = %#v, %v", stable, ok)
-	}
-	compat, ok := LookupFairPlayBuild(FairPlayBuild26B118Hash)
-	if !ok || !compat.Recovery || !compat.Decrypt || compat.Profile != "portable-current-sinf" || compat.Status != "portable-semantic-verified" || compat.EvaluatorSHA256 != FairPlayBuild26A428Hash {
-		t.Fatalf("26B118 support = %#v, %v", compat, ok)
+func TestInspectSINFStructuralCurrentLayouts(t *testing.T) {
+	credential := macOSTestCredential()
+	for _, test := range []struct {
+		name                      string
+		sinf                      []byte
+		privateBytes, rightsBytes int
+	}{
+		{"short", macOSTestCurrentSINFLayout(t, credential, 1, true), 440, 80},
+		{"standard", macOSTestCurrentSINF(t, credential, 1), 448, 88},
+		{"extended", macOSTestCurrentSINFWithRights(t, credential, 1, []string{
+			"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32", "xtra",
+		}), 456, 96},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			diagnostic, err := InspectSINF(test.sinf)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !diagnostic.CurrentLayout || diagnostic.PrivateBytes != test.privateBytes || diagnostic.RightsBytes != test.rightsBytes {
+				t.Fatalf("diagnostic = %#v", diagnostic)
+			}
+		})
 	}
 }
 
-func TestUnknownFairPlayBuildUsesPortableValidation(t *testing.T) {
+func TestFairPlayBuildIdentityDoesNotSelectAlgorithm(t *testing.T) {
+	typed, known := ResolveFairPlayBuildSupport("", "future-build")
+	if known || !typed.Recovery || typed.Decrypt || typed.Status != "portable-validation-required" || typed.Profile != "typed-current-enrollment" {
+		t.Fatalf("binary-independent support = %#v, known=%v", typed, known)
+	}
 	const unknownHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 	support, known := ResolveFairPlayBuildSupport(unknownHash, "future-build")
-	if known || !support.Recovery || support.Decrypt || support.Status != "portable-semantic-validation-required" ||
-		support.EvaluatorSHA256 != FairPlayBuild26A428Hash {
+	if known || !support.Recovery || support.Decrypt || support.Status != "portable-validation-required" ||
+		support.Profile != "typed-current-enrollment" {
 		t.Fatalf("unknown build support = %#v, known=%v", support, known)
 	}
 	invalid, known := ResolveFairPlayBuildSupport("not-a-sha256", "future-build")
 	if known || invalid.Recovery || invalid.Status != "invalid-fairplayd-identity" {
 		t.Fatalf("invalid build support = %#v, known=%v", invalid, known)
 	}
-	profile := &FairPlayBinaryProfile{StructuralFamily: "family-v1", PortableCandidate: true}
-	matched := applyFairPlayBinaryProfile(support, false, profile)
-	if matched.Profile != "family-v1" || matched.Status != "portable-semantic-structure-matched" || !matched.Recovery || matched.Decrypt {
-		t.Fatalf("structurally matched support = %#v", matched)
-	}
 }
 
-func TestBetaFairPlayBuildFailsClosed(t *testing.T) {
-	const unknownHash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-	for _, build := range []string{"26B5091g", "27A123b"} {
-		support, known := ResolveFairPlayBuildSupport(unknownHash, build)
-		if known || support.Recovery || support.Decrypt || support.Status != "unsupported-beta-build" ||
-			support.EvaluatorProfile != "" || support.EvaluatorSHA256 != "" {
-			t.Fatalf("beta build %s support = %#v, known=%v", build, support, known)
-		}
-		matched := applyFairPlayBinaryProfile(support, false, &FairPlayBinaryProfile{
-			StructuralFamily: "portable-family", PortableCandidate: true,
-		})
-		if matched != support {
-			t.Fatalf("structural profiling enabled beta build %s: %#v", build, matched)
-		}
+func TestBinaryIndependentManifestOmitsFairPlayd(t *testing.T) {
+	directory := filepath.Join(t.TempDir(), "capture")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
 	}
-	knownHash, known := ResolveFairPlayBuildSupport(FairPlayBuild26A428Hash, "26B5091g")
-	if known || knownHash.Recovery || knownHash.Status != "unsupported-beta-build" {
-		t.Fatalf("known fairplayd hash enabled a beta build: %#v, known=%v", knownHash, known)
+	private := []byte("private fixture")
+	if err := os.WriteFile(filepath.Join(directory, "private.bin"), private, 0o600); err != nil {
+		t.Fatal(err)
 	}
-	for _, build := range []string{"25G83", "26A434", "26B118", "future-build", ""} {
-		if isBetaBuildVersion(build) {
-			t.Fatalf("stable or unknown build %q classified as beta", build)
-		}
+	digest := sha256.Sum256(private)
+	manifest := EnrollmentCaptureManifest{
+		Schema: EnrollmentCaptureSchema,
+		Files: []EnrollmentCaptureFile{{
+			Path: "private.bin", Bytes: int64(len(private)), SHA256: hex.EncodeToString(digest[:]), Mode: "0600",
+		}},
 	}
-}
-
-func TestSemanticEvaluatorModelMatchesCapture(t *testing.T) {
-	capture := &EnrollmentCaptureManifest{
-		FairPlayd: EnrollmentCaptureFile{SHA256: FairPlayBuild26B118Hash},
-		FairPlay:  supportedFairPlayHashes[FairPlayBuild26B118Hash],
-	}
-	if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, capture) {
-		t.Fatal("portable semantic evaluator model did not match the 26B118 capture")
-	}
-	if modelMatchesCaptureEvaluator("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", capture) {
-		t.Fatal("unrelated evaluator model matched the capture")
-	}
-}
-
-func TestPortableSemanticEvaluatorMatrix(t *testing.T) {
-	for _, hash := range []string{FairPlayBuild25G83Hash, FairPlayBuild26A428Hash, FairPlayBuild26B118Hash} {
-		support, ok := LookupFairPlayBuild(hash)
-		if !ok || support.EvaluatorProfile != "macos26a428" || support.EvaluatorSHA256 != FairPlayBuild26A428Hash {
-			t.Fatalf("build %s evaluator metadata: %#v", hash, support)
-		}
-		capture := &EnrollmentCaptureManifest{FairPlayd: EnrollmentCaptureFile{SHA256: hash}, FairPlay: support}
-		if !modelMatchesCaptureEvaluator(FairPlayBuild26A428Hash, capture) {
-			t.Fatalf("portable evaluator did not match build %s", hash)
-		}
-	}
-	support, _ := LookupFairPlayBuild(FairPlayBuild26B118Hash)
-	encoded, err := json.Marshal(support)
+	encoded, err := json.Marshal(manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(encoded)
-	if !strings.Contains(text, `"evaluator_profile":"macos26a428"`) || !strings.Contains(text, `"evaluator_source_sha256":"`+FairPlayBuild26A428Hash+`"`) || strings.Contains(text, "compatib") {
-		t.Fatalf("unexpected semantic evaluator metadata: %s", text)
+	if strings.Contains(string(encoded), "fairplayd") {
+		t.Fatalf("binary-independent manifest retained fairplayd: %s", encoded)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "manifest.json"), encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := LoadEnrollmentCapture(directory, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.FairPlay.Status != "portable-validation-required" || !loaded.FairPlay.Recovery || loaded.FairPlay.Decrypt {
+		t.Fatalf("binary-independent capture support = %#v", loaded.FairPlay)
 	}
 }
 
@@ -260,7 +247,7 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	digest := sha256.Sum256(private)
 	manifest := EnrollmentCaptureManifest{
 		Schema:    EnrollmentCaptureSchema,
-		FairPlayd: EnrollmentCaptureFile{SHA256: FairPlayBuild26B118Hash},
+		FairPlayd: EnrollmentCaptureFile{SHA256: strings.Repeat("ab", sha256.Size)},
 		FairPlay:  FairPlayBuildSupport{Status: "stale-research-only"},
 		Files: []EnrollmentCaptureFile{{
 			Path: "private.bin", Bytes: int64(len(private)), SHA256: hex.EncodeToString(digest[:]), Mode: "0600",
@@ -277,7 +264,7 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.FairPlay.Status != "portable-semantic-verified" || loaded.FairPlay.EvaluatorSHA256 != FairPlayBuild26A428Hash {
+	if loaded.FairPlay.Status != "portable-validation-required" || loaded.FairPlay.Profile != "typed-current-enrollment" || loaded.FairPlay.Decrypt {
 		t.Fatalf("capture support metadata was not refreshed: %#v", loaded.FairPlay)
 	}
 	if err := os.WriteFile(privatePath, []byte("changed"), 0o600); err != nil {
@@ -299,25 +286,29 @@ func TestLoadEnrollmentCaptureIntegrity(t *testing.T) {
 	}
 }
 
-func TestLoadLegacyIpatoolCaptureSchema(t *testing.T) {
-	directory := filepath.Join(t.TempDir(), "capture")
-	if err := os.Mkdir(directory, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	manifest := EnrollmentCaptureManifest{
-		Schema: legacyEnrollmentCaptureSchema,
-		FairPlayd: EnrollmentCaptureFile{
-			SHA256: FairPlayBuild26A428Hash,
-		},
-	}
-	encoded, err := json.Marshal(manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(directory, "manifest.json"), encoded, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadEnrollmentCapture(directory, false); err != nil {
-		t.Fatalf("legacy ipatool capture schema was rejected: %v", err)
+func TestLoadLegacyCaptureSchemas(t *testing.T) {
+	for _, schema := range []string{legacyUnfairPlayEnrollmentCaptureSchema, legacyEnrollmentCaptureSchema} {
+		t.Run(schema, func(t *testing.T) {
+			directory := filepath.Join(t.TempDir(), "capture")
+			if err := os.Mkdir(directory, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			manifest := EnrollmentCaptureManifest{
+				Schema: schema,
+				FairPlayd: EnrollmentCaptureFile{
+					SHA256: strings.Repeat("cd", sha256.Size),
+				},
+			}
+			encoded, err := json.Marshal(manifest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "manifest.json"), encoded, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadEnrollmentCapture(directory, false); err != nil {
+				t.Fatalf("legacy capture schema was rejected: %v", err)
+			}
+		})
 	}
 }

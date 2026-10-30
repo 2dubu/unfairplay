@@ -3,6 +3,7 @@ package fairplay
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/aes"
 	"encoding/binary"
 	"encoding/hex"
 	"os"
@@ -15,20 +16,21 @@ import (
 
 func macOSTestCurrentSINF(t *testing.T, credential []byte, mode uint32) []byte {
 	t.Helper()
-	return macOSTestCurrentSINFLayout(t, credential, mode, false)
+	return macOSTestCurrentSINFWithRights(t, credential, mode, []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32"})
 }
 
 func macOSTestCurrentSINFLayout(t *testing.T, credential []byte, mode uint32, short bool) []byte {
 	t.Helper()
-	rightsBytes := 88
+	rights := []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32"}
 	if short {
-		rightsBytes = 80
+		rights = rights[:9]
 	}
-	rights := make([]byte, rightsBytes)
-	rightsTypes := []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32"}
-	if short {
-		rightsTypes = rightsTypes[:9]
-	}
+	return macOSTestCurrentSINFWithRights(t, credential, mode, rights)
+}
+
+func macOSTestCurrentSINFWithRights(t *testing.T, credential []byte, mode uint32, rightsTypes []string) []byte {
+	t.Helper()
+	rights := make([]byte, (len(rightsTypes)+1)*8)
 	for index, typ := range rightsTypes {
 		copy(rights[index*8:index*8+4], typ)
 		binary.BigEndian.PutUint32(rights[index*8+4:index*8+8], uint32(index+1))
@@ -52,20 +54,15 @@ func macOSTestCurrentSINFLayout(t *testing.T, credential []byte, mode uint32, sh
 	}{{"key ", key}, {"iviv", iviv}, {"tmpr", tmpr}, {"righ", rights}, {"name", name}} {
 		cleartext = append(cleartext, macOSSINFAtom(field.typ, field.payload)...)
 	}
-	if len(cleartext) != 360+rightsBytes {
+	if len(cleartext) != 360+len(rights) {
 		t.Fatalf("current private fixture has %d bytes", len(cleartext))
 	}
-	encryptedClear := cleartext
-	if short {
-		encryptedClear = cleartext[:432]
-	}
-	private, err := macOSSINFCrypt(encryptedClear, credential, name, iviv, true)
+	trailerBytes := len(cleartext) % aes.BlockSize
+	private, err := macOSSINFCrypt(cleartext[:len(cleartext)-trailerBytes], credential, name, iviv, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if short {
-		private = append(private, cleartext[432:]...)
-	}
+	private = append(private, cleartext[len(cleartext)-trailerBytes:]...)
 	user := make([]byte, 4)
 	keyID := make([]byte, 4)
 	binary.BigEndian.PutUint32(user, 0x12345678)
@@ -174,6 +171,109 @@ func TestNormalizeMacOSSINFRejectsWrongCredential(t *testing.T) {
 	wrong[0] ^= 0xff
 	if _, _, err := normalizeMacOSSINF(fixture, wrong); err == nil || !strings.Contains(err.Error(), "credential") {
 		t.Fatalf("wrong credential returned %v", err)
+	}
+}
+
+func TestNormalizeShortMacOSSINF(t *testing.T) {
+	credential := macOSTestCredential()
+	original := macOSTestCurrentSINFLayout(t, credential, 7, true)
+	converted, report, err := normalizeMacOSSINF(original, credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RightsSuffixRemovedBytes != 0 || report.NamedRightsPreserved != 9 ||
+		report.OriginalMode != 7 || !report.PrivateKeyMaterialPreserved {
+		t.Fatalf("short-layout report = %+v", report)
+	}
+	if err := verifyMacOSSINF(converted, credential); err != nil {
+		t.Fatal(err)
+	}
+	fields, err := parseSINFFields(converted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rights, err := macOSSINFField(converted, fields, "righ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(rights[72:], make([]byte, 8)) {
+		t.Fatal("short-layout opaque rights suffix is not zero")
+	}
+}
+
+func TestNormalizeExtendedMacOSSINF(t *testing.T) {
+	credential := macOSTestCredential()
+	original := macOSTestCurrentSINFWithRights(t, credential, 9, []string{
+		"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode", "hi32", "xtra",
+	})
+	converted, report, err := normalizeMacOSSINF(original, credential)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.RightsSuffixRemovedBytes != 16 || report.NamedRightsPreserved != 10 || report.OriginalMode != 9 {
+		t.Fatalf("extended-layout report = %+v", report)
+	}
+	if err := verifyMacOSSINF(converted, credential); err != nil {
+		t.Fatal(err)
+	}
+	fields, err := parseSINFFields(converted)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rights, err := macOSSINFField(converted, fields, "righ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rights) != 80 || string(rights[72:76]) != "hi32" || bytes.Contains(rights, []byte("xtra")) {
+		t.Fatalf("extended rights were not reduced structurally: %x", rights)
+	}
+}
+
+func TestNormalizeMacOSSINFWithDirectEnrollmentModel(t *testing.T) {
+	for _, test := range []struct {
+		name                                string
+		rightsAtomBytes, preserved, removed int
+	}{
+		{"short", 88, 9, 0},
+		{"standard", 96, 10, 8},
+		{"extended", 104, 10, 16},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			innerKey := [16]byte{0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01}
+			fixture := syntheticCurrentSINFFixture(t, 0x10203040, 2, test.rightsAtomBytes, innerKey)
+			pack := selectorBoundModelPack(t, fixture.selector)
+			converted, report, err := normalizeMacOSSINFWithModels(fixture.sinf, [][]byte{pack})
+			if err != nil {
+				t.Fatal(err)
+			}
+			model := syntheticLegacyModel()
+			credential := make([]byte, aes.BlockSize)
+			for index, value := range model.key {
+				credential[index] = value ^ 0x30
+			}
+			defer clear(credential)
+			if err := verifyMacOSSINF(converted, credential); err != nil {
+				t.Fatal(err)
+			}
+			if report.NamedRightsPreserved != test.preserved || report.RightsSuffixRemovedBytes != test.removed {
+				t.Fatalf("direct-model report = %+v", report)
+			}
+		})
+	}
+}
+
+func TestCurrentSINFRightsGeometryIgnoresOpaqueSuffix(t *testing.T) {
+	rights := make([]byte, 80)
+	for index, typ := range currentSINFRequiredRights {
+		copy(rights[index*8:index*8+4], typ)
+	}
+	copy(rights[72:], "modeABCD")
+	if named, err := currentSINFRightsGeometry(rights); err != nil || named != 72 {
+		t.Fatalf("opaque suffix geometry = %d, %v", named, err)
+	}
+	copy(rights[8:12], "veID")
+	if _, err := currentSINFRightsGeometry(rights); err == nil {
+		t.Fatal("duplicate named right was accepted")
 	}
 }
 
@@ -418,136 +518,4 @@ func TestExternalMacOSCredentialFromEnrollmentModel(t *testing.T) {
 		t.Fatal(err)
 	}
 	clear(converted)
-}
-
-func TestNormalizeShortMacOSSINF(t *testing.T) {
-	credential := macOSTestCredential()
-	original := macOSTestCurrentSINFLayout(t, credential, 7, true)
-	converted, report, err := normalizeMacOSSINF(original, credential)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report.RightsSuffixRemovedBytes != 0 || report.NamedRightsPreserved != 9 || report.OriginalMode != 7 || !report.PrivateKeyMaterialPreserved {
-		t.Fatal("incorrect short-layout report")
-	}
-	if err := verifyMacOSSINF(converted, credential); err != nil {
-		t.Fatal(err)
-	}
-	convertedFields, err := parseSINFFields(converted)
-	if err != nil {
-		t.Fatal(err)
-	}
-	convertedRights, err := macOSSINFField(converted, convertedFields, "righ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	convertedPrivate, err := macOSSINFField(converted, convertedFields, "priv")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(convertedRights) != 80 || len(convertedPrivate) != 440 {
-		t.Fatalf("converted geometry = %d/%d, want 80/440", len(convertedRights), len(convertedPrivate))
-	}
-	for index, typ := range []string{"veID", "plat", "aver", "tran", "sing", "song", "tool", "medi", "mode"} {
-		want := uint32(index + 1)
-		if typ == "mode" {
-			want = 0
-		}
-		if string(convertedRights[index*8:index*8+4]) != typ || binary.BigEndian.Uint32(convertedRights[index*8+4:index*8+8]) != want {
-			t.Fatalf("converted right %q was not preserved or normalized", typ)
-		}
-	}
-	if !bytes.Equal(convertedRights[72:], make([]byte, 8)) {
-		t.Fatal("converted rights suffix is not zero")
-	}
-	wrong := append([]byte(nil), credential...)
-	wrong[0] ^= 0xff
-	if _, _, err := normalizeMacOSSINF(original, wrong); err == nil {
-		t.Fatal("wrong credential accepted")
-	}
-	fields, err := parseSINFFields(original)
-	if err != nil {
-		t.Fatal(err)
-	}
-	priv, err := uniqueAtom(fields, "priv")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bad := append([]byte(nil), original...)
-	bad[priv.end-1] = 1
-	if _, _, err := normalizeMacOSSINF(bad, credential); err == nil {
-		t.Fatal("nonzero short trailer accepted")
-	}
-	rights, err := uniqueAtom(fields, "righ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	bad = append([]byte(nil), original...)
-	bad[rights.start+4] ^= 1
-	if _, _, err := normalizeMacOSSINF(bad, credential); err == nil {
-		t.Fatal("visible/private rights mismatch accepted")
-	}
-}
-
-func TestNormalizeShortMacOSSINFIgnoresOpaqueSuffixNames(t *testing.T) {
-	for _, suffix := range []string{"modeABCD", "tranABCD"} {
-		t.Run(suffix[:4], func(t *testing.T) {
-			credential := macOSTestCredential()
-			original := macOSTestCurrentSINFLayout(t, credential, 7, true)
-			fields, err := parseSINFFields(original)
-			if err != nil {
-				t.Fatal(err)
-			}
-			values := make(map[string][]byte)
-			for _, typ := range []string{"righ", "name", "iviv", "priv"} {
-				values[typ], err = macOSSINFField(original, fields, typ)
-				if err != nil {
-					t.Fatal(err)
-				}
-			}
-			cleartext, err := macOSSINFCrypt(values["priv"][:432], credential, values["name"], values["iviv"], false)
-			if err != nil {
-				t.Fatal(err)
-			}
-			cleartext = append(cleartext, values["priv"][432:]...)
-			defer clear(cleartext)
-			privateFields, err := validateMacOSSINFPrivate(cleartext, values["righ"])
-			if err != nil {
-				t.Fatal(err)
-			}
-			privateRights, err := macOSSINFField(cleartext, privateFields, "righ")
-			if err != nil {
-				t.Fatal(err)
-			}
-			copy(values["righ"][72:], suffix)
-			copy(privateRights[72:], suffix)
-			encrypted, err := macOSSINFCrypt(cleartext[:432], credential, values["name"], values["iviv"], true)
-			if err != nil {
-				t.Fatal(err)
-			}
-			copy(values["priv"], encrypted)
-			converted, report, err := normalizeMacOSSINF(original, credential)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if report.OriginalMode != 7 || report.ConvertedMode != 0 {
-				t.Fatalf("conversion report = %+v", report)
-			}
-			convertedFields, err := parseSINFFields(converted)
-			if err != nil {
-				t.Fatal(err)
-			}
-			rights, err := macOSSINFField(converted, convertedFields, "righ")
-			if err != nil {
-				t.Fatal(err)
-			}
-			crdt, err := macOSSINFField(converted, convertedFields, "crdt")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if binary.BigEndian.Uint32(rights[68:72]) != 0 || !bytes.Equal(rights[72:], make([]byte, 8)) || binary.BigEndian.Uint32(crdt) != 4 {
-				t.Fatal("suffix affected mode, transaction date, or suffix normalization")
-			}
-		})
-	}
 }

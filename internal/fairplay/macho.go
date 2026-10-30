@@ -367,6 +367,17 @@ func hashCodePage(hashType byte, payload []byte) ([]byte, error) {
 }
 
 func auditCodeDirectories(executable []byte, layout machoLayout) ([]codeDirectoryAudit, error) {
+	return auditCodeDirectoriesMode(executable, layout, false)
+}
+
+// auditPreEncryptionCodeDirectories compares the candidate plaintext with the
+// available pre-encryption hashes in embedded CodeDirectories. A genuinely
+// absent table is skipped; ordinary code hashes are not a substitute.
+func auditPreEncryptionCodeDirectories(executable []byte, layout machoLayout) ([]codeDirectoryAudit, error) {
+	return auditCodeDirectoriesMode(executable, layout, true)
+}
+
+func auditCodeDirectoriesMode(executable []byte, layout machoLayout, preEncryption bool) ([]codeDirectoryAudit, error) {
 	signatureEnd := uint64(layout.signatureOffset) + uint64(layout.signatureSize)
 	cryptEnd := uint64(layout.cryptOffset) + uint64(layout.cryptSize)
 	if signatureEnd > uint64(len(executable)) || cryptEnd > uint64(len(executable)) || layout.cryptSize == 0 {
@@ -380,7 +391,8 @@ func auditCodeDirectories(executable []byte, layout machoLayout) ([]codeDirector
 	if total > len(sig) || 12+count*8 > total {
 		return nil, fmt.Errorf("invalid embedded signature geometry")
 	}
-	var reports []codeDirectoryAudit
+	reports := make([]codeDirectoryAudit, 0)
+	directories := 0
 	for i := 0; i < count; i++ {
 		offset := int(binary.BigEndian.Uint32(sig[16+i*8 : 20+i*8]))
 		if offset+8 > total {
@@ -393,6 +405,7 @@ func auditCodeDirectories(executable []byte, layout machoLayout) ([]codeDirector
 		if magic != csMagicCodeDirectory {
 			continue
 		}
+		directories++
 		dir := sig[offset : offset+length]
 		if len(dir) < 44 {
 			return nil, fmt.Errorf("CodeDirectory is truncated")
@@ -405,12 +418,26 @@ func auditCodeDirectories(executable []byte, layout machoLayout) ([]codeDirector
 				return nil, fmt.Errorf("truncated or unsupported scattered CodeDirectory")
 			}
 		}
-		codeLimit := uint64(binary.BigEndian.Uint32(dir[32:36]))
+		if version >= 0x20200 {
+			headerSize = 52
+		}
 		if version >= 0x20300 {
 			headerSize = 64
-			if len(dir) < headerSize {
-				return nil, fmt.Errorf("extended CodeDirectory is truncated")
-			}
+		}
+		if version >= 0x20400 {
+			headerSize = 88
+		}
+		if version >= 0x20500 {
+			headerSize = 96
+		}
+		if version >= 0x20600 {
+			headerSize = 108
+		}
+		if len(dir) < headerSize {
+			return nil, fmt.Errorf("extended CodeDirectory is truncated")
+		}
+		codeLimit := uint64(binary.BigEndian.Uint32(dir[32:36]))
+		if version >= 0x20300 {
 			if codeLimit == 0 {
 				codeLimit = binary.BigEndian.Uint64(dir[56:64])
 			}
@@ -437,6 +464,19 @@ func auditCodeDirectories(executable []byte, layout machoLayout) ([]codeDirector
 		if codeSlots != (codeLimit+pageSize-1)/pageSize || lastSlot > codeSlots || hashOffset < uint64(headerSize) || hashOffset+codeSlots*uint64(hashSize) > uint64(len(dir)) {
 			return nil, fmt.Errorf("CodeDirectory table is truncated")
 		}
+		if preEncryption {
+			if version < 0x20500 {
+				continue
+			}
+			preOffset := uint64(binary.BigEndian.Uint32(dir[92:96]))
+			if preOffset == 0 {
+				continue
+			}
+			if preOffset < uint64(headerSize) || preOffset > uint64(len(dir)) || codeSlots*uint64(hashSize) > uint64(len(dir))-preOffset {
+				return nil, fmt.Errorf("CodeDirectory pre-encryption table is invalid or truncated")
+			}
+			hashOffset = preOffset
+		}
 		matched := 0
 		for slot := firstSlot; slot < lastSlot; slot++ {
 			start := slot * pageSize
@@ -452,7 +492,7 @@ func auditCodeDirectories(executable []byte, layout machoLayout) ([]codeDirector
 		}
 		reports = append(reports, codeDirectoryAudit{hashType, hashSize, int(pageSize), int(firstSlot), int(slots), matched})
 	}
-	if len(reports) == 0 {
+	if directories == 0 {
 		return nil, fmt.Errorf("embedded signature contains no CodeDirectory")
 	}
 	return reports, nil

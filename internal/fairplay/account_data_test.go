@@ -74,10 +74,10 @@ func newStripFixture(t *testing.T, metadata []byte) stripFixture {
 		input: filepath.Join(directory, "App.ipa"), models: filepath.Join(directory, "models"),
 		data: map[string][]byte{
 			stripMainPath: mainBlob, adjacentSINF(stripMainPath): mainFixture.sinf,
-			"Payload/Test.app/SC_Info/Test.supf": mainSUPF,
-			"Payload/Test.app/keep.txt":          []byte("unchanged"),
-			stripWidgetPath:                      widgetBlob, adjacentSINF(stripWidgetPath): widgetFixture.sinf,
-			"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.supf": widgetSUPF,
+			"Payload/Test.app/SC_Info/Test.v5.supf": mainSUPF,
+			"Payload/Test.app/keep.txt":             []byte("unchanged"),
+			stripWidgetPath:                         widgetBlob, adjacentSINF(stripWidgetPath): widgetFixture.sinf,
+			"Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.v5.supf": widgetSUPF,
 		},
 		plain: map[string][]byte{stripMainPath: mainPlain, stripWidgetPath: widgetPlain},
 	}
@@ -86,9 +86,9 @@ func newStripFixture(t *testing.T, metadata []byte) stripFixture {
 		f.data[storeMetadataMember] = metadata
 	}
 	f.members = append(f.members,
-		stripMainPath, adjacentSINF(stripMainPath), "Payload/Test.app/SC_Info/Test.supf",
+		stripMainPath, adjacentSINF(stripMainPath), "Payload/Test.app/SC_Info/Test.v5.supf",
 		"Payload/Test.app/keep.txt",
-		stripWidgetPath, adjacentSINF(stripWidgetPath), "Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.supf",
+		stripWidgetPath, adjacentSINF(stripWidgetPath), "Payload/Test.app/PlugIns/Widget.appex/SC_Info/Test.v5.supf",
 	)
 	writeOrderedArchive(t, f.input, f.members, f.data)
 	if err := os.Mkdir(f.models, 0o700); err != nil {

@@ -29,12 +29,12 @@ func TestCheckControl(t *testing.T) {
 	hash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	control := qaControl{
 		Name: "control", ExpectedModelSHA256: hash, ExpectedIPASHA256: hash,
-		ExpectedEvaluatorSHA256: hash, ExpectedReferenceSource: "embedded-profile",
-		ExpectedImages: 2, ExpectedPages: 3,
+		ExpectedReferenceSource: "typed-go",
+		ExpectedImages:          2, ExpectedPages: 3,
 	}
 	result := recoveryResult{
-		Success: true, DecryptedIPASHA256: hash, EvaluatorSourceSHA256: hash,
-		ReferenceCodeSource: "embedded-profile", EncryptedImages: 2, DecryptedPages: 3,
+		Success: true, DecryptedIPASHA256: hash,
+		ReferenceCodeSource: "typed-go", EncryptedImages: 2, DecryptedPages: 3,
 	}
 	if err := checkControl(control, result, hash); err != nil {
 		t.Fatal(err)

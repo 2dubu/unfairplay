@@ -2,6 +2,10 @@
 
 The control matrix is manual and opt-in. Private captures are never stored in
 the repository. Temporary decrypted IPAs are deleted when the command exits.
+Keep exact control hashes, IPA sizes, page counts and app identities in the
+private manifest and logs. Shared summaries should use anonymous control labels
+and omit account/hardware identifiers and identifying IPA measurements. Public
+OS and format constants are not private control measurements.
 
 Build UnfairPlay, create a mode-0600 manifest, then run:
 
@@ -23,8 +27,7 @@ Example manifest:
       "capture": "/private/path/App.capture",
       "expected_model_sha256": "...",
       "expected_ipa_sha256": "...",
-      "expected_evaluator_source_sha256": "...",
-      "expected_reference_code_source": "embedded-profile",
+      "expected_reference_code_source": "typed-go",
       "expected_images": 10,
       "expected_pages": 11004
     },
@@ -43,7 +46,8 @@ Example manifest:
 ```
 
 Capture controls test complete recovery. IPA/model controls test reusable
-decryption across other accounts and app layouts. The command fails on any
+decryption for the supplied selectors and app layouts; independent-account
+coverage requires separate account controls. The command fails on any
 changed hash, image count, page count, or incomplete decryption. Use it before
 creating a release tag.
 
@@ -57,20 +61,15 @@ UNFAIRPLAY_IOMAC_FILE=/private/path/iomac.bin \
 go test ./internal/fairplay -run '^TestExternalIORegistryHardwareMAC$' -count=1 -v
 ```
 
-This exercises the actual `ioreg` query and checks the built-in `en0` interface's
-parent address. Discovery queries only subtrees with `IOMACAddress`, avoiding
-unrelated registry properties that can contain invalid XML characters. It
-still rejects malformed XML and requires a matching built-in interface with a
-six-byte parent address. The test prints neither the address nor its hash; do
-not commit the private control or a full IORegistry dump.
+This exercises the filtered `ioreg` query and checks the built-in `en0`
+interface's parent address. The test prints neither the address nor its hash.
+Do not commit the private control or a full IORegistry dump.
 
 ## macOS IPA conversion control
 
 The private conversion control proves that a version-2 enrollment model derives
 the same account credential and output SINF as the independent macOSFairFree
 implementation:
-
-For an IPA containing exactly one current SINF, run:
 
 ```sh
 UNFAIRPLAY_MACOS_CREDENTIAL_MODEL=/private/path/fairplay-enrollment.bin \
@@ -79,44 +78,169 @@ go test ./internal/fairplay \
   -run TestExternalMacOSCredentialFromEnrollmentModel -count=1 -v
 ```
 
-For a multi-SINF IPA, extract each distinct source SINF privately and run the
-same control directly against it. Byte-identical replicas do not need a
-separate run:
+Run available controls for the observed 440- and 448-byte private SINF forms.
+Also test bounded extended-rights records when a private control exists. Do not
+commit the model, IPA, SINF, credential, or converted output.
 
-```sh
-UNFAIRPLAY_MACOS_CREDENTIAL_MODEL=/private/path/fairplay-enrollment.bin \
-UNFAIRPLAY_MACOS_CREDENTIAL_SINF=/private/path/App.sinf \
-go test ./internal/fairplay \
-  -run TestExternalMacOSCredentialFromEnrollmentModel -count=1 -v
+For direct-enrollment models, require the converter to decode the current SINF
+through the model before writing the legacy wrapper. Keep the older credential-
+wrapped version-2 model test as a compatibility control.
+
+## ARMv7 decryption control
+
+Use one private IPA that contains encrypted ARMv7 and ARM64 slices. Require
+every ARMv7 report entry to contain:
+
+```text
+architecture=armv7
+cryptid_after=0
+plaintext_validation=code-directory-pre-encryption-hashes
+pre_encryption_code_directories[*].matched_slots=pre_encryption_code_directories[*].slot_count
 ```
 
-Run the control for both supported current layouts when fixtures are available:
-88-byte rights with a 448-byte private record, and 80-byte rights with a
-440-byte private record whose first 432 bytes are encrypted and whose final
-eight bytes are zero. Do not commit the model, IPA, SINF, credential, or
-converted output.
+Prefer the same app version from two independent Store enrollments. All Mach-O
+members must decrypt byte-identically; only personalized SINF and Store
+metadata may differ. Retain wrong-first-page and wrong-final-page key tests
+that must fail the pre-encryption hash audit, plus missing-table acceptance
+with unavailable plaintext validation and rejection of malformed present tables.
+Include thin 32-bit SUPP controls when available. Native execution and
+independent-enrollment coverage are separate validation goals.
 
-## Exact-build fallback profile
+## Compact frame AES profile
 
-Regenerate the fail-closed 26A428/26A434 fallback only from the hash-matching
-arm64e `fairplayd`:
+The test-only frame suffix uses direct keyed AES S-box transitions and nine
+sparse `GF(2^8)` mixing layers. The larger affine SPN is retained only as an
+independent test oracle. Verify all 4,096 deterministic controls with:
 
 ```sh
-go run ./tools/compact-kernel \
-  --macho /private/path/fairplayd.arm64e \
-  --seed-profile internal/recovery/profiles/macos26a428-compact-cfg.bin.gz \
-  --seed-start 0x1000103a8 --seed-start 0x1003384cc \
-  --seed-start 0x100484cd0 --seed-start 0x1006dd508 \
-  --seed-start 0x100796630 \
-  --seed-start 0x100796720 --seed-start 0x1007ead40 \
-  --seed-start 0x1007eadc0 --seed-start 0x1008fe5d4 \
-  --seed-start 0x10093fe44 --seed-start 0x10093ff14 \
-  --seed-start 0x1009f0994 \
-  --compact-output --section-id 11 \
-  --output internal/recovery/profiles/macos26a428-safe-extracted.bin.gz
+go test ./internal/recovery -run '^TestFrameAESProfile$' -count=1
 ```
 
-Expected output: 52,492 blocks, 1,726 rejected blocks, compressed SHA-256
-`8fe676d37c0496736b6de999e97a39f3a359d3b09962f3fe25e749e8d8e8707c`.
-The runtime loads this profile only when the capture includes the exact
-hash-matching reference binary.
+Expected size: 2,065 bytes. Expected compressed SHA-256:
+`9d42fb362c39a1f5e1c152fb82fa371869afa0701bec3065b89fba10915af202`.
+The decoded checked profile is 4,940 bytes including its checksum, with
+SHA-256 `33b7a8b3d13d7d5d09d665f52f5f887c426bd04e119b604d09136585b2ae0945`.
+The test-only affine-SPN oracle remains 17,024 bytes with SHA-256
+`f1cb13c0056a4125387f98a575c21cc6129438580e48c76373e333df614ea963`.
+
+## Typed inverse-AES/XOR SIDB-key producer
+
+The test-only producer composes away the protected producer's separate stage encodings.
+It is ten direct AES inverse-S-box layers, nine fixed
+`InvShiftRows + InvMixColumns` operations, four final XOR graphs, and compact
+input/output maps. The first inverse-S-box key is zero; all of its former masks
+fold into the next round key. Per-round byte orders and matrices are gone.
+Verify all 4,096 deterministic controls against the larger test-only SPN with:
+
+```sh
+go test ./internal/recovery -run '^TestSIDBProducerTypedMatchesSPNOracle$' -count=1
+```
+
+Expected size: 390 bytes. Expected compressed SHA-256:
+`a1ddefeea78738a85699db79f2a2c1687b87201c69f43db944e80cbd696ee5be`.
+The decoded checked profile is 528 bytes including its checksum, with
+SHA-256 `7c0b374de0559f5aa5e743e358b1247636100051e98172542256332ba421b4b9`.
+
+The original private controls can regenerate the larger normalization oracle:
+
+```sh
+UNFAIRPLAY_SIDB_PRODUCER_PROFILE=/private/path/producer.bin.gz \
+UNFAIRPLAY_SIDB_KEY_LAYER_PROFILE=/private/path/key-layer.bin \
+UNFAIRPLAY_SIDB_KEY_REPORT_INPUT=/private/path/key-controls.json \
+UNFAIRPLAY_SIDB_PRODUCER_SPN_OUTPUT="$PWD/internal/recovery/profiles/macos26a428-sidb-producer-spn-oracle.bin.gz" \
+go test ./internal/recovery -run '^TestSIDBProducerSPNResearch$' -count=1
+```
+
+The test-only oracle is 1,618 bytes. Its compressed SHA-256 is
+`7f31d8e3b36bcd2981ff2edd8d742d83616c925a9a5c744c868af8e576edc904`.
+The 43,392-byte decoded profile has SHA-256
+`f9362ea765534d3a3e578f5e40d3814d8cfa57dc67306aadf0e0e698b4344954`.
+
+## Recovery and decryption checks
+
+Run the public suite before submitting a change:
+
+```sh
+go test ./...
+go vet ./...
+go test -race ./...
+```
+
+Recovery derives one state slot, hardware-selected tree root and user/key route.
+The selected license value must authenticate; failures must not select another
+record, source window or license file. Tests cover unsupported versions,
+malformed tree spans, duplicate selected-route entries, conflicting page-key
+metadata, wrong selectors and authentication failures.
+
+Tree offsets denote native length-field cursors: length at +0, tag at +4,
+identifier at +8, child count at +14, and children or payload at +20. Recovery
+requires the mapped root schemas `0x10001`/`0x10002`, account schema `0x10002`,
+a 24-byte `type` leaf, a 148-byte `sign` leaf, and a 36-byte first `valu` leaf.
+The value leaf contains exactly 16 payload bytes. Unknown schemas, unsupported
+selected-route tags and duplicate selected entries reject. Parser bounds and
+depth limits are tool restrictions, not a native malformed-input specification.
+
+The tag constructor and selection-state cipher use public algorithm constants.
+Private captures are not needed by the standard suite. To validate complete
+recovery, use a capture control in the matrix above: recover a fresh model and
+require the established model and decrypted-archive hashes. Reusing a model
+checks decryption but does not exercise the constructor or selection pipeline.
+Independent-enrollment coverage requires separate account controls.
+
+Optional source/body and class-key comparisons use:
+
+```sh
+UNFAIRPLAY_TEST_CAPTURE=/private/path/App.capture \
+UNFAIRPLAY_SIDB_SOURCE_ORACLE=/private/path/source.bin \
+UNFAIRPLAY_SIDB_BODY_ORACLE=/private/path/body.bin \
+UNFAIRPLAY_CLASS_OPERANDS_ORACLE=/private/path/class-key.bin \
+go test ./internal/recovery \
+  -run 'TestSIDBNativeSourceAndBodyOracle|TestAccountClassKeyNativeOracle' \
+  -count=1 -v
+```
+
+Require both tests to run rather than skip. Native controls establish behavior
+only for the supplied inputs; they do not establish every account layout or
+future format. Keep private inputs and exact identifying measurements outside
+the repository and public reports.
+
+## Page-key formats and plaintext validation
+
+Test architecture-indexed SUPF and thin-image SUPP containers. SUPF takes
+precedence when present; a malformed selected class must fail. Conflicting
+variants in that class reject. SUPP page records use file-origin indexing, and
+legacy signature-blob bindings must match the executable. SUPP-only fat images
+and multi-source SINF manifests are unsupported.
+
+Recovery authenticates its supplied page-key envelopes. SUPP decryption also
+verifies its selected envelope; standalone SUPF decryption checks geometry,
+binding and page hashes without verifying its certificate signature. Production
+does not establish Apple CMS trust, and `signature_verified` remains false.
+
+Require ciphertext CodeDirectory hashes and exact mutation scope to match.
+Every available pre-encryption hash table must match all slots intersecting the
+encrypted range. Missing tables produce `plaintext_verified=false` and
+`plaintext_validation=unavailable-no-pre-encryption-hashes`; malformed present
+tables reject. Include wrong-first-page and wrong-final-page negative controls.
+Disassembly or agreement between implementations does not replace plaintext
+hash coverage or a native execution control.
+
+Apple's public XNU pager validates source pages and carries their signing status
+into the decryption path. Source ciphertext consistency and optional plaintext
+hash checks therefore answer different questions. Neither establishes complete
+fairplayd or kernel policy equivalence.
+
+References: [XNU pager](https://github.com/apple-oss-distributions/xnu/blob/main/osfmk/vm/vm_apple_protect.c),
+[CodeDirectory pre-encryption slots](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_codesigning/lib/codedirectory.h),
+[SUPP format](https://github.com/vnc0/fairplay-scinfo).
+
+## Reports
+
+Decryption reports use `unfairplay-decryption-v2`. Consumers should read
+`plaintext_validation` and `pre_encryption_code_directories`; the overall
+`plaintext_verified` flag is true only when every decrypted image has coverage.
+The `recover` and `verify` summaries expose this boolean as well.
+
+For schema compatibility, `supf_member` names the selected page-key file even
+when it is a SUPP. Canonical capture metadata uses `architectures` for SUPFs and
+`file_origin_pages` for SUPPs; SUPP has no architecture identifier.

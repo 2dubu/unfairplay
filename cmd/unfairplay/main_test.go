@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/DrWhax/unfairplay/internal/fairplay"
@@ -12,11 +11,20 @@ import (
 
 func TestCommandsAreRegistered(t *testing.T) {
 	root := newRootCommand()
-	for _, name := range []string{"setup", "collect", "recover", "decrypt", "convert-ipa-macos", "verify", "doctor", "profile"} {
+	for _, name := range []string{"setup", "collect", "recover", "decrypt", "convert-ipa-macos", "verify", "doctor"} {
 		command, _, err := root.Find([]string{name})
 		if err != nil || command == root || command.Name() != name {
 			t.Fatalf("command %s is not registered: %v", name, err)
 		}
+	}
+}
+
+func TestConfiguredVersionOverridesBuildMetadata(t *testing.T) {
+	previous := version
+	version = "v-test"
+	t.Cleanup(func() { version = previous })
+	if got := newRootCommand().Version; got != "v-test" {
+		t.Fatalf("root version = %q", got)
 	}
 }
 
@@ -25,15 +33,6 @@ func TestConvertIPAMacOSFlags(t *testing.T) {
 	for _, name := range []string{"input", "output", "model", "credential", "force"} {
 		if command.Flags().Lookup(name) == nil {
 			t.Fatalf("convert-ipa-macos has no --%s flag", name)
-		}
-	}
-}
-
-func TestSetupFlags(t *testing.T) {
-	command := newSetupCommand()
-	for _, name := range []string{"app", "ipa", "model-dir", "interface", "reference-binary", "keep-work"} {
-		if command.Flags().Lookup(name) == nil {
-			t.Fatalf("setup has no --%s flag", name)
 		}
 	}
 }
@@ -131,47 +130,17 @@ func TestCollectExposesArchivedExecutablePath(t *testing.T) {
 	if command.Flags().Lookup("installed-executable-path") == nil {
 		t.Fatal("collect has no archived executable path override")
 	}
-}
-
-func TestRecoveryReferenceSelection(t *testing.T) {
-	exact := fairplay.EnrollmentCaptureManifest{
-		FairPlayd: fairplay.EnrollmentCaptureFile{Path: "fairplayd/fairplayd.arm64e", SHA256: fairplay.FairPlayBuild26A428Hash},
-		FairPlay:  fairplay.FairPlayBuildSupport{EvaluatorSHA256: fairplay.FairPlayBuild26A428Hash},
-	}
-	path, source, err := recoveryReference(recoverOptions{Capture: "/capture"}, exact)
-	if err != nil || path != filepath.Join("/capture", "fairplayd", "fairplayd.arm64e") || source != "captured-exact-binary" {
-		t.Fatalf("exact reference: path=%q source=%q err=%v", path, source, err)
-	}
-	portable := exact
-	portable.FairPlayd.SHA256 = fairplay.FairPlayBuild26B118Hash
-	path, source, err = recoveryReference(recoverOptions{Capture: "/capture"}, portable)
-	if err != nil || path != "" || source != "embedded-profile" {
-		t.Fatalf("portable reference: path=%q source=%q err=%v", path, source, err)
-	}
-	path, source, err = recoveryReference(recoverOptions{Capture: "/capture", Reference: "/archive/fairplayd"}, portable)
-	if err != nil || path != "/archive/fairplayd" || source != "explicit-binary" {
-		t.Fatalf("explicit reference: path=%q source=%q err=%v", path, source, err)
-	}
-	exact.FairPlayd.Path = "../fairplayd"
-	if _, _, err := recoveryReference(recoverOptions{Capture: "/capture"}, exact); err == nil {
-		t.Fatal("accepted unsafe captured fairplayd path")
+	if command.Flags().Lookup("fairplayd") != nil {
+		t.Fatal("collect still exposes a fairplayd dependency")
 	}
 }
 
-func TestEnrollmentRecoveryRejectsBetaBuild(t *testing.T) {
-	manifest := fairplay.EnrollmentCaptureManifest{
-		BuildVersion: "26B5091g",
-		FairPlay: fairplay.FairPlayBuildSupport{
-			Build: "26B5091g", Status: "unsupported-beta-build",
-		},
-	}
-	err := enrollmentRecoverySupportError(manifest)
-	if err == nil || !strings.Contains(err.Error(), "beta build 26B5091g") {
-		t.Fatalf("beta recovery gate returned %v", err)
-	}
-	manifest.FairPlay.Recovery = true
-	if err := enrollmentRecoverySupportError(manifest); err != nil {
-		t.Fatalf("supported recovery was rejected: %v", err)
+func TestRecoverHasNoNativeExecutionFlags(t *testing.T) {
+	command := newRecoverCommand()
+	for _, name := range []string{"reference-binary", "selection-max-blocks", "trace-stages", "trace-values"} {
+		if command.Flags().Lookup(name) != nil {
+			t.Fatalf("recover still exposes native execution flag --%s", name)
+		}
 	}
 }
 
@@ -196,5 +165,14 @@ func TestWritePrivateFileFailsIfDestinationExists(t *testing.T) {
 	}
 	if string(data) != "first" {
 		t.Fatalf("private file changed to %q", data)
+	}
+}
+
+func TestVerificationSummaryReportsPlaintextCoverage(t *testing.T) {
+	for _, verified := range []bool{false, true} {
+		got := verificationSummary(fairplay.DecryptResult{PlaintextVerified: verified})
+		if got["plaintext_verified"] != verified {
+			t.Fatalf("plaintext verification status lost: %v", got)
+		}
 	}
 }

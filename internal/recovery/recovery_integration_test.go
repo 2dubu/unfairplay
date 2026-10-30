@@ -13,9 +13,8 @@ import (
 // Private capture inputs are optional and are never stored in the repository.
 func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 	capture := os.Getenv("UNFAIRPLAY_TEST_CAPTURE")
-	reference := os.Getenv("UNFAIRPLAY_TEST_REFERENCE")
-	if capture == "" || reference == "" {
-		t.Skip("local capture/reference not configured")
+	if capture == "" {
+		t.Skip("local capture not configured")
 	}
 	manifest, err := fairplay.LoadEnrollmentCapture(capture, true)
 	if err != nil {
@@ -25,20 +24,11 @@ func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mappings, stateFiles := canonical.RuntimeFileMappings(false)
+	mappings, stateFiles := canonical.RuntimeFileMappings()
 	if stateFiles == 0 {
 		t.Fatal("capture has no FairPlay state")
 	}
-	mappings = append([]string{"/" + manifest.App.Executable + "=" + canonical.PrivateExecutablePath()}, mappings...)
-	executablePath := manifest.App.ExecutablePath
-	if executablePath == "" {
-		executablePath = filepath.Join("/Applications", manifest.App.Executable+".app", manifest.App.Executable)
-	}
-	options := recovery.Options{
-		FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath(),
-		ExecutablePath: executablePath, ReferencePath: reference,
-		SelectionMaxBlocks: 20_000_000,
-	}
+	options := recovery.Options{FileMappings: mappings, HardwarePath: canonical.PrivateHardwarePath()}
 	first, err := recovery.Recover(options)
 	if err != nil {
 		t.Fatal(err)
@@ -49,8 +39,7 @@ func TestRecoveryReproducibleLocalCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer clear(second.EnrollmentModel)
-	if first.StateSHA256 != second.StateSHA256 || first.Iterations != second.Iterations ||
-		first.ExtractedBlockHits != second.ExtractedBlockHits || !bytes.Equal(first.EnrollmentModel, second.EnrollmentModel) {
+	if first.StateSHA256 != second.StateSHA256 || first.Iterations != second.Iterations || !bytes.Equal(first.EnrollmentModel, second.EnrollmentModel) {
 		t.Fatal("repeated recovery in one process was not deterministic")
 	}
 	if manifest.IPA == nil {

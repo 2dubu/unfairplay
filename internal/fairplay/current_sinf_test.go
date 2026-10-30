@@ -30,8 +30,8 @@ func testAtom(typ string, payload []byte) []byte {
 
 func syntheticLegacyModel() currentSINFModel {
 	model := currentSINFModel{version: 1}
-	for index := range model.fairplaydHash {
-		model.fairplaydHash[index] = byte(index + 1)
+	for index := range model.modelIdentity {
+		model.modelIdentity[index] = byte(index + 1)
 	}
 	model.key = [16]byte{0x61, 0x19, 0xe4, 0x72, 0x0b, 0xce, 0x35, 0xa8, 0xd7, 0x43, 0x9a, 0xf0, 0x26, 0x58, 0xbd, 0x8c}
 	model.whitening = [16]byte{0x11, 0x23, 0x35, 0x47, 0x59, 0x6b, 0x7d, 0x8f, 0x90, 0xa2, 0xb4, 0xc6, 0xd8, 0xea, 0xfc, 0x0e}
@@ -48,7 +48,7 @@ func legacyModelPack(model currentSINFModel) []byte {
 	copy(pack[:8], enrollmentModelV1Magic)
 	binary.LittleEndian.PutUint32(pack[8:12], 1)
 	binary.LittleEndian.PutUint32(pack[12:16], uint32(len(pack)))
-	copy(pack[16:48], model.fairplaydHash[:])
+	copy(pack[16:48], model.modelIdentity[:])
 	copy(pack[48:64], model.key[:])
 	copy(pack[64:80], model.whitening[:])
 	copy(pack[80:], model.inputDecode[:])
@@ -62,12 +62,32 @@ func syntheticCurrentSINFFixture(t *testing.T, user, key uint32, righBytes int, 
 	types := [...]string{"key ", "iviv", "tmpr", "righ", "name"}
 	sizes := [...]int{24, 24, 24, righBytes, 264}
 	plaintext := make([]byte, 0, 432)
+	var visibleIVIV, visibleRights, visibleName []byte
 	for index, typ := range types {
 		atom := make([]byte, sizes[index])
 		binary.BigEndian.PutUint32(atom[:4], uint32(len(atom)))
 		copy(atom[4:8], typ)
 		if index == 0 {
 			copy(atom[8:], innerKey[:])
+		}
+		if typ == "righ" {
+			for rightIndex, name := range currentSINFRequiredRights {
+				copy(atom[8+rightIndex*8:8+rightIndex*8+4], name)
+			}
+			if len(atom)-8 >= 88 {
+				copy(atom[8+9*8:8+9*8+4], "hi32")
+			}
+			if len(atom)-8 >= 96 {
+				copy(atom[8+10*8:8+10*8+4], "xtra")
+			}
+			visibleRights = append([]byte(nil), atom[8:]...)
+		}
+		if typ == "iviv" {
+			visibleIVIV = append([]byte(nil), atom[8:]...)
+		}
+		if typ == "name" {
+			copy(atom[8:], "Synthetic")
+			visibleName = append([]byte(nil), atom[8:]...)
 		}
 		plaintext = append(plaintext, atom...)
 	}
@@ -103,6 +123,9 @@ func syntheticCurrentSINFFixture(t *testing.T, user, key uint32, righBytes int, 
 	binary.BigEndian.PutUint32(userPayload, user)
 	binary.BigEndian.PutUint32(keyPayload, key)
 	fields := append(testAtom("user", userPayload), testAtom("key ", keyPayload)...)
+	fields = append(fields, testAtom("iviv", visibleIVIV)...)
+	fields = append(fields, testAtom("righ", visibleRights)...)
+	fields = append(fields, testAtom("name", visibleName)...)
 	fields = append(fields, testAtom("priv", protected)...)
 	sinf := testAtom("sinf", testAtom("schi", fields))
 
@@ -119,7 +142,7 @@ func selectorBoundModelPack(t *testing.T, selector SINFSelector) []byte {
 	copy(pack[:8], enrollmentModelV2Magic)
 	binary.LittleEndian.PutUint32(pack[8:12], 2)
 	binary.LittleEndian.PutUint32(pack[12:16], uint32(len(pack)))
-	copy(pack[16:48], model.fairplaydHash[:])
+	copy(pack[16:48], model.modelIdentity[:])
 	binary.LittleEndian.PutUint32(pack[48:52], selector.User)
 	binary.LittleEndian.PutUint32(pack[52:56], selector.Key)
 	copy(pack[56:72], model.key[:])
@@ -426,6 +449,7 @@ func TestCurrentSINFPortableFixtures(t *testing.T) {
 	}{
 		{"zero-trailer", 0x11223344, 2, 96, [16]byte{0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0xfe, 0xdc, 0xba, 0x98, 0x76, 0x54, 0x32, 0x10}},
 		{"eight-byte-trailer", 0x11223344, 2, 88, [16]byte{0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01}},
+		{"extended-rights", 0x11223344, 2, 104, [16]byte{0x21, 0x43, 0x65, 0x87, 0xa9, 0xcb, 0xed, 0x0f, 0xf0, 0xde, 0xbc, 0x9a, 0x78, 0x56, 0x34, 0x12}},
 	}
 	for _, fixture := range fixtures {
 		t.Run(fixture.name, func(t *testing.T) {
