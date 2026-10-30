@@ -508,9 +508,9 @@ func DoctorFairPlay(capturePath, ipaPath, modelPath string) FairPlayDoctorReport
 		if report.Host != nil && !report.Host.StateAccessible {
 			report.NextActions = append(report.NextActions, "rerun collection with permission to read /private/var/db/fpsd")
 		}
-		report.NextActions = append(report.NextActions, "collect native enrollment with fairplay-enroll collect")
+		report.NextActions = append(report.NextActions, "collect native enrollment with unfairplay collect")
 	} else if modelPath == "" {
-		report.NextActions = append(report.NextActions, "recover fairplay-enrollment.bin with fairplay-enroll recover")
+		report.NextActions = append(report.NextActions, "recover fairplay-enrollment.bin with unfairplay recover")
 	}
 	if modelPath != "" && report.CompatibleModel != "" {
 		report.NextActions = append(report.NextActions, "run unfairplay decrypt with the validated model")
