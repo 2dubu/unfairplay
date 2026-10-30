@@ -63,7 +63,7 @@ keeping plaintext with:
 
 The beta also decrypts ARMv7 slices. It validates Thumb-2 or classic ARM
 instruction structure and fails closed when a page key produces implausible
-code. ARMv6/Thumb-1-only apps are not yet verified.
+code. ARMv6/Thumb-1-only binaries are not supported.
 
 ### Convert an IPA for macOS
 
