@@ -62,7 +62,7 @@ jobs:
             -ldflags "-s -w -X main.version=${VERSION}" \
             -o "staging/unfairplay${{ matrix.extension }}" \
             ./cmd/unfairplay
-          cp LICENSE LICENSE-DARKPHOENIX.txt NOTICE README.md staging/
+          cp LICENSE LICENSE-DARKPHOENIX.txt LICENSE-MACOSFAIRFREE.txt NOTICE README.md staging/
 
       - name: Smoke test native binary
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
@@ -77,6 +77,15 @@ jobs:
         run: |
           mv staging "${ASSET}"
           tar -czf "${ASSET}.tar.gz" "${ASSET}"
+
+      - name: Verify packaged notices
+        if: matrix.archive == 'tar.gz'
+        env:
+          ASSET: unfairplay-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
+        run: |
+          for file in LICENSE LICENSE-DARKPHOENIX.txt LICENSE-MACOSFAIRFREE.txt NOTICE README.md; do
+            tar -xOf "${ASSET}.tar.gz" "${ASSET}/${file}" | cmp "${file}" -
+          done
 
       - name: Upload packaged binary
         uses: actions/upload-artifact@v7
