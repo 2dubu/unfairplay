@@ -82,8 +82,67 @@ func (s supp) recordsForLayout(layout machoLayout) ([][32]byte, error) {
 	return s.records[start/page:], nil
 }
 
+// architecturesForSlices maps one file-origin SUPP table onto every encrypted
+// slice. Thin tables end at the encrypted range. Universal tables use absolute
+// file offsets and end at the final encrypted range.
+func (s supp) architecturesForSlices(slices []machoSlice) ([]supfArchitecture, error) {
+	if len(slices) == 0 {
+		return nil, fmt.Errorf("SUPP has no Mach-O slices")
+	}
+	if len(slices) == 1 && slices[0].offset == 0 {
+		records, err := s.recordsForLayout(slices[0].layout)
+		if err != nil {
+			return nil, err
+		}
+		layout := slices[0].layout
+		return []supfArchitecture{{
+			cpuType: layout.cpuType, cpuSubtype: layout.cpuSubtype, records: records,
+			SignatureSHA1: s.SignatureSHA1, HasSignatureSHA1: s.HasSignatureSHA1,
+		}}, nil
+	}
+
+	const page = uint64(4096)
+	var encrypted []machoSlice
+	var lastEnd uint64
+	seen := make(map[[2]uint32]bool)
+	for _, slice := range slices {
+		layout := slice.layout
+		if layout.cryptID == 0 {
+			continue
+		}
+		start := slice.offset + uint64(layout.cryptOffset)
+		end := start + uint64(layout.cryptSize)
+		sliceEnd := slice.offset + slice.size
+		if start < slice.offset || end < start || start%page != 0 || end%page != 0 ||
+			sliceEnd < slice.offset || end > sliceEnd {
+			return nil, fmt.Errorf("SUPP universal encrypted range has invalid geometry")
+		}
+		id := [2]uint32{layout.cpuType, layout.cpuSubtype}
+		if seen[id] {
+			return nil, fmt.Errorf("SUPP universal image has duplicate architecture %#x/%#x", id[0], id[1])
+		}
+		seen[id] = true
+		encrypted = append(encrypted, slice)
+		lastEnd = max(lastEnd, end)
+	}
+	if len(encrypted) == 0 || uint64(len(s.records)) != lastEnd/page {
+		return nil, fmt.Errorf("SUPP record count does not match universal encrypted ranges")
+	}
+	architectures := make([]supfArchitecture, 0, len(encrypted))
+	for _, slice := range encrypted {
+		layout := slice.layout
+		start := (slice.offset + uint64(layout.cryptOffset)) / page
+		end := start + uint64(layout.cryptSize)/page
+		architectures = append(architectures, supfArchitecture{
+			cpuType: layout.cpuType, cpuSubtype: layout.cpuSubtype, records: s.records[start:end],
+		})
+	}
+	return architectures, nil
+}
+
 // selectImageKeyTable uses the architecture-indexed f-class when present.
-// The older p-class has file-origin records and is supported for thin images.
+// The older p-class has file-origin records. Universal p-class tables are
+// mapped by absolute file page and must cover every encrypted slice exactly.
 // A malformed selected class never triggers a retry with another class.
 func selectImageKeyTable(files map[string]*zip.File, member string, slices []machoSlice) (string, supf, error) {
 	return selectImageKeyTableWithCA(files, member, slices, nil)
@@ -96,9 +155,6 @@ func selectImageKeyTableWithCA(files map[string]*zip.File, member string, slices
 	}
 	if _, present := files[base+".v5.supf"]; present {
 		return selectSUPF(files, member)
-	}
-	if len(slices) != 1 || slices[0].offset != 0 {
-		return "", supf{}, fmt.Errorf("SUPP requires a thin Mach-O image")
 	}
 	names := [2]string{base + ".supp", base + ".v4.supp"}
 	var tables [2]supp
@@ -149,10 +205,14 @@ func selectImageKeyTableWithCA(files map[string]*zip.File, member string, slices
 		chosen = 1
 	}
 	table := tables[chosen]
-	layout := slices[0].layout
-	records, err := table.recordsForLayout(layout)
+	architectures, err := table.architecturesForSlices(slices)
 	if err != nil {
 		return "", supf{}, err
 	}
-	return names[chosen], supf{variant: table.variant, architectures: []supfArchitecture{{cpuType: layout.cpuType, cpuSubtype: layout.cpuSubtype, records: records, SignatureSHA1: table.SignatureSHA1, HasSignatureSHA1: table.HasSignatureSHA1}}}, nil
+	selected := supf{variant: table.variant, architectures: architectures}
+	if (len(slices) != 1 || slices[0].offset != 0) && table.HasSignatureSHA1 {
+		selected.UniversalSignatureSHA1 = table.SignatureSHA1
+		selected.HasUniversalSignatureSHA1 = true
+	}
+	return names[chosen], selected, nil
 }

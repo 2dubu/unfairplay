@@ -17,8 +17,34 @@ type supfArchitecture struct {
 }
 
 type supf struct {
-	architectures []supfArchitecture
-	variant       byte
+	architectures             []supfArchitecture
+	variant                   byte
+	UniversalSignatureSHA1    [20]byte
+	HasUniversalSignatureSHA1 bool
+}
+
+// ValidateUniversalSignatureBinding checks a legacy SUPP hash over the
+// concatenated slice-relative LC_CODE_SIGNATURE payloads in fat-header order.
+func (s supf) ValidateUniversalSignatureBinding(executable []byte, slices []machoSlice) error {
+	if !s.HasUniversalSignatureSHA1 {
+		return nil
+	}
+	hash := sha1.New() // #nosec G401 -- legacy SUPP compatibility.
+	count := 0
+	for _, slice := range slices {
+		start := slice.offset + uint64(slice.layout.signatureOffset)
+		size := uint64(slice.layout.signatureSize)
+		sliceEnd := slice.offset + slice.size
+		if size == 0 || start < slice.offset || sliceEnd < slice.offset || start > uint64(len(executable)) || size > uint64(len(executable))-start || start+size > sliceEnd {
+			return fmt.Errorf("SUPP universal signature binding has invalid slice extent")
+		}
+		_, _ = hash.Write(executable[start : start+size])
+		count++
+	}
+	if count == 0 || !bytes.Equal(hash.Sum(nil), s.UniversalSignatureSHA1[:]) {
+		return fmt.Errorf("SUPP universal signature binding mismatch")
+	}
+	return nil
 }
 
 func parseSUPF(blob []byte) (supf, error) {

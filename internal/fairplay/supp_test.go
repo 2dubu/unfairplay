@@ -159,7 +159,7 @@ func TestSelectImageKeyTableSUPPResolution(t *testing.T) {
 	alternate[3][0] ^= 0x80
 	different := signer.encode(t, 4, hash, alternate)
 	fewer := signer.encode(t, 4, hash, records[:3])
-	layout := machoLayout{cpuType: 12, cpuSubtype: 2, cryptOffset: 8192, cryptSize: 8192, signatureSize: uint32(len(signature))}
+	layout := machoLayout{cpuType: 12, cpuSubtype: 2, cryptOffset: 8192, cryptSize: 8192, cryptID: 1, signatureSize: uint32(len(signature))}
 	thin := []machoSlice{{layout: layout}}
 	fat := []machoSlice{{offset: 4096, layout: layout}}
 	fdata := syntheticSUPF(5, syntheticSUPFArch{cpu: 12, sub: 2, records: records[2:]})
@@ -181,8 +181,8 @@ func TestSelectImageKeyTableSUPPResolution(t *testing.T) {
 		{"malformed pclass", map[string][]byte{p1: {1}}, thin, "", false, true},
 		{"malformed p4 does not fall back to p1", map[string][]byte{p1: v1, p4: {4}}, thin, "", false, true},
 		{"malformed p1 does not fall back to p4", map[string][]byte{p1: {1}, p4: v4}, thin, "", false, true},
-		{"fat slice rejected", map[string][]byte{p1: v1}, fat, "", false, true},
-		{"multiple slices rejected", map[string][]byte{p1: v1}, []machoSlice{{layout: layout}, {layout: layout}}, "", false, true},
+		{"universal record coverage required", map[string][]byte{p1: v1}, fat, "", false, true},
+		{"duplicate universal architecture rejected", map[string][]byte{p1: v1}, []machoSlice{{size: 20000, layout: layout}, {size: 20000, layout: layout}}, "", false, true},
 		{"malformed fclass does not fall back", map[string][]byte{f5: {5}, p1: v1}, thin, "", false, true},
 		{"fclass takes precedence over malformed pclass", map[string][]byte{f5: fdata, p1: {1}}, thin, f5, false, false},
 	}
@@ -219,5 +219,62 @@ func TestSelectImageKeyTableSUPPResolution(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSelectImageKeyTableUniversalSUPP(t *testing.T) {
+	const member = "Payload/A.app/A"
+	const p1 = "Payload/A.app/SC_Info/A.supp"
+	const p4 = "Payload/A.app/SC_Info/A.v4.supp"
+	signer := newSyntheticSUPPSigner(t)
+	records := make([][32]byte, 11)
+	for index := range records {
+		records[index][0] = byte(index)
+	}
+	v4 := signer.encode(t, 4, [20]byte{}, records)
+	slices := []machoSlice{
+		{offset: 0x4000, size: 0x3000, layout: machoLayout{cpuType: cpuTypeARM, cpuSubtype: 9, cryptOffset: 0x1000, cryptSize: 0x1000, cryptID: 1, signatureOffset: 0x2000, signatureSize: 4}},
+		{offset: 0x8000, size: 0x4000, layout: machoLayout{cpuType: cpuTypeARM64, cryptOffset: 0x1000, cryptSize: 0x2000, cryptID: 1, signatureOffset: 0x3000, signatureSize: 4}},
+	}
+	name, table, err := selectImageKeyTableWithCA(syntheticLicenseFiles(t, map[string][]byte{p4: v4}), member, slices, &signer.authority.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != p4 || len(table.architectures) != 2 {
+		t.Fatalf("name %q table %+v", name, table)
+	}
+	arm, err := table.recordsFor(cpuTypeARM, 9)
+	if err != nil || len(arm) != 1 || arm[0] != records[5] {
+		t.Fatalf("ARM records %v error %v", arm, err)
+	}
+	arm64, err := table.recordsFor(cpuTypeARM64, 0)
+	if err != nil || len(arm64) != 2 || arm64[0] != records[9] || arm64[1] != records[10] {
+		t.Fatalf("ARM64 records %v error %v", arm64, err)
+	}
+
+	executable := make([]byte, 0xc000)
+	copy(executable[0x6000:], []byte("one!"))
+	copy(executable[0xb000:], []byte("two!"))
+	joined := sha1.Sum([]byte("one!two!"))
+	legacy := signer.encode(t, 1, joined, records)
+	_, legacyTable, err := selectImageKeyTableWithCA(syntheticLicenseFiles(t, map[string][]byte{p1: legacy}), member, slices, &signer.authority.PublicKey)
+	if err != nil || !legacyTable.HasUniversalSignatureSHA1 {
+		t.Fatalf("legacy universal SUPP returned %+v, %v", legacyTable, err)
+	}
+	if err := legacyTable.ValidateUniversalSignatureBinding(executable, slices); err != nil {
+		t.Fatal(err)
+	}
+	executable[0xb000] ^= 1
+	if err := legacyTable.ValidateUniversalSignatureBinding(executable, slices); err == nil {
+		t.Fatal("accepted changed universal code signature")
+	}
+	for _, count := range []int{10, 12} {
+		wrong := signer.encode(t, 4, [20]byte{}, records[:min(count, len(records))])
+		if count > len(records) {
+			wrong = signer.encode(t, 4, [20]byte{}, append(records, [32]byte{12}))
+		}
+		if _, _, err := selectImageKeyTableWithCA(syntheticLicenseFiles(t, map[string][]byte{p4: wrong}), member, slices, &signer.authority.PublicKey); err == nil {
+			t.Fatalf("accepted universal SUPP with %d records", count)
+		}
 	}
 }

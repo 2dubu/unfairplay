@@ -221,6 +221,10 @@ func openIPAInventory(path string) (ipaInventory, *zip.ReadCloser, error) {
 			archive.Close()
 			return result, nil, err
 		}
+		if err := table.ValidateUniversalSignatureBinding(probe, slices); err != nil {
+			archive.Close()
+			return result, nil, fmt.Errorf("%s: %w", file.Name, err)
+		}
 		targetSINF := adjacentSINF(file.Name)
 		sinfMember := associations[targetSINF]
 		if sinfMember == "" && names[targetSINF] {
