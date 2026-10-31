@@ -29,7 +29,11 @@ Example manifest:
       "expected_ipa_sha256": "...",
       "expected_reference_code_source": "typed-go",
       "expected_images": 10,
-      "expected_pages": 11004
+      "expected_pages": 11004,
+      "expected_plaintext_verified": true,
+      "expected_recovery_iterations": 284,
+      "expected_recovery_state_sha256": "...",
+      "expected_registry_candidates": 1
     },
     {
       "name": "saved-ipa-control",
@@ -45,7 +49,9 @@ Example manifest:
 }
 ```
 
-Capture controls test complete recovery. IPA/model controls test reusable
+Capture controls should pin the recovery state hash, iteration count, decoded
+registry count, model hash, IPA hash, image/page counts, and plaintext result.
+IPA/model controls test reusable
 decryption for the supplied selectors and app layouts; independent-account
 coverage requires separate account controls. The command fails on any
 changed hash, image count, page count, or incomplete decryption. Use it before
@@ -86,19 +92,21 @@ For direct-enrollment models, require the converter to decode the current SINF
 through the model before writing the legacy wrapper. Keep the older credential-
 wrapped version-2 model test as a compatibility control.
 
-## ARMv7 decryption control
+## 32-bit ARM decryption controls
 
-Use one private IPA that contains encrypted ARMv7 and ARM64 slices. Require
-every ARMv7 report entry to contain:
+Use private IPAs that contain encrypted ARMv6/Thumb-1 and ARMv7 slices when
+available. Require every 32-bit ARM report entry to contain:
 
 ```text
-architecture=armv7
+architecture=armv6 or armv7
 cryptid_after=0
 plaintext_validation=code-directory-pre-encryption-hashes
 pre_encryption_code_directories[*].matched_slots=pre_encryption_code_directories[*].slot_count
 ```
 
-Prefer the same app version from two independent Store enrollments. All Mach-O
+The public suite has a complete synthetic ARMv6/Thumb-1 decryption and
+wrong-key rejection control. Prefer the same real app version from two
+independent Store enrollments. All Mach-O
 members must decrypt byte-identically; only personalized SINF and Store
 metadata may differ. Retain wrong-first-page and wrong-final-page key tests
 that must fail the pre-encryption hash audit, plus missing-table acceptance
@@ -206,11 +214,17 @@ the repository and public reports.
 
 ## Page-key formats and plaintext validation
 
-Test architecture-indexed SUPF and thin-image SUPP containers. SUPF takes
+Test architecture-indexed SUPF and thin- and universal-image SUPP containers.
+Universal SUPP records use absolute file-page indexes and must end exactly at
+the final encrypted range. A legacy universal SUPP binds the concatenation of
+each slice's complete code-signature payload in fat-header order. SUPF takes
 precedence when present; a malformed selected class must fail. Conflicting
 variants in that class reject. SUPP page records use file-origin indexing, and
-legacy signature-blob bindings must match the executable. SUPP-only fat images
-and multi-source SINF manifests are unsupported.
+legacy signature-blob bindings must match the executable. Multi-source SINF
+manifests must resolve each existing replica to an exact source. A missing
+replica is valid only when all declared sources are byte-identical.
+Retain one private dual-architecture IPA control with SUPFs removed and require
+its SUPP-only decrypted Mach-O hashes and page counts to match the SUPF control.
 
 Recovery authenticates its supplied page-key envelopes. SUPP decryption also
 verifies its selected envelope; standalone SUPF decryption checks geometry,

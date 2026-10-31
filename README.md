@@ -66,8 +66,8 @@ keeping plaintext with:
 ./unfairplay verify --input AnotherApp.ipa
 ```
 
-The decryption path handles ARMv7, ARM64, and ARM64_32/watchOS slices.
-ARMv6/Thumb-1 parsing is experimental and those binaries are not supported.
+The decryption path handles ARMv6/Thumb-1, ARMv7, ARM64, and
+ARM64_32/watchOS slices.
 Available pre-encryption page hashes must match; a mismatch fails closed.
 Older executables without these tables can decrypt, but report
 `plaintext_verified=false`.
@@ -210,14 +210,16 @@ or the executable's adjacent SINF when no mapping is declared. Paired legacy
 and v5 SUPFs must have identical architecture and page records; a legacy SUPF's
 signature-blob hash must match its executable. Conflicts within the selected
 page-key class fail closed. Recovery uses one canonical set of runtime inputs
-without a broader license retry. Thin Mach-O images can also use signed
-`.supp`/`.v4.supp` page tables, indexed from file offset zero. The encrypted
-page records are selected by the declared encryption range, and legacy
-signature-blob bindings are checked. SUPP-only fat images are unsupported.
+without a broader license retry. Mach-O images can also use signed
+`.supp`/`.v4.supp` page tables, indexed from file offset zero. Universal tables
+use absolute file-page indexes and must cover every encrypted slice exactly.
+Legacy universal signature bindings cover the concatenated slice signatures
+in fat-header order.
 Architecture-indexed SUPF files take precedence when present; a malformed
 selected class never triggers a retry with the other class. SINF manifests
-must declare exactly one source; existing replicas must match that source.
-Multi-source manifests are unsupported.
+may declare multiple sources. Existing replicas must match one source exactly;
+a missing replica is accepted only when every declared source is identical.
+Ambiguous mappings fail closed.
 
 Plaintext validation checks every CodeDirectory pre-encryption hash slot that
 intersects an encrypted range. Instruction scoring and sampled-page checks are

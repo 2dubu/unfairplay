@@ -23,33 +23,45 @@ type qaManifest struct {
 }
 
 type qaControl struct {
-	Name                    string `json:"name"`
-	Capture                 string `json:"capture,omitempty"`
-	IPA                     string `json:"ipa,omitempty"`
-	Model                   string `json:"model,omitempty"`
-	ExpectedModelSHA256     string `json:"expected_model_sha256,omitempty"`
-	ExpectedIPASHA256       string `json:"expected_ipa_sha256,omitempty"`
-	ExpectedReferenceSource string `json:"expected_reference_code_source,omitempty"`
-	ExpectedImages          int    `json:"expected_images,omitempty"`
-	ExpectedPages           int    `json:"expected_pages,omitempty"`
+	Name                       string `json:"name"`
+	Capture                    string `json:"capture,omitempty"`
+	IPA                        string `json:"ipa,omitempty"`
+	Model                      string `json:"model,omitempty"`
+	ExpectedModelSHA256        string `json:"expected_model_sha256,omitempty"`
+	ExpectedIPASHA256          string `json:"expected_ipa_sha256,omitempty"`
+	ExpectedReferenceSource    string `json:"expected_reference_code_source,omitempty"`
+	ExpectedImages             int    `json:"expected_images,omitempty"`
+	ExpectedPages              int    `json:"expected_pages,omitempty"`
+	ExpectedPlaintextVerified  *bool  `json:"expected_plaintext_verified,omitempty"`
+	ExpectedRecoveryIterations *int   `json:"expected_recovery_iterations,omitempty"`
+	ExpectedStateSHA256        string `json:"expected_recovery_state_sha256,omitempty"`
+	ExpectedRegistryCandidates *int   `json:"expected_registry_candidates,omitempty"`
 }
 
 type recoveryResult struct {
-	Success             bool   `json:"success"`
-	DecryptedIPASHA256  string `json:"decrypted_ipa_sha256"`
-	EncryptedImages     int    `json:"encrypted_images"`
-	DecryptedPages      int    `json:"decrypted_pages"`
-	ReferenceCodeSource string `json:"reference_code_source"`
+	Success                   bool   `json:"success"`
+	DecryptedIPASHA256        string `json:"decrypted_ipa_sha256"`
+	EncryptedImages           int    `json:"encrypted_images"`
+	DecryptedPages            int    `json:"decrypted_pages"`
+	PlaintextVerified         bool   `json:"plaintext_verified"`
+	ReferenceCodeSource       string `json:"reference_code_source"`
+	RecoveryIterations        int    `json:"recovery_iterations"`
+	RecoveryStateSHA256       string `json:"recovery_state_sha256"`
+	DecodedRegistryCandidates int    `json:"decoded_registry_candidates"`
 }
 
 type qaResult struct {
-	Name                string `json:"name"`
-	Mode                string `json:"mode"`
-	ModelSHA256         string `json:"model_sha256"`
-	DecryptedIPASHA256  string `json:"decrypted_ipa_sha256"`
-	EncryptedImages     int    `json:"encrypted_images"`
-	DecryptedPages      int    `json:"decrypted_pages"`
-	ReferenceCodeSource string `json:"reference_code_source"`
+	Name                      string `json:"name"`
+	Mode                      string `json:"mode"`
+	ModelSHA256               string `json:"model_sha256"`
+	DecryptedIPASHA256        string `json:"decrypted_ipa_sha256"`
+	EncryptedImages           int    `json:"encrypted_images"`
+	DecryptedPages            int    `json:"decrypted_pages"`
+	PlaintextVerified         bool   `json:"plaintext_verified"`
+	ReferenceCodeSource       string `json:"reference_code_source"`
+	RecoveryIterations        int    `json:"recovery_iterations,omitempty"`
+	RecoveryStateSHA256       string `json:"recovery_state_sha256,omitempty"`
+	DecodedRegistryCandidates int    `json:"decoded_registry_candidates,omitempty"`
 }
 
 func validSHA256(value string) bool {
@@ -72,13 +84,20 @@ func validateManifest(manifest qaManifest) error {
 			return fmt.Errorf("invalid QA control %q", control.Name)
 		}
 		seen[control.Name] = true
-		for _, value := range []string{control.ExpectedModelSHA256, control.ExpectedIPASHA256} {
+		for _, value := range []string{control.ExpectedModelSHA256, control.ExpectedIPASHA256, control.ExpectedStateSHA256} {
 			if !validSHA256(value) {
 				return fmt.Errorf("control %s has an invalid expected SHA256", control.Name)
 			}
 		}
 		if control.ExpectedImages < 0 || control.ExpectedPages < 0 {
 			return fmt.Errorf("control %s has invalid expected counts", control.Name)
+		}
+		if control.ExpectedRecoveryIterations != nil && *control.ExpectedRecoveryIterations < 0 ||
+			control.ExpectedRegistryCandidates != nil && *control.ExpectedRegistryCandidates < 0 {
+			return fmt.Errorf("control %s has invalid expected recovery geometry", control.Name)
+		}
+		if !recoveryMode && (control.ExpectedRecoveryIterations != nil || control.ExpectedStateSHA256 != "" || control.ExpectedRegistryCandidates != nil) {
+			return fmt.Errorf("verify control %s cannot require recovery geometry", control.Name)
 		}
 	}
 	return nil
@@ -116,6 +135,18 @@ func checkControl(control qaControl, result recoveryResult, modelSHA256 string) 
 	}
 	if control.ExpectedPages != 0 && result.DecryptedPages != control.ExpectedPages {
 		return fmt.Errorf("control %s pages = %d, want %d", control.Name, result.DecryptedPages, control.ExpectedPages)
+	}
+	if control.ExpectedPlaintextVerified != nil && result.PlaintextVerified != *control.ExpectedPlaintextVerified {
+		return fmt.Errorf("control %s plaintext verified = %v, want %v", control.Name, result.PlaintextVerified, *control.ExpectedPlaintextVerified)
+	}
+	if control.ExpectedRecoveryIterations != nil && result.RecoveryIterations != *control.ExpectedRecoveryIterations {
+		return fmt.Errorf("control %s recovery iterations = %d, want %d", control.Name, result.RecoveryIterations, *control.ExpectedRecoveryIterations)
+	}
+	if control.ExpectedStateSHA256 != "" && result.RecoveryStateSHA256 != control.ExpectedStateSHA256 {
+		return fmt.Errorf("control %s recovery state SHA256 = %s, want %s", control.Name, result.RecoveryStateSHA256, control.ExpectedStateSHA256)
+	}
+	if control.ExpectedRegistryCandidates != nil && result.DecodedRegistryCandidates != *control.ExpectedRegistryCandidates {
+		return fmt.Errorf("control %s registry candidates = %d, want %d", control.Name, result.DecodedRegistryCandidates, *control.ExpectedRegistryCandidates)
 	}
 	return nil
 }
@@ -155,7 +186,9 @@ func runControl(ctx context.Context, binary, root string, control qaControl) (qa
 	return qaResult{
 		Name: control.Name, Mode: mode, ModelSHA256: modelSHA256, DecryptedIPASHA256: recovered.DecryptedIPASHA256,
 		EncryptedImages: recovered.EncryptedImages, DecryptedPages: recovered.DecryptedPages,
-		ReferenceCodeSource: recovered.ReferenceCodeSource,
+		PlaintextVerified: recovered.PlaintextVerified, ReferenceCodeSource: recovered.ReferenceCodeSource,
+		RecoveryIterations: recovered.RecoveryIterations, RecoveryStateSHA256: recovered.RecoveryStateSHA256,
+		DecodedRegistryCandidates: recovered.DecodedRegistryCandidates,
 	}, nil
 }
 

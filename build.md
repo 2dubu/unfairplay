@@ -508,8 +508,11 @@ Every promoted transformation needs suitable evidence:
 
 1. Retest 641-, 3405-, 5494-, 7180-, and 11724-byte enrollments on the exact
    version reported by `unfairplay --version`.
-2. Extend the private QA matrix with the native root offset, length, child
-   count, leaf offsets, and selected class window for every retained control.
+2. Extend the private QA matrix with the recovery state hash, iteration and
+   registry counts, native root offset, length, child count, leaf offsets, and
+   selected class window for every retained control. The recovery summary
+   fields are now checked by `tools/qa-controls` when present in its private
+   manifest.
 3. Recreate the private native class-key boundary control, then
    make them part of the manual QA matrix.
 4. Remove the dormant flat compatibility parser and class-search code after
