@@ -238,10 +238,6 @@ func parseThinMachO(blob []byte, totalSize uint64) (machoLayout, error) {
 	return result, nil
 }
 
-func isARM64InstructionSet(cpuType uint32) bool {
-	return cpuType == cpuTypeARM64 || cpuType == cpuTypeARM64_32
-}
-
 func isFatMachO(blob []byte) bool {
 	if len(blob) < 4 {
 		return false

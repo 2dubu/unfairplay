@@ -66,10 +66,10 @@ func TestIPAInventoryDuplicateDirectoryMarkers(t *testing.T) {
 	}
 }
 
-func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
+func TestDecryptARMv6Thumb1RejectsWrongPageKey(t *testing.T) {
 	blob, layout := signedPreEncryptionAuditFixture(t, pageBytes, pageBytes, 12, 2)
 	layout.cpuType = cpuTypeARM
-	layout.cpuSubtype = 9
+	layout.cpuSubtype = 6
 	layout.cryptID = 1
 	layout.cryptIDOffset = 16
 	layout.instructionRanges = []machoFileRange{{
@@ -88,8 +88,8 @@ func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
 	}
 	plaintext := make([]byte, pageBytes)
 	for offset := 0; offset < len(plaintext); offset += 4 {
-		binary.LittleEndian.PutUint16(plaintext[offset:offset+2], 0xf000)
-		binary.LittleEndian.PutUint16(plaintext[offset+2:offset+4], 0xf800)
+		binary.LittleEndian.PutUint16(plaintext[offset:offset+2], 0x2000)   // movs r0, #0
+		binary.LittleEndian.PutUint16(plaintext[offset+2:offset+4], 0x4770) // bx lr
 	}
 	mask := appMaskFromLogicalKey(logical)
 	deriver := newPageKeyDeriver(mask)
@@ -117,9 +117,9 @@ func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(blob[pageBytes:2*pageBytes], plaintext) || report.Architecture != "armv7" ||
+	if !bytes.Equal(blob[pageBytes:2*pageBytes], plaintext) || report.Architecture != "armv6" ||
 		report.PlaintextValidation != "code-directory-pre-encryption-hashes" || len(report.PreEncryptionCodeDirectories) != 1 {
-		t.Fatalf("unexpected ARMv7 result: %+v", report)
+		t.Fatalf("unexpected ARMv6 result: %+v", report)
 	}
 
 	wrongLogical := logical
@@ -129,7 +129,7 @@ func TestDecryptARMv7RejectsWrongPageKey(t *testing.T) {
 	binary.LittleEndian.PutUint32(encrypted[layout.cryptIDOffset:], 1)
 	if _, err := decryptImage(encrypted, image, [][32]byte{record}, wrongMask, wrongDeriver); err == nil ||
 		!strings.Contains(err.Error(), "plaintext page hash mismatch") {
-		t.Fatalf("wrong ARMv7 page key returned %v", err)
+		t.Fatalf("wrong ARMv6 page key returned %v", err)
 	}
 }
 
