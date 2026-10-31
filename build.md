@@ -46,22 +46,21 @@ Bootstrap
   typed big-integer, SHA-1, table, and byte transformations
 
 Selection
-  validated current/legacy source layouts -> candidate 16-byte states and frames
+  validated modulus-sized source -> selected 16-byte state and frame
 
 SIDB validation
-  candidate frame -> enrollment-bound SIDB decoder key
+  selected frame -> enrollment-bound SIDB decoder key
   SIDB container + decoder key -> decoded registry
 
 SINF validation
-  decoded SIDB registry + personalized SINF -> accepted precursor
+  decoded SIDB registry + personalized SINF -> one tagged route and precursor
 
 Model output
   precursor -> current SINF key/tables -> portable enrollment model
 ```
 
-When candidate validation can replace native selection, it should. Trying all
-typed candidates against the authenticated SINF is preferable to reproducing a
-flattened native selector.
+Every selection stage is deterministic. Authentication validates the selected
+state, root and tagged route; it never authorizes trying another candidate.
 
 ## Current status
 
@@ -71,12 +70,12 @@ flattened native selector.
 | Digest, pair, tail, writer | Typed Go algorithms are recovered and differential-tested. |
 | Account entry | Replaced by structural X.509 parsing and pinned-CA SUPF authentication. The legacy account-entry CFG has been removed. |
 | Bootstrap | Replaced by one typed semantic outer profile plus SIDB/hardware runtime fields. The legacy bootstrap CFG has been removed. |
-| Selection | Current and legacy source projections feed typed state/key transforms, variable-length SIDB decoding, and authenticated candidate selection. |
+| Selection | One modulus-sized source projection feeds the selected slot and typed state/key transforms. Authentication never retries another slot. |
 | Enrollment frame | The frame and SIDB-key producer compose to standard AES-128 with fixed input whitening. Independent models are test-only. |
-| SIDB | Codec termination determines the payload boundary. Variable-length bodies are decoded in typed Go; maximal non-overlapping native trees supply authenticated candidates. |
-| SINF | Portable AES/model decoding exists. Native-tree payload-to-`valu` arithmetic, the account-derived class key, AES class join, bounded record/window evaluation, and unique personalized-SINF authentication are typed Go. The native selector, SINF-entry CFG, and stack-offset material adapter have been removed. |
+| SIDB | Codec termination determines the payload boundary. Variable-length bodies are decoded in typed Go at one hardware-derived root cursor. |
+| SINF | Portable AES/model decoding exists. Native-tree payload-to-`valu` arithmetic, the account-derived class key, AES class join, deterministic tagged-route selection, and complete personalized-SINF authentication are typed Go. The native selector, candidate scan, SINF-entry CFG, and stack-offset material adapter have been removed. |
 | SUPF | Variant-3 and variant-5 envelopes, architecture/page-key geometry, leaf certificates, and signed prefixes are parsed and authenticated in typed Go. Production pins the Apple FairPlay CA public key and no longer trusts a self-signed license certificate. |
-| Build portability | Container size does not select the codec boundary. Embedded and disjoint native roots require complete SINF authentication; untested layouts fail closed. |
+| Build portability | Container size does not select the codec boundary. The recovered layout is reported and pinned by private QA; untested layouts fail closed. |
 
 The legacy `executionProfile`, generated account/bootstrap/selection blocks,
 emulated registers, compact interpreter, exact-build fallbacks, and native
@@ -224,11 +223,11 @@ It decrypted one encrypted image and one page; decrypted-IPA SHA-256 was
 and logical-key SHA-256 matched the established independent result
 `0cc0921e90789a30c7cce2ba80c75ced64dd334af31ff6744dc714923a14ac32`.
 
-The decoded current registry is parsed as bounded native trees. Node lengths
-and child counts must fit and fill their parent exactly; nested roots are
-removed while disjoint roots remain eligible for personalized-SINF selection.
-Eligible leaves supply windows with absolute-position masks and available tail
-bytes. The old length-only flat/footer fallback is not a production candidate.
+The decoded current registry is parsed as one bounded native tree at the
+hardware-derived root cursor. Node lengths and child counts must fit and fill
+their parent exactly. The exact tagged `user/key/valu` route supplies one
+window with its absolute-position mask. The old length-only flat/footer
+fallback is not a production candidate.
 
 The current-SINF external codec is identity after normalization. Its protected
 form XORed each byte with a position mask and then used an inverse table that
@@ -238,12 +237,10 @@ backward-compatible version-2 models. The former semantic-profile object and
 its 4,112 bytes of encoding data have been removed.
 
 The outer loop derives the codec boundary from its stateful exit. Payload
-alignment and trailer bounds are checked afterward. Both the current and
-legacy source projections are evaluated. Registry candidates retain their
-family metadata, but mixed unauthenticated interpretations do not preempt a
-valid result: complete SINF authentication must select one unambiguous
-precursor. The payload, tree depth and node count have explicit resource
-bounds.
+alignment and trailer bounds are checked afterward. One modulus-sized source
+projection feeds the selected state slot. Complete SINF authentication must
+accept the single tagged route. The payload, tree depth and node count have
+explicit resource bounds.
 
 Current SINF parsing now accepts bounded rights payloads from 80 through 256
 bytes in eight-byte units. The observed 440- and 448-byte private records and
@@ -255,10 +252,11 @@ version-2 enrollment models decode the current IV-prefixed private record first,
 then re-encode that authenticated plaintext with the legacy macOS CBC wrapper.
 Older credential-wrapped version-2 models retain their compatibility path.
 
-Go evaluates eligible tree windows with the directly derived class key. A SINF
-prefix probe narrows candidates; complete personalized-SINF authentication must
-accept exactly one result across all disjoint tree roots. Four independent
-private controls pass complete model and IPA validation.
+Go evaluates one tagged tree window with the directly derived class key. A SINF
+prefix probe rejects an incorrect key quickly; complete personalized-SINF
+authentication must then accept that same route. Four independent enrollment
+controls pass complete model and IPA validation, and a fifth control covers an
+ARMv6-only decryption.
 
 SUPF authentication is typed and structural too. Variant 3 authenticates its
 signed architecture/page-key prefix with RSA/SHA-1, while variant 5 uses
@@ -508,16 +506,9 @@ Every promoted transformation needs suitable evidence:
 
 1. Retest 641-, 3405-, 5494-, 7180-, and 11724-byte enrollments on the exact
    version reported by `unfairplay --version`.
-2. Extend the private QA matrix with the recovery state hash, iteration and
-   registry counts, native root offset, length, child count, leaf offsets, and
-   selected class window for every retained control. The recovery summary
-   fields are now checked by `tools/qa-controls` when present in its private
-   manifest.
-3. Recreate the private native class-key boundary control, then
+2. Recreate the private native class-key boundary control, then
    make them part of the manual QA matrix.
-4. Remove the dormant flat compatibility parser and class-search code after
-   confirming no supported migration path calls it.
-5. Promote a new structural family only after one personalized SINF selects a
+3. Promote a new structural family only after one personalized SINF selects a
    unique precursor and complete IPA validation succeeds. Add a synthetic
    regression and an opt-in private QA control.
 

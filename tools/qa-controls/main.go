@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/DrWhax/unfairplay/internal/recovery"
 )
 
 const qaSchema = "unfairplay-private-qa-v1"
@@ -23,45 +25,73 @@ type qaManifest struct {
 }
 
 type qaControl struct {
-	Name                       string `json:"name"`
-	Capture                    string `json:"capture,omitempty"`
-	IPA                        string `json:"ipa,omitempty"`
-	Model                      string `json:"model,omitempty"`
-	ExpectedModelSHA256        string `json:"expected_model_sha256,omitempty"`
-	ExpectedIPASHA256          string `json:"expected_ipa_sha256,omitempty"`
-	ExpectedReferenceSource    string `json:"expected_reference_code_source,omitempty"`
-	ExpectedImages             int    `json:"expected_images,omitempty"`
-	ExpectedPages              int    `json:"expected_pages,omitempty"`
-	ExpectedPlaintextVerified  *bool  `json:"expected_plaintext_verified,omitempty"`
-	ExpectedRecoveryIterations *int   `json:"expected_recovery_iterations,omitempty"`
-	ExpectedStateSHA256        string `json:"expected_recovery_state_sha256,omitempty"`
-	ExpectedRegistryCandidates *int   `json:"expected_registry_candidates,omitempty"`
+	Name                       string                   `json:"name"`
+	Capture                    string                   `json:"capture,omitempty"`
+	IPA                        string                   `json:"ipa,omitempty"`
+	Model                      string                   `json:"model,omitempty"`
+	ExpectedModelSHA256        string                   `json:"expected_model_sha256,omitempty"`
+	ExpectedIPASHA256          string                   `json:"expected_ipa_sha256,omitempty"`
+	ExpectedReferenceSource    string                   `json:"expected_reference_code_source,omitempty"`
+	ExpectedImages             int                      `json:"expected_images,omitempty"`
+	ExpectedPages              int                      `json:"expected_pages,omitempty"`
+	ExpectedPlaintextVerified  *bool                    `json:"expected_plaintext_verified,omitempty"`
+	ExpectedRecoveryIterations *int                     `json:"expected_recovery_iterations,omitempty"`
+	ExpectedStateSHA256        string                   `json:"expected_recovery_state_sha256,omitempty"`
+	ExpectedRegistryCandidates *int                     `json:"expected_registry_candidates,omitempty"`
+	ExpectedRecoveryLayout     *recovery.LayoutEvidence `json:"expected_recovery_layout,omitempty"`
 }
 
 type recoveryResult struct {
-	Success                   bool   `json:"success"`
-	DecryptedIPASHA256        string `json:"decrypted_ipa_sha256"`
-	EncryptedImages           int    `json:"encrypted_images"`
-	DecryptedPages            int    `json:"decrypted_pages"`
-	PlaintextVerified         bool   `json:"plaintext_verified"`
-	ReferenceCodeSource       string `json:"reference_code_source"`
-	RecoveryIterations        int    `json:"recovery_iterations"`
-	RecoveryStateSHA256       string `json:"recovery_state_sha256"`
-	DecodedRegistryCandidates int    `json:"decoded_registry_candidates"`
+	Success                   bool                     `json:"success"`
+	DecryptedIPASHA256        string                   `json:"decrypted_ipa_sha256"`
+	EncryptedImages           int                      `json:"encrypted_images"`
+	DecryptedPages            int                      `json:"decrypted_pages"`
+	PlaintextVerified         bool                     `json:"plaintext_verified"`
+	ReferenceCodeSource       string                   `json:"reference_code_source"`
+	RecoveryIterations        int                      `json:"recovery_iterations"`
+	RecoveryStateSHA256       string                   `json:"recovery_state_sha256"`
+	DecodedRegistryCandidates int                      `json:"decoded_registry_candidates"`
+	RecoveryLayout            *recovery.LayoutEvidence `json:"recovery_layout,omitempty"`
 }
 
 type qaResult struct {
-	Name                      string `json:"name"`
-	Mode                      string `json:"mode"`
-	ModelSHA256               string `json:"model_sha256"`
-	DecryptedIPASHA256        string `json:"decrypted_ipa_sha256"`
-	EncryptedImages           int    `json:"encrypted_images"`
-	DecryptedPages            int    `json:"decrypted_pages"`
-	PlaintextVerified         bool   `json:"plaintext_verified"`
-	ReferenceCodeSource       string `json:"reference_code_source"`
-	RecoveryIterations        int    `json:"recovery_iterations,omitempty"`
-	RecoveryStateSHA256       string `json:"recovery_state_sha256,omitempty"`
-	DecodedRegistryCandidates int    `json:"decoded_registry_candidates,omitempty"`
+	Name                      string                   `json:"name"`
+	Mode                      string                   `json:"mode"`
+	ModelSHA256               string                   `json:"model_sha256"`
+	DecryptedIPASHA256        string                   `json:"decrypted_ipa_sha256"`
+	EncryptedImages           int                      `json:"encrypted_images"`
+	DecryptedPages            int                      `json:"decrypted_pages"`
+	PlaintextVerified         bool                     `json:"plaintext_verified"`
+	ReferenceCodeSource       string                   `json:"reference_code_source"`
+	RecoveryIterations        int                      `json:"recovery_iterations,omitempty"`
+	RecoveryStateSHA256       string                   `json:"recovery_state_sha256,omitempty"`
+	DecodedRegistryCandidates int                      `json:"decoded_registry_candidates,omitempty"`
+	RecoveryLayout            *recovery.LayoutEvidence `json:"recovery_layout,omitempty"`
+}
+
+func validRecoveryLayout(layout recovery.LayoutEvidence) bool {
+	selector := strings.Split(layout.SINFSelector, ":")
+	selectorValid := len(selector) == 2
+	if selectorValid {
+		for _, part := range selector {
+			decoded, err := hex.DecodeString(part)
+			selectorValid = selectorValid && err == nil && len(decoded) == 4 && part == strings.ToLower(part)
+		}
+	}
+	return layout.ContainerBytes >= 20 && layout.CodecBytes > 0 && layout.CodecBytes <= layout.ContainerBytes-20 &&
+		layout.PayloadBytes == layout.ContainerBytes-4-layout.CodecBytes-16 && layout.PayloadBytes > 0 &&
+		layout.SelectorModulus > 0 && layout.SelectorModulus <= 18 && layout.SourceBytes == 32+16*layout.SelectorModulus &&
+		layout.SelectedSlot >= 0 && layout.SelectedSlot < layout.SelectorModulus &&
+		layout.RootCursor >= 0 && layout.RootCursor <= layout.PayloadBytes && layout.RootLength >= 20 && layout.RootLength <= layout.PayloadBytes-layout.RootCursor &&
+		layout.PayloadBytes-layout.RootCursor-layout.RootLength <= 15 && layout.RootChildCount >= 0 &&
+		layout.RootChildCount <= 4096 && layout.TreeNodes > 0 && layout.TreeNodes <= 4096 &&
+		layout.RegistryRecords > 0 && layout.RegistryRecords <= 4096 &&
+		(layout.RootVersion == 0x10001 || layout.RootVersion == 0x10002) && layout.AccountVersion == 0x10002 &&
+		layout.TypeCursor >= 0 && layout.TypeCursor <= layout.PayloadBytes && layout.TypeLength == 24 && layout.TypeLength <= layout.PayloadBytes-layout.TypeCursor &&
+		layout.SignCursor >= 0 && layout.SignCursor <= layout.PayloadBytes && layout.SignLength == 148 && layout.SignLength <= layout.PayloadBytes-layout.SignCursor &&
+		layout.ValueCursor >= 0 && layout.ValueCursor <= layout.PayloadBytes && layout.ValueLength == 36 && layout.ValueLength <= layout.PayloadBytes-layout.ValueCursor &&
+		layout.SelectedRecordIndex >= 0 && layout.SelectedRecordIndex < layout.RegistryRecords &&
+		layout.SelectedPayloadOffset == layout.ValueCursor+20 && layout.SelectedWindowOffset == 0 && selectorValid
 }
 
 func validSHA256(value string) bool {
@@ -96,7 +126,10 @@ func validateManifest(manifest qaManifest) error {
 			control.ExpectedRegistryCandidates != nil && *control.ExpectedRegistryCandidates < 0 {
 			return fmt.Errorf("control %s has invalid expected recovery geometry", control.Name)
 		}
-		if !recoveryMode && (control.ExpectedRecoveryIterations != nil || control.ExpectedStateSHA256 != "" || control.ExpectedRegistryCandidates != nil) {
+		if control.ExpectedRecoveryLayout != nil && !validRecoveryLayout(*control.ExpectedRecoveryLayout) {
+			return fmt.Errorf("control %s has invalid expected recovery layout", control.Name)
+		}
+		if !recoveryMode && (control.ExpectedRecoveryIterations != nil || control.ExpectedStateSHA256 != "" || control.ExpectedRegistryCandidates != nil || control.ExpectedRecoveryLayout != nil) {
 			return fmt.Errorf("verify control %s cannot require recovery geometry", control.Name)
 		}
 	}
@@ -148,6 +181,9 @@ func checkControl(control qaControl, result recoveryResult, modelSHA256 string) 
 	if control.ExpectedRegistryCandidates != nil && result.DecodedRegistryCandidates != *control.ExpectedRegistryCandidates {
 		return fmt.Errorf("control %s registry candidates = %d, want %d", control.Name, result.DecodedRegistryCandidates, *control.ExpectedRegistryCandidates)
 	}
+	if control.ExpectedRecoveryLayout != nil && (result.RecoveryLayout == nil || *result.RecoveryLayout != *control.ExpectedRecoveryLayout) {
+		return fmt.Errorf("control %s recovery layout differs", control.Name)
+	}
 	return nil
 }
 
@@ -188,7 +224,7 @@ func runControl(ctx context.Context, binary, root string, control qaControl) (qa
 		EncryptedImages: recovered.EncryptedImages, DecryptedPages: recovered.DecryptedPages,
 		PlaintextVerified: recovered.PlaintextVerified, ReferenceCodeSource: recovered.ReferenceCodeSource,
 		RecoveryIterations: recovered.RecoveryIterations, RecoveryStateSHA256: recovered.RecoveryStateSHA256,
-		DecodedRegistryCandidates: recovered.DecodedRegistryCandidates,
+		DecodedRegistryCandidates: recovered.DecodedRegistryCandidates, RecoveryLayout: recovered.RecoveryLayout,
 	}, nil
 }
 

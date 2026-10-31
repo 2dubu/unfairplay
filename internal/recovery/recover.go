@@ -27,12 +27,42 @@ type Options struct {
 	Progress     func(Progress)
 }
 
+// LayoutEvidence records the one deterministic SIDB and SINF route that
+// produced the authenticated model. It contains geometry and identifiers, not
+// SIDB bytes, keys, hardware material, or decrypted license contents.
+type LayoutEvidence struct {
+	ContainerBytes        int    `json:"container_bytes"`
+	CodecBytes            int    `json:"codec_bytes"`
+	PayloadBytes          int    `json:"payload_bytes"`
+	SourceBytes           int    `json:"source_bytes"`
+	SelectorModulus       int    `json:"selector_modulus"`
+	SelectedSlot          int    `json:"selected_slot"`
+	RootCursor            int    `json:"root_cursor"`
+	RootLength            int    `json:"root_length"`
+	RootChildCount        int    `json:"root_child_count"`
+	TreeNodes             int    `json:"tree_nodes"`
+	RegistryRecords       int    `json:"registry_records"`
+	RootVersion           uint32 `json:"root_version"`
+	AccountVersion        uint32 `json:"account_version"`
+	TypeCursor            int    `json:"type_cursor"`
+	TypeLength            int    `json:"type_length"`
+	SignCursor            int    `json:"sign_cursor"`
+	SignLength            int    `json:"sign_length"`
+	ValueCursor           int    `json:"value_cursor"`
+	ValueLength           int    `json:"value_length"`
+	SelectedRecordIndex   int    `json:"selected_record_index"`
+	SelectedPayloadOffset int    `json:"selected_payload_offset"`
+	SelectedWindowOffset  int    `json:"selected_window_offset"`
+	SINFSelector          string `json:"sinf_selector"`
+}
+
 // Result is the output of one bounded enrollment recovery.
 type Result struct {
 	EnrollmentModel           []byte
 	StateSHA256               string
 	Iterations                int
 	DecodedRegistryCandidates int
+	Layout                    LayoutEvidence
 }
 
 var recoveryMu sync.Mutex
@@ -82,18 +112,27 @@ func Recover(options Options) (Result, error) {
 	if options.Progress != nil {
 		options.Progress(Progress{Phase: "decode-sidb"})
 	}
-	registries, digest, iterations, err := deriveCurrentSelectionRegistryCandidates(inputs.files, inputs.hardware)
+	registries, digest, iterations, layout, err := deriveCurrentSelectionRegistryCandidatesWithEvidence(inputs.files, inputs.hardware)
 	if err != nil {
 		return Result{}, err
 	}
-	pack, err := currentEnrollmentPackWithContext(ctx, inputs.files, registries, inputs.hardware, options.Progress)
+	pack, route, err := currentEnrollmentPackWithContextEvidence(ctx, inputs.files, registries, inputs.hardware, options.Progress)
 	if err != nil {
 		clearDecodedSIDBRegistryCandidates(registries)
 		return Result{}, err
 	}
+	layout.RootVersion = route.RootVersion
+	layout.AccountVersion = route.AccountVersion
+	layout.TypeCursor, layout.TypeLength = route.TypeCursor, route.TypeLength
+	layout.SignCursor, layout.SignLength = route.SignCursor, route.SignLength
+	layout.ValueCursor, layout.ValueLength = route.ValueCursor, route.ValueLength
+	layout.SelectedRecordIndex = route.SelectedRecordIndex
+	layout.SelectedPayloadOffset = route.SelectedPayloadOffset
+	layout.SelectedWindowOffset = route.SelectedWindowOffset
+	layout.SINFSelector = route.SINFSelector
 	clearDecodedSIDBRegistryCandidates(registries)
 	return Result{
 		EnrollmentModel: pack, StateSHA256: digest, Iterations: iterations,
-		DecodedRegistryCandidates: len(registries),
+		DecodedRegistryCandidates: len(registries), Layout: layout,
 	}, nil
 }

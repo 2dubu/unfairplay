@@ -2,9 +2,11 @@ package recovery
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/md5"
 	"encoding/binary"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -183,7 +185,7 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 	if gotIterations != layout.OuterIterations {
 		t.Fatalf("structural iteration count = %d", gotIterations)
 	}
-	pack, err := currentEnrollmentPack(map[string][]byte{"App.sinf": sinf}, registries, hardware)
+	pack, route, err := currentEnrollmentPackWithContextEvidence(context.Background(), map[string][]byte{"App.sinf": sinf}, registries, hardware, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,6 +196,12 @@ func TestStructuralSIDBAndExtendedSINFProduceEnrollmentModel(t *testing.T) {
 	wantKey := currentSINFModelKeyFromPrecursor(precursor)
 	if !bytes.Equal(pack[56:72], wantKey[:]) {
 		t.Fatal("structural SIDB/SINF model key differs")
+	}
+	if route.SINFSelector != fmt.Sprintf("%08x:%08x", user, keyID) || route.RootVersion == 0 ||
+		route.AccountVersion == 0 || route.TypeLength != 24 || route.SignLength != 148 ||
+		route.ValueLength != 36 || route.SelectedRecordIndex < 0 || route.SelectedPayloadOffset <= 0 ||
+		route.SelectedWindowOffset != 0 {
+		t.Fatalf("model route evidence = %+v", route)
 	}
 }
 
@@ -282,12 +290,19 @@ func TestSelectionMappedSlot14UsesCBCRecurrence(t *testing.T) {
 	putSyntheticSIDBNode(plaintext, root+56, rootLength-56, 0)
 	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext, selectedKey)
 	sealSyntheticSelectionContainer(t, container, source)
-	candidates, _, _, err := deriveCurrentSelectionRegistryCandidates(map[string][]byte{"state/SC Info.sidb": container}, hardware)
+	candidates, _, _, evidence, err := deriveCurrentSelectionRegistryCandidatesWithEvidence(map[string][]byte{"state/SC Info.sidb": container}, hardware)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer clearDecodedSIDBRegistryCandidates(candidates)
 	if len(candidates) != 1 || !bytes.Equal(candidates[0].Data, plaintext) {
 		t.Fatalf("selected slot %d did not produce one authenticated registry", layout.SelectedSlot)
+	}
+	if evidence.ContainerBytes != len(container) || evidence.CodecBytes != layout.CodecBytes ||
+		evidence.PayloadBytes != layout.PayloadBytes || evidence.SourceBytes != layout.SourceBytes ||
+		evidence.SelectorModulus != layout.SelectorModulus || evidence.SelectedSlot != 14 ||
+		evidence.RootCursor != layout.RootCursor || evidence.RootLength != rootLength ||
+		evidence.RootChildCount != 2 || evidence.TreeNodes != 3 {
+		t.Fatalf("selection evidence = %+v", evidence)
 	}
 }

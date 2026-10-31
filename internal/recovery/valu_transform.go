@@ -10,8 +10,6 @@ var currentClassRecordMask = [16]byte{
 	0x70, 0xdd, 0x90, 0x4f, 0xd9, 0x8c, 0x93, 0x17,
 }
 
-const maximumClassWindowOffset = decodedSIDBPayloadBytes + decodedSIDBTailBytes - 16
-
 // deriveClassValuFromMaskedWords converts the already-masked 16-byte record
 // window into the semantic ciphertext consumed by the typed class join.
 func deriveClassValuFromMaskedWords(masked [16]byte) (valu [16]byte) {
@@ -46,20 +44,6 @@ func deriveClassValuWindow(record decodedSIDBRecord, windowOffset int) ([16]byte
 		position := windowOffset + index
 		maskPosition := position + record.MaskOffset
 		masked[index] = material[position] ^ currentClassRecordMask[maskPosition%len(currentClassRecordMask)]
-	}
-	return deriveClassValuFromMaskedWords(masked), nil
-}
-
-// deriveLegacyClassValu evaluates one mask phase over the complete 16-byte
-// payload used by older registries. Personalized-SINF authentication selects
-// the unique coherent phase, so recovery does not depend on a native selector.
-func deriveLegacyClassValu(record decodedSIDBRecord, maskPhase int) ([16]byte, error) {
-	if maskPhase < 0 || maskPhase >= len(currentClassRecordMask) {
-		return [16]byte{}, fmt.Errorf("legacy class mask phase is invalid: %d", maskPhase)
-	}
-	var masked [16]byte
-	for index, value := range record.Payload {
-		masked[index] = value ^ currentClassRecordMask[(maskPhase+index)%len(currentClassRecordMask)]
 	}
 	return deriveClassValuFromMaskedWords(masked), nil
 }

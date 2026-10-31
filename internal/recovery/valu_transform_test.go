@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+const maximumClassWindowOffset = decodedSIDBPayloadBytes + decodedSIDBTailBytes - 16
+
 func protectedClassValuReference(payload [16]byte, wordMasks [4]uint32) (valu [16]byte) {
 	for word := range 4 {
 		offset := word * 4
@@ -81,32 +83,6 @@ func TestDeriveClassValuWindowMatchesProtectedArithmetic(t *testing.T) {
 		}
 		if want := protectedClassValuReference(window, masks); got != want {
 			t.Fatalf("offset %d = %x, want %x", windowOffset, got, want)
-		}
-	}
-}
-
-func TestDeriveLegacyClassValuMatchesMaskedReference(t *testing.T) {
-	var record decodedSIDBRecord
-	for index := range record.Payload {
-		record.Payload[index] = byte(index*29 + 7)
-	}
-	for phase := range len(currentClassRecordMask) {
-		var masked [16]byte
-		for index, value := range record.Payload {
-			masked[index] = value ^ currentClassRecordMask[(phase+index)%len(currentClassRecordMask)]
-		}
-		want := deriveClassValuFromMaskedWords(masked)
-		got, err := deriveLegacyClassValu(record, phase)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != want {
-			t.Fatalf("legacy phase %d = %x, want %x", phase, got, want)
-		}
-	}
-	for _, phase := range []int{-1, len(currentClassRecordMask)} {
-		if _, err := deriveLegacyClassValu(record, phase); err == nil {
-			t.Fatalf("legacy class phase %d was accepted", phase)
 		}
 	}
 }

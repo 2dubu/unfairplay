@@ -143,9 +143,15 @@ func appendSelectionRegistryCandidates(result []decodedSIDBRegistryCandidate, se
 }
 
 func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware []byte) ([]decodedSIDBRegistryCandidate, string, int, error) {
+	result, digest, iterations, _, err := deriveCurrentSelectionRegistryCandidatesWithEvidence(files, hardware)
+	return result, digest, iterations, err
+}
+
+func deriveCurrentSelectionRegistryCandidatesWithEvidence(files map[string][]byte, hardware []byte) ([]decodedSIDBRegistryCandidate, string, int, LayoutEvidence, error) {
+	var evidence LayoutEvidence
 	containers, err := currentSIDBContainerFiles(files)
 	if err != nil {
-		return nil, "", 0, err
+		return nil, "", 0, evidence, err
 	}
 	hash := sha256.New()
 	seenRegistries := make(map[[sha256.Size]byte]bool)
@@ -156,13 +162,20 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 		source, layout, iterations, err := deriveNativeSelectionSource(container.data, hardware)
 		if err != nil {
 			clearDecodedSIDBRegistryCandidates(result)
-			return nil, "", iterations, err
+			return nil, "", iterations, evidence, err
 		}
 		if err := validateSIDBContainerAuthentication(container.data, source); err != nil {
 			clear(source)
 			clearDecodedSIDBRegistryCandidates(result)
-			return nil, "", iterations, err
+			return nil, "", iterations, evidence, err
 		}
+		evidence.ContainerBytes = len(container.data)
+		evidence.CodecBytes = layout.CodecBytes
+		evidence.PayloadBytes = layout.PayloadBytes
+		evidence.SourceBytes = layout.SourceBytes
+		evidence.SelectorModulus = layout.SelectorModulus
+		evidence.SelectedSlot = layout.SelectedSlot
+		evidence.RootCursor = layout.RootCursor
 		diagnostics.ContainerBytes = len(container.data)
 		diagnostics.CodecBytes = layout.CodecBytes
 		diagnostics.PayloadBytes = layout.PayloadBytes
@@ -171,7 +184,7 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 		if reportedIterations != 0 && iterations != reportedIterations {
 			clear(source[:])
 			clearDecodedSIDBRegistryCandidates(result)
-			return nil, "", 0, fmt.Errorf("typed SIDB selection found mixed container layouts")
+			return nil, "", 0, evidence, fmt.Errorf("typed SIDB selection found mixed container layouts")
 		}
 		reportedIterations = iterations
 		containerDigest := sha256.Sum256(container.data)
@@ -181,11 +194,22 @@ func deriveCurrentSelectionRegistryCandidates(files map[string][]byte, hardware 
 		clear(source[:])
 		if err != nil {
 			clearDecodedSIDBRegistryCandidates(result)
-			return nil, "", iterations, err
+			return nil, "", iterations, evidence, err
 		}
 	}
 	if len(result) == 0 {
-		return nil, "", reportedIterations, fmt.Errorf("typed SIDB selection found no decoded registry candidate (%s)", diagnostics.String())
+		return nil, "", reportedIterations, evidence, fmt.Errorf("typed SIDB selection found no decoded registry candidate (%s)", diagnostics.String())
 	}
-	return result, fmt.Sprintf("%x", hash.Sum(nil)), reportedIterations, nil
+	if len(result) == 1 {
+		nodes, err := parseDecodedSIDBTree(result[0].Data, evidence.RootCursor)
+		if err != nil {
+			clearDecodedSIDBRegistryCandidates(result)
+			return nil, "", reportedIterations, evidence, err
+		}
+		evidence.RootLength = nodes[0].Length
+		evidence.RootChildCount = nodes[0].ChildCount
+		evidence.TreeNodes = len(nodes)
+		evidence.RegistryRecords = len(result[0].Registry.Records)
+	}
+	return result, fmt.Sprintf("%x", hash.Sum(nil)), reportedIterations, evidence, nil
 }

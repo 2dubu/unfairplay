@@ -231,6 +231,10 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 	if err != nil {
 		return outcome, fmt.Errorf("derive enrollment: %w", err)
 	}
+	if recovered.Layout.SINFSelector != manifest.App.SelectorID {
+		clear(recovered.EnrollmentModel)
+		return outcome, fmt.Errorf("recovered SINF selector does not match capture manifest")
+	}
 	defer clear(recovered.EnrollmentModel)
 	candidate := filepath.Join(options.Output, "fairplay-enrollment.candidate.bin")
 	if err := writePrivateFile(candidate, recovered.EnrollmentModel); err != nil {
@@ -263,6 +267,7 @@ func recoverEnrollmentResult(ctx context.Context, options recoverOptions) (enrol
 		"plaintext_verified":  result.PlaintextVerified,
 		"recovery_iterations": recovered.Iterations, "recovery_state_sha256": recovered.StateSHA256,
 		"decoded_registry_candidates": recovered.DecodedRegistryCandidates,
+		"recovery_layout":             recovered.Layout,
 		"promotion_gate":              "complete-sinf-and-ipa-validation",
 		"reference_code_source":       referenceSource,
 	}

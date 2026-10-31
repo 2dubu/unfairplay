@@ -33,7 +33,32 @@ Example manifest:
       "expected_plaintext_verified": true,
       "expected_recovery_iterations": 284,
       "expected_recovery_state_sha256": "...",
-      "expected_registry_candidates": 1
+      "expected_registry_candidates": 1,
+      "expected_recovery_layout": {
+        "container_bytes": 991,
+        "codec_bytes": 27,
+        "payload_bytes": 944,
+        "source_bytes": 224,
+        "selector_modulus": 12,
+        "selected_slot": 5,
+        "root_cursor": 2,
+        "root_length": 942,
+        "root_child_count": 2,
+        "tree_nodes": 17,
+        "registry_records": 3,
+        "root_version": 65537,
+        "account_version": 65538,
+        "type_cursor": 100,
+        "type_length": 24,
+        "sign_cursor": 124,
+        "sign_length": 148,
+        "value_cursor": 272,
+        "value_length": 36,
+        "selected_record_index": 2,
+        "selected_payload_offset": 292,
+        "selected_window_offset": 0,
+        "sinf_selector": "12345678:00000002"
+      }
     },
     {
       "name": "saved-ipa-control",
@@ -50,7 +75,8 @@ Example manifest:
 ```
 
 Capture controls should pin the recovery state hash, iteration count, decoded
-registry count, model hash, IPA hash, image/page counts, and plaintext result.
+registry count, complete recovery layout, model hash, IPA hash, image/page
+counts, and plaintext result. The layout and SINF selector are private.
 IPA/model controls test reusable
 decryption for the supplied selectors and app layouts; independent-account
 coverage requires separate account controls. The command fails on any

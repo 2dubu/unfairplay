@@ -49,29 +49,39 @@ func currentEnrollmentPack(files map[string][]byte, registries []decodedSIDBRegi
 }
 
 func currentEnrollmentPackWithContext(ctx context.Context, files map[string][]byte, registries []decodedSIDBRegistryCandidate, hardware []byte, progress func(Progress)) ([]byte, error) {
+	pack, _, err := currentEnrollmentPackWithContextEvidence(ctx, files, registries, hardware, progress)
+	return pack, err
+}
+
+func currentEnrollmentPackWithContextEvidence(ctx context.Context, files map[string][]byte, registries []decodedSIDBRegistryCandidate, hardware []byte, progress func(Progress)) ([]byte, selectedRouteEvidence, error) {
 	var sinf []byte
 	for suffix, data := range files {
 		if strings.HasSuffix(suffix, ".sinf") {
 			if sinf != nil {
-				return nil, fmt.Errorf("enrollment model requires exactly one installed SINF")
+				return nil, selectedRouteEvidence{}, fmt.Errorf("enrollment model requires exactly one installed SINF")
 			}
 			sinf = data
 		}
 	}
 	if sinf == nil {
-		return nil, fmt.Errorf("enrollment model requires one installed SINF mapping")
+		return nil, selectedRouteEvidence{}, fmt.Errorf("enrollment model requires one installed SINF mapping")
 	}
 	user, keyID, err := enrollmentSINFSelector(sinf)
 	if err != nil {
-		return nil, err
+		return nil, selectedRouteEvidence{}, err
 	}
 	selected, err := selectAuthenticatedEnrollmentClassPrecursorWithContext(ctx, sinf, registries, hardware, user, keyID, progress)
 	if err != nil {
-		return nil, err
+		return nil, selectedRouteEvidence{}, err
 	}
 	pack, err := enrollmentPackForPrecursor(typedEnrollmentAlgorithmIdentity, user, keyID, selected.Precursor)
 	clear(selected.Precursor[:])
-	return pack, err
+	if err != nil {
+		return nil, selectedRouteEvidence{}, err
+	}
+	evidence := selected.routeEvidence
+	evidence.SINFSelector = fmt.Sprintf("%08x:%08x", user, keyID)
+	return pack, evidence, nil
 }
 
 func enrollmentPackForPrecursor(algorithmIdentity [32]byte, user, keyID uint32, precursor [16]byte) ([]byte, error) {

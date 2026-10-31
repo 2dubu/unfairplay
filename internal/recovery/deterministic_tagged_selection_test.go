@@ -58,8 +58,16 @@ func TestAuthenticateTaggedSelection(t *testing.T) {
 	regs := []decodedSIDBRegistryCandidate{{Registry: registry, Data: body}}
 	var events []Progress
 	got, err := authenticateTaggedSelection(context.Background(), decode, sinf, regs, hardware, 2, user, keyID, func(p Progress) { events = append(events, p) })
-	if err != nil || got.Precursor != precursor || got.RecordIndex != recordIndex || got.WindowOffset != 0 {
+	if err != nil || got.Precursor != precursor || got.RecordIndex != recordIndex {
 		t.Fatalf("selected: %+v, %v", got, err)
+	}
+	if got.routeEvidence != (selectedRouteEvidence{
+		RootVersion: 0x10001, AccountVersion: 0x10002,
+		TypeCursor: 190, TypeLength: 24, SignCursor: 214, SignLength: 148,
+		ValueCursor: 154, ValueLength: 36, SelectedRecordIndex: recordIndex,
+		SelectedPayloadOffset: 174, SelectedWindowOffset: 0,
+	}) {
+		t.Fatalf("route evidence: %+v", got.routeEvidence)
 	}
 	if len(events) < 2 || events[len(events)-1].Phase != "search-sinf-complete" || events[len(events)-1].Total != 1 {
 		t.Fatal("invalid progress")

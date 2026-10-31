@@ -36,5 +36,17 @@ func authenticateTaggedSelection(ctx context.Context, decode sidbTagDecoder, sin
 		return authenticatedClassPrecursor{}, err
 	}
 	defer clear(key[:])
-	return authenticateSelectedClassWindow(ctx, sinf, registries, 0, route.RecordIndex, 0, key, progress)
+	selected, err := authenticateSelectedClassValue(ctx, sinf, registries, route.RecordIndex, key, progress)
+	if err != nil {
+		return authenticatedClassPrecursor{}, err
+	}
+	selected.routeEvidence = selectedRouteEvidence{
+		RootVersion: uint32(route.Version), AccountVersion: uint32(route.AccountVersion),
+		TypeCursor: route.TypeCursor, TypeLength: route.TypeLength,
+		SignCursor: route.SignCursor, SignLength: route.SignLength,
+		ValueCursor: route.ValueCursor, ValueLength: route.ValueLength,
+		SelectedRecordIndex: route.RecordIndex, SelectedPayloadOffset: route.Record.SourceOffset,
+		SelectedWindowOffset: 0,
+	}
+	return selected, nil
 }

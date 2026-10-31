@@ -95,7 +95,7 @@ func TestTreeAuthenticationProgressCancellationAndWrongSINF(t *testing.T) {
 	registries := []decodedSIDBRegistryCandidate{{Registry: registry, Data: data}}
 	var events []Progress
 	selected, err := selectAuthenticatedEnrollmentClassPrecursorWithContext(context.Background(), sinf, registries, hardware, user, keyID, func(event Progress) { events = append(events, event) })
-	if err != nil || selected.Precursor != precursor || selected.WindowOffset != 0 {
+	if err != nil || selected.Precursor != precursor {
 		t.Fatalf("tree selection: %v", err)
 	}
 	if len(events) < 2 {

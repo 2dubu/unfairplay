@@ -7,10 +7,9 @@ import (
 	"fmt"
 )
 
-// authenticateSelectedClassWindow validates one caller-selected physical
-// window and class key. It does not select a record or try alternatives when
-// authentication fails. Indices in the result refer to the original input.
-func authenticateSelectedClassWindow(ctx context.Context, sinf []byte, registries []decodedSIDBRegistryCandidate, registryIndex, recordIndex, windowOffset int, classKey [16]byte, progress func(Progress)) (authenticatedClassPrecursor, error) {
+// authenticateSelectedClassValue validates the one tagged record selected by
+// the caller. It never changes registry, record, window, or key after failure.
+func authenticateSelectedClassValue(ctx context.Context, sinf []byte, registries []decodedSIDBRegistryCandidate, recordIndex int, classKey [16]byte, progress func(Progress)) (authenticatedClassPrecursor, error) {
 	defer clear(classKey[:])
 	if ctx == nil {
 		ctx = context.Background()
@@ -18,10 +17,10 @@ func authenticateSelectedClassWindow(ctx context.Context, sinf []byte, registrie
 	if err := ctx.Err(); err != nil {
 		return authenticatedClassPrecursor{}, err
 	}
-	if registryIndex < 0 || registryIndex >= len(registries) {
-		return authenticatedClassPrecursor{}, fmt.Errorf("selected class registry index is invalid: %d", registryIndex)
+	if len(registries) != 1 {
+		return authenticatedClassPrecursor{}, fmt.Errorf("selected class requires one registry")
 	}
-	registry := registries[registryIndex]
+	registry := registries[0]
 	if recordIndex < 0 || recordIndex >= len(registry.Registry.Records) {
 		return authenticatedClassPrecursor{}, fmt.Errorf("selected class record index is invalid: %d", recordIndex)
 	}
@@ -29,7 +28,7 @@ func authenticateSelectedClassWindow(ctx context.Context, sinf []byte, registrie
 	if record.MaskOffset < 0 || record.MaskOffset >= len(currentClassRecordMask) {
 		return authenticatedClassPrecursor{}, fmt.Errorf("selected class record mask offset is invalid: %d", record.MaskOffset)
 	}
-	valu, err := deriveClassValuWindow(record, windowOffset)
+	valu, err := deriveClassValuWindow(record, 0)
 	if err != nil {
 		return authenticatedClassPrecursor{}, err
 	}
@@ -63,8 +62,8 @@ func authenticateSelectedClassWindow(ctx context.Context, sinf []byte, registrie
 		return authenticatedClassPrecursor{}, errNoAuthenticatedClassPrecursor
 	}
 	selected := authenticatedClassPrecursor{
-		classPrecursorCandidate: classPrecursorCandidate{RecordIndex: recordIndex, WindowOffset: windowOffset, Record: record, Precursor: precursor},
-		RegistryIndex:           registryIndex, classKeyDigest: sha256.Sum256(classKey[:]),
+		classPrecursorCandidate: classPrecursorCandidate{RecordIndex: recordIndex, Record: record, Precursor: precursor},
+		classKeyDigest:          sha256.Sum256(classKey[:]),
 	}
 	clear(precursor[:])
 	event.Phase = "search-sinf-complete"

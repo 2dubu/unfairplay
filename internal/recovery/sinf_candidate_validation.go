@@ -14,10 +14,31 @@ import (
 
 var errNoAuthenticatedClassPrecursor = errors.New("authenticated SINF accepted no class precursor")
 
+type classPrecursorCandidate struct {
+	RecordIndex int
+	Record      decodedSIDBRecord
+	Precursor   [16]byte
+}
+
 type authenticatedClassPrecursor struct {
 	classPrecursorCandidate
-	RegistryIndex  int
 	classKeyDigest [32]byte
+	routeEvidence  selectedRouteEvidence
+}
+
+type selectedRouteEvidence struct {
+	RootVersion           uint32
+	AccountVersion        uint32
+	TypeCursor            int
+	TypeLength            int
+	SignCursor            int
+	SignLength            int
+	ValueCursor           int
+	ValueLength           int
+	SelectedRecordIndex   int
+	SelectedPayloadOffset int
+	SelectedWindowOffset  int
+	SINFSelector          string
 }
 
 func currentSINFPrivateSource(sinf []byte) ([]byte, error) {

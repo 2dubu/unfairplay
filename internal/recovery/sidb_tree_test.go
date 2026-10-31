@@ -219,19 +219,19 @@ func TestDecodedSIDBTreeWidthPrefixes(t *testing.T) {
 }
 
 func TestClassRecordLayoutMaskAndTailBounds(t *testing.T) {
-	var flat decodedSIDBRecord
-	flat.TailAvailable = 4
-	for i := range flat.Payload {
-		flat.Payload[i] = byte(i * 7)
+	var record decodedSIDBRecord
+	record.TailAvailable = 4
+	for i := range record.Payload {
+		record.Payload[i] = byte(i * 7)
 	}
-	for i := range flat.Tail {
-		flat.Tail[i] = byte(i * 11)
+	for i := range record.Tail {
+		record.Tail[i] = byte(i * 11)
 	}
-	flat.SourceOffset = 37 // Flat records retain the preexisting relative mask.
-	withoutOffset := flat
+	record.SourceOffset = 37
+	withoutOffset := record
 	withoutOffset.SourceOffset = 0
 	for i := 0; i <= maximumClassWindowOffset; i++ {
-		a, err := deriveClassValuWindow(flat, i)
+		a, err := deriveClassValuWindow(record, i)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -240,10 +240,10 @@ func TestClassRecordLayoutMaskAndTailBounds(t *testing.T) {
 			t.Fatal(err)
 		}
 		if a != b {
-			t.Fatalf("flat mask changed at window %d", i)
+			t.Fatalf("source bookkeeping changed the value at window %d", i)
 		}
 	}
-	tree := flat
+	tree := record
 	tree.MaskOffset = (tree.SourceOffset + 12) % 16
 	tree.TailAvailable = 2
 	var masked [16]byte

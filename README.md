@@ -195,6 +195,10 @@ SINF's exact user/key path and authenticates its single value. It does not try
 other records or windows when that value fails authentication. Only the mapped
 tree format is supported.
 
+Private recovery reports include the selected container, slot, tree, leaf and
+record geometry. The private QA matrix pins that layout so a parser change
+cannot silently select another route.
+
 The hardware tag constructor uses a byte mixer followed by AES-CBC and an
 affine map of each output word. Selection-state derivation processes the
 selected prefix with AES-CBC and a final AES key transform. All constants are

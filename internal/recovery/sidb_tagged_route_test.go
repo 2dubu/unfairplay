@@ -44,7 +44,9 @@ func TestTaggedSIDBRouteSynthetic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != sidbSchemaVersion10001 || got.AccountVersion != sidbSchemaVersion10002 || got.Record.SourceOffset != 174 || got.TypeCursor != 190 || got.TypeLength != 24 {
+	if got.Version != sidbSchemaVersion10001 || got.AccountVersion != sidbSchemaVersion10002 || got.Record.SourceOffset != 174 ||
+		got.TypeCursor != 190 || got.TypeLength != 24 || got.SignCursor != 214 || got.SignLength != 148 ||
+		got.ValueCursor != 154 || got.ValueLength != 36 {
 		t.Fatalf("unexpected selection: %+v", got)
 	}
 	if !bytes.Equal(got.Window[:], data[174:190]) {

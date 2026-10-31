@@ -9,6 +9,10 @@ type taggedSIDBRoute struct {
 	AccountVersion sidbSchemaVersion
 	TypeCursor     int
 	TypeLength     int
+	SignCursor     int
+	SignLength     int
+	ValueCursor    int
+	ValueLength    int
 	RecordIndex    int
 	Record         decodedSIDBRecord
 	Window         [decodedSIDBPayloadBytes]byte
@@ -116,6 +120,7 @@ func selectTaggedSIDBRoute(decode sidbTagDecoder, sinf, body []byte, rootCursor 
 	if sign.ChildCount != 0 || sign.Length != 148 {
 		return taggedSIDBRoute{}, fmt.Errorf("unsupported SIDB sign leaf geometry")
 	}
+	result.SignCursor, result.SignLength = sign.Offset, sign.Length
 	if err := unsupported(keyIndex, "salt", "iviv", "dong"); err != nil {
 		return taggedSIDBRoute{}, err
 	}
@@ -130,6 +135,7 @@ func selectTaggedSIDBRoute(decode sidbTagDecoder, sinf, body []byte, rootCursor 
 	if value.ChildCount != 0 || value.Length != decodedSIDBNodeHeaderBytes+decodedSIDBPayloadBytes {
 		return taggedSIDBRoute{}, fmt.Errorf("invalid SIDB value leaf")
 	}
+	result.ValueCursor, result.ValueLength = value.Offset, value.Length
 	start := value.Offset + decodedSIDBNodeHeaderBytes
 	window := start
 	if window > len(body) || len(body)-window < len(result.Window) {
