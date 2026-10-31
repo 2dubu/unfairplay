@@ -6,15 +6,12 @@ import "fmt"
 // sourceTail contains the source window, in complete 16-byte blocks.
 func deriveSelectedEnrollmentKey(sourceTail []byte, slot int) ([16]byte, error) {
 	var empty [16]byte
-	if len(sourceTail) == 0 || len(sourceTail)%16 != 0 || len(sourceTail)/16 > 18 {
+	if len(sourceTail) == 0 || len(sourceTail)%16 != 0 || len(sourceTail)/16 > selectionStateSlotCount {
 		return empty, fmt.Errorf("invalid selection state source length %d", len(sourceTail))
 	}
 	blocks := len(sourceTail) / 16
 	if slot < 0 || slot >= blocks {
 		return empty, fmt.Errorf("selection state slot %d is outside source block count %d", slot, blocks)
-	}
-	if slot >= selectionStateSlotCount {
-		return empty, fmt.Errorf("selection state slot %d has no verified transform", slot)
 	}
 	previous := selectionStateIV
 	defer clear(previous[:])

@@ -125,8 +125,17 @@ func TestLargerSIDBSourceContinuation(t *testing.T) {
 // sized to the requested aligned length without changing the codec bytes.
 func syntheticNativeSIDB(t *testing.T, bodyBytes int) ([]byte, []byte, currentSIDBLayout) {
 	t.Helper()
+	return syntheticNativeSIDBMatching(t, bodyBytes, func(layout currentSIDBLayout) bool {
+		// Preserve the original deterministic fixture used by exact iteration
+		// controls while high-slot coverage uses the general helper directly.
+		return layout.SelectedSlot < 14
+	})
+}
+
+func syntheticNativeSIDBMatching(t *testing.T, bodyBytes int, accept func(currentSIDBLayout) bool) ([]byte, []byte, currentSIDBLayout) {
+	t.Helper()
 	hardware := []byte{2, 19, 36, 53, 70, 87}
-	for seed := 0; seed < 64; seed++ {
+	for seed := 0; seed < 256; seed++ {
 		data := make([]byte, 4+372+bodyBytes+selectionSIDBExtendedTrailerBytes)
 		binary.BigEndian.PutUint32(data, currentSIDBContainerVersion)
 		for i := 4; i < len(data); i++ {
@@ -138,7 +147,7 @@ func syntheticNativeSIDB(t *testing.T, bodyBytes int) ([]byte, []byte, currentSI
 		}
 		data = data[:4+layout.CodecBytes+bodyBytes+selectionSIDBExtendedTrailerBytes]
 		_, checked, _, err := deriveNativeSelectionSource(data, hardware)
-		if err == nil && checked.CodecBytes == layout.CodecBytes && checked.SelectedSlot < 14 {
+		if err == nil && checked.CodecBytes == layout.CodecBytes && accept(checked) {
 			return data, hardware, checked
 		}
 	}

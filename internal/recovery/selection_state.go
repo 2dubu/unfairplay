@@ -5,7 +5,9 @@ import (
 	"crypto/cipher"
 )
 
-const selectionStateSlotCount = 14
+// The recovered state update is one slot-independent CBC recurrence. The
+// native source mapper bounds the sequence to this many complete blocks.
+const selectionStateSlotCount = maximumMappedSelectionModulus
 
 // Public algorithm constants, not enrollment credentials. The mapped shared
 // round keys form this AES-128 schedule. Slot-specific initial keys reduce to

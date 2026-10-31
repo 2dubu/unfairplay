@@ -103,7 +103,7 @@ func TestDeriveExtendedCurrentSelectionRegistryCandidates(t *testing.T) {
 		}
 	}
 	if layout.SelectorModulus > 1 {
-		wrongKey, err := deriveSelectedEnrollmentKey(source[selectionSourcePrefixBytes:], (layout.SelectedSlot+1)%min(layout.SelectorModulus, 14))
+		wrongKey, err := deriveSelectedEnrollmentKey(source[selectionSourcePrefixBytes:], (layout.SelectedSlot+1)%layout.SelectorModulus)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -262,18 +262,32 @@ func TestSelectionRegistryDiagnosticsAreNonSecretAndComplete(t *testing.T) {
 	}
 }
 
-func TestSelectionRejectsUnverifiedSelectedSlot(t *testing.T) {
-	container, hardware, layout := syntheticNativeSIDB(t, selectionSIDBPayloadBytes)
+func TestSelectionMappedSlot14UsesCBCRecurrence(t *testing.T) {
+	container, hardware, layout := syntheticNativeSIDBMatching(t, selectionSIDBPayloadBytes, func(layout currentSIDBLayout) bool {
+		return layout.SelectedSlot == 14
+	})
 	source, _, _, err := deriveNativeSelectionSource(container, hardware)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if layout.SelectorModulus < 15 {
-		t.Fatal("fixture modulus does not include an unverified slot")
+	selectedKey, err := deriveSelectedEnrollmentKey(source[selectionSourcePrefixBytes:], layout.SelectedSlot)
+	if err != nil {
+		t.Fatal(err)
 	}
-	layout.SelectedSlot = 14
-	_, err = appendSelectionRegistryCandidates(nil, make(map[[32]byte]bool), source, currentSIDBContainerFile{data: container}, layout, nil)
-	if err == nil || !strings.Contains(err.Error(), "no verified transform") {
-		t.Fatalf("unverified selected slot: %v", err)
+	plaintext := syntheticSIDBTreeBuffer(layout.PayloadBytes)
+	root := layout.RootCursor - 2
+	rootLength := len(plaintext) - layout.RootCursor
+	putSyntheticSIDBNode(plaintext, root, rootLength, 2)
+	putSyntheticSIDBNode(plaintext, root+20, 36, 0)
+	putSyntheticSIDBNode(plaintext, root+56, rootLength-56, 0)
+	fillSyntheticSelectionSIDBContainer(t, container, layout.PayloadOffset, plaintext, selectedKey)
+	sealSyntheticSelectionContainer(t, container, source)
+	candidates, _, _, err := deriveCurrentSelectionRegistryCandidates(map[string][]byte{"state/SC Info.sidb": container}, hardware)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer clearDecodedSIDBRegistryCandidates(candidates)
+	if len(candidates) != 1 || !bytes.Equal(candidates[0].Data, plaintext) {
+		t.Fatalf("selected slot %d did not produce one authenticated registry", layout.SelectedSlot)
 	}
 }
