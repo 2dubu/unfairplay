@@ -473,6 +473,53 @@ func TestPrepareMacOSIPAReplicatesManifestSINFPaths(t *testing.T) {
 	}
 }
 
+func TestPrepareMacOSIPAMultipleManifestSources(t *testing.T) {
+	credential := macOSTestCredential()
+	sourceA := macOSTestCurrentSINF(t, credential, 3)
+	sourceB := macOSTestCurrentSINF(t, credential, 4)
+	manifest, err := plist.Marshal(macOSSINFManifest{
+		SINFPaths: []string{"SC_Info/A.sinf", "SC_Info/B.sinf"},
+		SINFReplicationPaths: []string{
+			"PlugIns/A.appex/SC_Info/A.sinf",
+			"PlugIns/B.appex/SC_Info/B.sinf",
+		},
+	}, plist.XMLFormat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input := writeMacOSTestIPA(t, "App.ipa", map[string][]byte{
+		"Payload/App.app/SC_Info/A.sinf":                 sourceA,
+		"Payload/App.app/SC_Info/B.sinf":                 sourceB,
+		"Payload/App.app/PlugIns/A.appex/SC_Info/A.sinf": sourceA,
+		"Payload/App.app/PlugIns/B.appex/SC_Info/B.sinf": sourceB,
+		"Payload/App.app/SC_Info/Manifest.plist":         manifest,
+	})
+	modelPath := filepath.Join(t.TempDir(), "fairplay-enrollment.bin")
+	if err := os.WriteFile(modelPath, macOSTestVersion2Model(t, credential), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	output := filepath.Join(t.TempDir(), "App.macos.ipa")
+	result, err := PrepareMacOSIPA(MacOSPrepareOptions{InputPath: input, OutputPath: output, ModelPath: modelPath})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Records) != 4 {
+		t.Fatalf("converted SINF records = %d, want 4", len(result.Records))
+	}
+	members := readMacOSTestZIP(t, output)
+	for _, pair := range [][2]string{
+		{"Payload/App.app/SC_Info/A.sinf", "Payload/App.app/PlugIns/A.appex/SC_Info/A.sinf"},
+		{"Payload/App.app/SC_Info/B.sinf", "Payload/App.app/PlugIns/B.appex/SC_Info/B.sinf"},
+	} {
+		if !bytes.Equal(members[pair[0]], members[pair[1]]) {
+			t.Fatalf("converted replica %q differs from %q", pair[1], pair[0])
+		}
+		if err := verifyMacOSSINF(members[pair[1]], credential); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestExternalMacOSCredentialFromEnrollmentModel(t *testing.T) {
 	modelPath := os.Getenv("UNFAIRPLAY_MACOS_CREDENTIAL_MODEL")
 	sinfPath := os.Getenv("UNFAIRPLAY_MACOS_CREDENTIAL_SINF")

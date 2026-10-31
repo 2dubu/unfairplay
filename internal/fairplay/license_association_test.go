@@ -64,7 +64,7 @@ func TestSINFManifestAssociations(t *testing.T) {
 		{"identical replica", []string{sourcePath}, []string{targetPath}, []byte("source"), true, false},
 		{"different existing replica rejected", []string{sourcePath}, []string{targetPath}, []byte("other"), true, true},
 		{"duplicate target rejected", []string{sourcePath}, []string{targetPath, targetPath}, nil, false, true},
-		{"multiple sources rejected", []string{sourcePath, sourcePath}, []string{targetPath}, nil, false, true},
+		{"duplicate source rejected", []string{sourcePath, sourcePath}, []string{targetPath}, nil, false, true},
 		{"traversal rejected", []string{sourcePath}, []string{"../SC_Info/B.sinf"}, nil, false, true},
 		{"absolute rejected", []string{sourcePath}, []string{"/SC_Info/B.sinf"}, nil, false, true},
 		{"backslash rejected", []string{sourcePath}, []string{"SC_Info\\B.sinf"}, nil, false, true},
@@ -89,6 +89,59 @@ func TestSINFManifestAssociations(t *testing.T) {
 		_, err := buildSINFAssociations(syntheticLicenseFiles(t, map[string][]byte{manifest: syntheticLicenseManifest(t, []string{sourcePath}, []string{targetPath})}))
 		if err == nil {
 			t.Fatal("accepted missing source")
+		}
+	})
+}
+
+func TestSINFManifestMultipleSources(t *testing.T) {
+	const root = "Payload/A.app/"
+	const manifest = root + "SC_Info/Manifest.plist"
+	sourceAPath, sourceBPath := "SC_Info/A.sinf", "SC_Info/B.sinf"
+	targetAPath, targetBPath := "PlugIns/A.appex/SC_Info/A.sinf", "PlugIns/B.appex/SC_Info/B.sinf"
+	sourceA, sourceB := root+sourceAPath, root+sourceBPath
+	targetA, targetB := root+targetAPath, root+targetBPath
+
+	t.Run("existing replicas select their exact source", func(t *testing.T) {
+		entries := map[string][]byte{
+			sourceA: []byte("source-a"), sourceB: []byte("source-b"),
+			targetA: []byte("source-a"), targetB: []byte("source-b"),
+			manifest: syntheticLicenseManifest(t, []string{sourceBPath, sourceAPath}, []string{targetAPath, targetBPath}),
+		}
+		got, err := buildSINFAssociations(syntheticLicenseFiles(t, entries))
+		if err != nil || got[targetA] != sourceA || got[targetB] != sourceB {
+			t.Fatalf("associations %v error %v", got, err)
+		}
+	})
+
+	t.Run("missing replica with distinct sources is ambiguous", func(t *testing.T) {
+		entries := map[string][]byte{
+			sourceA: []byte("source-a"), sourceB: []byte("source-b"),
+			manifest: syntheticLicenseManifest(t, []string{sourceAPath, sourceBPath}, []string{targetAPath}),
+		}
+		if _, err := buildSINFAssociations(syntheticLicenseFiles(t, entries)); err == nil || !strings.Contains(err.Error(), "multiple distinct") {
+			t.Fatalf("ambiguous replica returned %v", err)
+		}
+	})
+
+	t.Run("identical sources resolve missing replica deterministically", func(t *testing.T) {
+		entries := map[string][]byte{
+			sourceA: []byte("same"), sourceB: []byte("same"),
+			manifest: syntheticLicenseManifest(t, []string{sourceBPath, sourceAPath}, []string{targetAPath}),
+		}
+		got, err := buildSINFAssociations(syntheticLicenseFiles(t, entries))
+		if err != nil || got[targetA] != sourceA {
+			t.Fatalf("associations %v error %v", got, err)
+		}
+	})
+
+	t.Run("independent sources need no replication mapping", func(t *testing.T) {
+		entries := map[string][]byte{
+			sourceA: []byte("source-a"), sourceB: []byte("source-b"),
+			manifest: syntheticLicenseManifest(t, []string{sourceAPath, sourceBPath}, nil),
+		}
+		got, err := buildSINFAssociations(syntheticLicenseFiles(t, entries))
+		if err != nil || len(got) != 0 {
+			t.Fatalf("associations %v error %v", got, err)
 		}
 	})
 }

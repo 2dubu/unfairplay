@@ -584,53 +584,68 @@ func addMacOSSINFReplicas(source *zip.ReadCloser, files map[string]*zip.File,
 		if len(manifest.SINFReplicationPaths) == 0 {
 			continue
 		}
-		if len(manifest.SINFPaths) != 1 {
-			return nil, nil, fmt.Errorf("%s has %d source SINF paths for replication, want 1", file.Name, len(manifest.SINFPaths))
-		}
 		root := strings.TrimSuffix(file.Name, suffix)
-		sourceName, err := macOSSINFMember(root, manifest.SINFPaths[0])
+		sources, err := loadManifestSINFSources(files, root, file.Name, manifest.SINFPaths)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", file.Name, err)
+			return nil, nil, err
 		}
-		converted, ok := replacements[sourceName]
-		if !ok {
-			return nil, nil, fmt.Errorf("%s source SINF %q was not converted", file.Name, sourceName)
-		}
-		sourceFile, ok := files[sourceName]
-		if !ok {
-			return nil, nil, fmt.Errorf("%s source SINF %q is missing", file.Name, sourceName)
-		}
-		sourceReport := reportsByPath[sourceName]
-		for _, relative := range manifest.SINFReplicationPaths {
-			target, pathErr := macOSSINFMember(root, relative)
-			if pathErr != nil {
-				return nil, nil, fmt.Errorf("%s: %w", file.Name, pathErr)
-			}
-			if target == sourceName {
-				continue
-			}
-			if existing, exists := replacements[target]; exists {
-				if !bytes.Equal(existing, converted) {
-					return nil, nil, fmt.Errorf("replicated SINF %q differs from source %q", target, sourceName)
+		manifestErr := func() error {
+			defer clearManifestSINFSources(sources)
+			for _, relative := range manifest.SINFReplicationPaths {
+				target, pathErr := macOSSINFMember(root, relative)
+				if pathErr != nil {
+					return fmt.Errorf("%s: %w", file.Name, pathErr)
 				}
-				continue
-			}
-			if _, exists := files[target]; exists {
-				return nil, nil, fmt.Errorf("existing SINF %q was not converted", target)
-			}
-			if existing, exists := replicas[target]; exists {
-				if !bytes.Equal(existing.data, converted) {
-					return nil, nil, fmt.Errorf("conflicting SINF replication target %q", target)
+				var targetData []byte
+				targetFile, targetPresent := files[target]
+				if targetPresent {
+					if targetFile == nil {
+						return fmt.Errorf("invalid target SINF %q", target)
+					}
+					targetData, err = zipBytes(targetFile)
+					if err != nil {
+						return fmt.Errorf("read target SINF %q: %w", target, err)
+					}
 				}
-				continue
+				source, selectErr := selectManifestSINFSource(sources, target, targetData, targetPresent)
+				clear(targetData)
+				if selectErr != nil {
+					return fmt.Errorf("%s: %w", file.Name, selectErr)
+				}
+				if target == source.name {
+					continue
+				}
+				converted, ok := replacements[source.name]
+				if !ok {
+					return fmt.Errorf("%s source SINF %q was not converted", file.Name, source.name)
+				}
+				if existing, exists := replacements[target]; exists {
+					if !bytes.Equal(existing, converted) {
+						return fmt.Errorf("replicated SINF %q differs from source %q", target, source.name)
+					}
+					continue
+				}
+				if targetPresent {
+					return fmt.Errorf("existing SINF %q was not converted", target)
+				}
+				if existing, exists := replicas[target]; exists {
+					if !bytes.Equal(existing.data, converted) {
+						return fmt.Errorf("conflicting SINF replication target %q", target)
+					}
+					continue
+				}
+				header := source.file.FileHeader
+				header.Name = target
+				replicas[target] = macOSSINFReplica{data: converted, header: header}
+				report := reportsByPath[source.name]
+				report.Path = target
+				report.ReplicatedFrom = source.name
+				reports = append(reports, report)
 			}
-			header := sourceFile.FileHeader
-			header.Name = target
-			replicas[target] = macOSSINFReplica{data: converted, header: header}
-			report := sourceReport
-			report.Path = target
-			report.ReplicatedFrom = sourceName
-			reports = append(reports, report)
+			return nil
+		}()
+		if manifestErr != nil {
+			return nil, nil, manifestErr
 		}
 	}
 	return replicas, reports, nil
