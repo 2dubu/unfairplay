@@ -105,8 +105,10 @@ pre_encryption_code_directories[*].matched_slots=pre_encryption_code_directories
 ```
 
 The public suite has a complete synthetic ARMv6/Thumb-1 decryption and
-wrong-key rejection control. Prefer the same real app version from two
-independent Store enrollments. All Mach-O
+wrong-key rejection control. The private matrix also retains one ARMv6-only
+iOS 3.0-era control. It has no pre-encryption hash table, so QA pins its exact
+decrypted output while requiring `plaintext_verified=false`. Prefer the same
+real app version from two independent Store enrollments. All Mach-O
 members must decrypt byte-identically; only personalized SINF and Store
 metadata may differ. Retain wrong-first-page and wrong-final-page key tests
 that must fail the pre-encryption hash audit, plus missing-table acceptance
